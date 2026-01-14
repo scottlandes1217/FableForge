@@ -68,8 +68,8 @@ class CharacterCreationScene: SKScene {
         panel.zPosition = 1
         addChild(panel)
         
-        // Book title - positioned closer to top of panel
-        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 20.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 25.0
+        // Book title - positioned with more padding from top border
+        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 80.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 90.0
         let title = MenuStyling.createBookTitle(text: "Character Creation", position: CGPoint(x: size.width / 2.0, y: titleY), fontSize: isLandscape ? 30.0 : 34.0)
         title.zPosition = 10
         addChild(title)
@@ -180,7 +180,7 @@ class CharacterCreationScene: SKScene {
         let panelBottom: CGFloat = size.height / 2.0 - dims.panelHeight / 2.0
         
         // Position elements from top to bottom
-        let topPadding: CGFloat = 40.0
+        let topPadding: CGFloat = 100.0  // Increased padding to avoid border overlap
         let titleY: CGFloat = panelTop - topPadding
         let titleBottom: CGFloat = titleY - titleFontSize / 2.0
         
@@ -291,8 +291,8 @@ class CharacterCreationScene: SKScene {
         panel.zPosition = 1
         addChild(panel)
         
-        // Book title
-        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 20.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 25.0
+        // Book title - positioned with more padding from top border
+        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 80.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 90.0
         let title = MenuStyling.createBookTitle(text: "Character Appearance", position: CGPoint(x: size.width / 2.0, y: titleY), fontSize: isLandscape ? 30.0 : 34.0)
         title.zPosition = 10
         addChild(title)
@@ -308,15 +308,17 @@ class CharacterCreationScene: SKScene {
         addChild(nameLabel)
         
         // Calculate positions from top to bottom with proper spacing
-        // We'll position elements dynamically based on whether preview exists
-        // Start with instruction below name label
-        let instructionY: CGFloat = isLandscape ? nameLabelY - 45.0 : nameLabelY - 50.0
+        // Leave space for preview between name label and instruction
+        // Preview can be up to ~200-250px tall, so we need significant space
+        let previewSpace: CGFloat = isLandscape ? 250.0 : 280.0 // Space reserved for preview
+        let instructionY: CGFloat = nameLabelY - previewSpace - 30.0 // Position instruction well below where preview would be
         let instruction = SKLabelNode(fontNamed: "Arial")
         instruction.text = "Describe what your character looks like:"
         instruction.fontSize = isLandscape ? 18.0 : 22.0
         instruction.fontColor = MenuStyling.inkColor
         instruction.position = CGPoint(x: size.width / 2.0, y: instructionY)
         instruction.zPosition = 10
+        instruction.name = "instructionLabel" // Add name for easier finding
         addChild(instruction)
         
         // Example text
@@ -327,12 +329,13 @@ class CharacterCreationScene: SKScene {
         exampleLabel.fontColor = MenuStyling.inkMuted
         exampleLabel.position = CGPoint(x: size.width / 2.0, y: exampleY)
         exampleLabel.zPosition = 10
+        exampleLabel.name = "exampleLabel" // Add name for easier finding
         addChild(exampleLabel)
         
-        // Description input area - position below example, leave space for preview if it appears
+        // Description input area - position below example
         let inputWidth = min(dims.buttonWidth, isLandscape ? 500.0 : size.width * 0.9)
         let inputHeight: CGFloat = isLandscape ? 100.0 : 120.0
-        // Position input area lower to leave room for preview above it
+        // Position input area below example with proper spacing
         let inputAreaY: CGFloat = exampleY - 35.0 - inputHeight / 2.0
         let descriptionInputArea = SKShapeNode(rectOf: CGSize(width: inputWidth, height: inputHeight), cornerRadius: 8)
         descriptionInputArea.fillColor = MenuStyling.parchmentBg
@@ -365,7 +368,7 @@ class CharacterCreationScene: SKScene {
         
         // Buttons - position below input area with proper spacing
         let inputAreaBottom = inputAreaY - inputHeight / 2.0
-        let buttonSpacing: CGFloat = isLandscape ? 12.0 : 15.0
+        let buttonSpacing: CGFloat = isLandscape ? 20.0 : 25.0
         let generateY: CGFloat = inputAreaBottom - buttonSpacing - dims.buttonHeight / 2.0
         let generateButton = MenuStyling.createBookButton(
             text: spriteDescription.isEmpty ? "Skip (Use Default)" : "Generate All Sprites",
@@ -378,8 +381,9 @@ class CharacterCreationScene: SKScene {
         generateButton.zPosition = 10
         addChild(generateButton)
         
-        // Back button
-        let backY: CGFloat = generateY - (dims.buttonHeight + dims.spacing)
+        // Back button - positioned with proper spacing below generate button
+        let backSpacing: CGFloat = dims.buttonHeight + dims.spacing
+        let backY: CGFloat = generateY - backSpacing
         let backButton = MenuStyling.createBookButton(
             text: "Back",
             size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
@@ -748,26 +752,19 @@ class CharacterCreationScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
-        // Position buttons based on whether preview is shown
-        let hasPreview = previewSprite != nil
-        let generateY: CGFloat = hasPreview ? (isLandscape ? size.height / 2.0 - 200.0 : size.height / 2.0 - 220.0) : (isLandscape ? size.height / 2.0 - 120.0 : size.height / 2.0 - 140.0)
-        
-        // Add refresh button if description exists
-        if !spriteDescription.isEmpty {
-            let refreshY: CGFloat = generateY - (dims.buttonHeight + dims.spacing)
-            let refreshButton = MenuStyling.createBookButton(
-                text: isGeneratingPreview ? "Generating..." : "Refresh Preview",
-                size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
-                color: isGeneratingPreview ? MenuStyling.parchmentDark : MenuStyling.parchmentBg,
-                position: CGPoint(x: size.width / 2.0, y: refreshY),
-                name: "refreshButton",
-                fontSize: isLandscape ? 20.0 : 24.0
-            )
-            refreshButton.zPosition = 10
-            addChild(refreshButton)
+        // Calculate button positions based on input area position (not hardcoded)
+        var generateY: CGFloat
+        if let inputArea = childNode(withName: "descriptionInputArea") as? SKShapeNode {
+            let inputAreaBottom = inputArea.position.y - inputArea.frame.height / 2.0
+            let buttonSpacing: CGFloat = isLandscape ? 20.0 : 25.0
+            generateY = inputAreaBottom - buttonSpacing - dims.buttonHeight / 2.0
+        } else {
+            // Fallback to hardcoded position if input area not found
+            let hasPreview = previewSprite != nil
+            generateY = hasPreview ? (isLandscape ? size.height / 2.0 - 200.0 : size.height / 2.0 - 220.0) : (isLandscape ? size.height / 2.0 - 120.0 : size.height / 2.0 - 140.0)
         }
         
-        // Add generate button
+        // Add generate button first
         let newButton = MenuStyling.createBookButton(
             text: spriteDescription.isEmpty ? "Skip (Use Default)" : "Generate All Sprites",
             size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
@@ -778,6 +775,39 @@ class CharacterCreationScene: SKScene {
         )
         newButton.zPosition = 10
         addChild(newButton)
+        
+        // Add refresh button if description exists (positioned below generate button)
+        if !spriteDescription.isEmpty {
+            let refreshSpacing: CGFloat = dims.buttonHeight + dims.spacing
+            let refreshY: CGFloat = generateY - refreshSpacing
+            let refreshButton = MenuStyling.createBookButton(
+                text: isGeneratingPreview ? "Generating..." : "Refresh Preview",
+                size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
+                color: isGeneratingPreview ? MenuStyling.parchmentDark : MenuStyling.parchmentBg,
+                position: CGPoint(x: size.width / 2.0, y: refreshY),
+                name: "refreshButton",
+                fontSize: isLandscape ? 20.0 : 24.0
+            )
+            refreshButton.zPosition = 10
+            addChild(refreshButton)
+            
+            // Update back button position if it exists
+            if let backButton = childNode(withName: "backButton") {
+                let backSpacing: CGFloat = dims.buttonHeight + dims.spacing
+                backButton.position = CGPoint(x: size.width / 2.0, y: refreshY - backSpacing)
+            }
+        } else {
+            // Update back button position if it exists (below generate button)
+            if let backButton = childNode(withName: "backButton") {
+                let backSpacing: CGFloat = dims.buttonHeight + dims.spacing
+                backButton.position = CGPoint(x: size.width / 2.0, y: generateY - backSpacing)
+            }
+        }
+        
+        // If preview exists, update all positions to account for it
+        if previewSprite != nil {
+            updateElementPositionsForPreview()
+        }
     }
     
     func generatePreviewImage() {
@@ -858,10 +888,12 @@ class CharacterCreationScene: SKScene {
         let textureAspectRatio = textureSize.width / textureSize.height
         
         // Available space for preview (between name label and instruction)
-        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 20.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 25.0
+        // Use same calculation as in showSpriteDescriptionScreen
+        let titleY: CGFloat = isLandscape ? size.height / 2.0 + dims.panelHeight / 2.0 - 80.0 : size.height / 2.0 + dims.panelHeight / 2.0 - 90.0
         let nameLabelY: CGFloat = titleY - 40.0
-        let instructionY: CGFloat = isLandscape ? nameLabelY - 45.0 : nameLabelY - 50.0
-        let availableHeight = nameLabelY - instructionY - 80.0 // Leave more space for label and spacing
+        let previewSpace: CGFloat = isLandscape ? 250.0 : 280.0 // Same as in showSpriteDescriptionScreen
+        let instructionY: CGFloat = nameLabelY - previewSpace - 30.0 // Same calculation
+        let availableHeight = nameLabelY - instructionY - 60.0 // Leave space for label and spacing
         let availableWidth = min(isLandscape ? 300.0 : 260.0, size.width * 0.9)
         
         // Calculate size that fits in available space while maintaining aspect ratio
@@ -888,8 +920,12 @@ class CharacterCreationScene: SKScene {
         }
         
         // Position preview between name label and instruction with proper spacing
-        let previewSpacing: CGFloat = isLandscape ? 20.0 : 25.0
-        let previewY: CGFloat = nameLabelY - previewSpacing - previewHeight / 2.0 - 15.0
+        // Make sure preview doesn't overlap with name label or instruction
+        let previewSpacing: CGFloat = isLandscape ? 25.0 : 30.0
+        // Center preview in the available space between name label and instruction
+        let availableSpace = nameLabelY - instructionY - previewSpacing * 2
+        // Position preview so it's centered in available space
+        let previewY: CGFloat = nameLabelY - previewSpacing - (availableSpace / 2.0)
         
         // Create sprite - ensure it shows the full texture without cropping
         // Use the texture's actual size to maintain aspect ratio
@@ -928,53 +964,81 @@ class CharacterCreationScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         let previewBottom = preview.position.y - preview.size.height / 2.0
-        let spacing: CGFloat = isLandscape ? 20.0 : 25.0
+        let spacing: CGFloat = isLandscape ? 35.0 : 40.0 // Increased spacing to prevent overlap
         
-        // Find and reposition instruction
-        for child in children {
-            if let label = child as? SKLabelNode, label.text == "Describe what your character looks like:" {
-                label.position = CGPoint(x: size.width / 2.0, y: previewBottom - spacing)
-                break
+        // Find and reposition instruction using name
+        if let instruction = childNode(withName: "instructionLabel") as? SKLabelNode {
+            instruction.position = CGPoint(x: size.width / 2.0, y: previewBottom - spacing)
+        } else {
+            // Fallback: find by text
+            for child in children {
+                if let label = child as? SKLabelNode, label.text == "Describe what your character looks like:" {
+                    label.position = CGPoint(x: size.width / 2.0, y: previewBottom - spacing)
+                    break
+                }
             }
         }
         
-        // Find and reposition example text
-        for child in children {
-            if let label = child as? SKLabelNode, label.text?.hasPrefix("e.g.,") == true {
-                if let instruction = children.first(where: { ($0 as? SKLabelNode)?.text == "Describe what your character looks like:" }) as? SKLabelNode {
-                    label.position = CGPoint(x: size.width / 2.0, y: instruction.position.y - 28.0)
+        // Find and reposition example text using name
+        if let exampleLabel = childNode(withName: "exampleLabel") as? SKLabelNode {
+            if let instruction = childNode(withName: "instructionLabel") as? SKLabelNode {
+                let exampleSpacing: CGFloat = isLandscape ? 30.0 : 35.0
+                exampleLabel.position = CGPoint(x: size.width / 2.0, y: instruction.position.y - exampleSpacing)
+            }
+        } else {
+            // Fallback: find by text
+            for child in children {
+                if let label = child as? SKLabelNode, label.text?.hasPrefix("e.g.,") == true {
+                    if let instruction = childNode(withName: "instructionLabel") as? SKLabelNode {
+                        let exampleSpacing: CGFloat = isLandscape ? 30.0 : 35.0
+                        label.position = CGPoint(x: size.width / 2.0, y: instruction.position.y - exampleSpacing)
+                    }
+                    break
                 }
-                break
             }
         }
         
         // Reposition description input area
         if let inputArea = childNode(withName: "descriptionInputArea") as? SKShapeNode {
             let inputHeight = inputArea.frame.height
-            if let exampleLabel = children.first(where: { ($0 as? SKLabelNode)?.text?.hasPrefix("e.g.,") == true }) as? SKLabelNode {
-                let newInputY = exampleLabel.position.y - 35.0 - inputHeight / 2.0
+            if let exampleLabel = childNode(withName: "exampleLabel") as? SKLabelNode {
+                let inputSpacing: CGFloat = isLandscape ? 40.0 : 45.0
+                let newInputY = exampleLabel.position.y - inputSpacing - inputHeight / 2.0
                 inputArea.position = CGPoint(x: size.width / 2.0, y: newInputY)
                 
-                // Update button positions
+                // Update button positions with proper spacing
                 let inputAreaBottom = newInputY - inputHeight / 2.0
-                let buttonSpacing: CGFloat = isLandscape ? 12.0 : 15.0
+                let buttonSpacing: CGFloat = isLandscape ? 20.0 : 25.0
                 
+                // Position generate button below input area
                 if let generateButton = childNode(withName: "generateButton") {
                     let newGenerateY = inputAreaBottom - buttonSpacing - dims.buttonHeight / 2.0
                     generateButton.position = CGPoint(x: size.width / 2.0, y: newGenerateY)
                 }
                 
+                // Position refresh button below generate button
                 if let refreshButton = childNode(withName: "refreshButton") {
                     if let generateButton = childNode(withName: "generateButton") {
                         let generateY = generateButton.position.y
-                        refreshButton.position = CGPoint(x: size.width / 2.0, y: generateY - (dims.buttonHeight + dims.spacing))
+                        let refreshSpacing: CGFloat = dims.buttonHeight + dims.spacing
+                        refreshButton.position = CGPoint(x: size.width / 2.0, y: generateY - refreshSpacing)
                     }
                 }
                 
+                // Position back button below refresh button (or generate if no refresh)
                 if let backButton = childNode(withName: "backButton") {
-                    if let generateButton = childNode(withName: "generateButton") {
-                        let generateY = generateButton.position.y
-                        backButton.position = CGPoint(x: size.width / 2.0, y: generateY - (dims.buttonHeight + dims.spacing))
+                    let buttonAbove: SKNode?
+                    if let refreshButton = childNode(withName: "refreshButton") {
+                        buttonAbove = refreshButton
+                    } else if let generateButton = childNode(withName: "generateButton") {
+                        buttonAbove = generateButton
+                    } else {
+                        buttonAbove = nil
+                    }
+                    
+                    if let above = buttonAbove {
+                        let backSpacing: CGFloat = dims.buttonHeight + dims.spacing
+                        backButton.position = CGPoint(x: size.width / 2.0, y: above.position.y - backSpacing)
                     }
                 }
             }
@@ -1002,7 +1066,7 @@ class CharacterCreationScene: SKScene {
         panel.zPosition = 1
         addChild(panel)
         
-        // Loading title (using book title style for consistency)
+        // Loading title (using book title style for consistency) - positioned above spinner
         let titleY = isLandscape ? size.height / 2.0 + 60.0 : size.height / 2.0 + 70.0
         let loadingTitle = MenuStyling.createBookTitle(text: "Loading Game...", position: CGPoint(x: size.width / 2.0, y: titleY), fontSize: isLandscape ? 28.0 : 32.0)
         loadingTitle.zPosition = 10
@@ -1320,79 +1384,148 @@ class CharacterCreationScene: SKScene {
         
         backgroundColor = SKColor(red: 0.88, green: 0.82, blue: 0.72, alpha: 1.0)
         
-        // Title
+        let isLandscape = size.width > size.height
+        let dims = MenuStyling.getResponsiveDimensions(size: size)
+        
+        // Book page panel
+        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
+        panel.position = CGPoint(x: size.width / 2.0, y: size.height / 2.0)
+        panel.zPosition = 1
+        addChild(panel)
+        
+        // Define panel boundaries (border margin is 15px from panel edges)
+        let panelTop: CGFloat = size.height / 2.0 + dims.panelHeight / 2.0
+        let panelBottom: CGFloat = size.height / 2.0 - dims.panelHeight / 2.0
+        let borderMargin: CGFloat = 15.0
+        
+        // Title - positioned with padding from top border
+        let titlePadding: CGFloat = isLandscape ? 110.0 : 120.0
+        let titleY: CGFloat = panelTop - borderMargin - titlePadding
         let titleLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
         titleLabel.text = "Sprite Preview"
-        titleLabel.fontSize = 48
-        titleLabel.fontColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        titleLabel.position = CGPoint(x: size.width / 2, y: size.height - 80)
+        titleLabel.fontSize = isLandscape ? 40 : 48
+        titleLabel.fontColor = MenuStyling.inkColor
+        titleLabel.position = CGPoint(x: size.width / 2, y: titleY)
+        titleLabel.zPosition = 10
         addChild(titleLabel)
         
         // Instructions
         let instructionLabel = SKLabelNode(fontNamed: "Arial")
         instructionLabel.text = "Review your character sprites. Click 'Start Game' to remove backgrounds and begin."
-        instructionLabel.fontSize = 24
-        instructionLabel.fontColor = SKColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 1.0)
-        instructionLabel.position = CGPoint(x: size.width / 2, y: size.height - 130)
+        instructionLabel.fontSize = isLandscape ? 18 : 22
+        instructionLabel.fontColor = MenuStyling.inkMuted
+        instructionLabel.position = CGPoint(x: size.width / 2, y: titleY - (isLandscape ? 40 : 55))
+        instructionLabel.zPosition = 10
         addChild(instructionLabel)
         
-        // Display frames in a grid (2 rows: idle on top, walk on bottom)
-        let frameSize: CGFloat = 150
-        let spacing: CGFloat = 20
-        let startX = (size.width - (4 * frameSize + 3 * spacing)) / 2
-        let idleY = size.height - 250
-        let walkY = size.height - 450
+        // Calculate responsive frame size and spacing
+        let frameSize: CGFloat = isLandscape ? min(120, (size.width - 100) / 4.5) : min(130, (size.width - 60) / 4.5)
+        let spacing: CGFloat = isLandscape ? 15 : 20
+        let containerPadding: CGFloat = 20
+        let labelHeight: CGFloat = 40
+        let containerSpacing: CGFloat = isLandscape ? 25 : 30
         
-        // Idle frames row
+        // Calculate total width for frames (used for both containers)
+        let totalFramesWidth: CGFloat = 4 * frameSize + 3 * spacing
+        
+        // Calculate container dimensions
+        let containerWidth: CGFloat = totalFramesWidth + 2 * containerPadding
+        let containerHeight: CGFloat = frameSize + labelHeight + 2 * containerPadding + 30 // Extra space for label below sprites
+        
+        // Calculate positions - center everything vertically within panel bounds
+        let instructionBottom = instructionLabel.position.y - (isLandscape ? 25 : 30) // Bottom of instruction text
+        let buttonAreaTop = panelBottom + borderMargin + 80 // Space for button at bottom
+        let availableHeight = instructionBottom - buttonAreaTop
+        let totalContainersHeight = 2 * containerHeight + containerSpacing
+        let startY = instructionBottom - (availableHeight - totalContainersHeight) / 2 - containerHeight / 2
+        
+        // Create Idle Animations container
+        let idleContainer = SKNode()
+        idleContainer.position = CGPoint(x: size.width / 2, y: startY)
+        idleContainer.zPosition = 5
+        addChild(idleContainer)
+        
+        // White background for idle container
+        let idleBackground = SKShapeNode(rectOf: CGSize(width: containerWidth, height: containerHeight), cornerRadius: 12)
+        idleBackground.fillColor = SKColor.white
+        idleBackground.strokeColor = SKColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0)
+        idleBackground.lineWidth = 2
+        idleBackground.position = CGPoint.zero
+        idleBackground.zPosition = 0
+        idleContainer.addChild(idleBackground)
+        
+        // Idle label
         let idleLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
         idleLabel.text = "Idle Animations"
-        idleLabel.fontSize = 28
+        idleLabel.fontSize = isLandscape ? 24 : 28
         idleLabel.fontColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        idleLabel.position = CGPoint(x: size.width / 2, y: idleY + 100)
-        addChild(idleLabel)
+        idleLabel.position = CGPoint(x: 0, y: containerHeight / 2 - labelHeight / 2 - 10)
+        idleLabel.zPosition = 1
+        idleContainer.addChild(idleLabel)
         
+        // Idle frames - centered horizontally
+        let idleStartX: CGFloat = -totalFramesWidth / 2 + frameSize / 2
+        let idleY: CGFloat = -labelHeight / 2
         let idleDirections = ["south", "west", "east", "north"]
         for (index, direction) in idleDirections.enumerated() {
             if let path = framePaths.first(where: { $0.contains("idle_\(direction)") }) {
-                loadAndDisplayFrame(path: path, position: CGPoint(x: startX + CGFloat(index) * (frameSize + spacing), y: idleY), size: frameSize, label: direction.capitalized)
+                let xPos: CGFloat = idleStartX + CGFloat(index) * (frameSize + spacing)
+                loadAndDisplayFrame(path: path, position: CGPoint(x: xPos, y: idleY), size: frameSize, label: direction.capitalized, parent: idleContainer)
             }
         }
         
-        // Walk frames row
+        // Create Walking Animations container
+        let walkContainer = SKNode()
+        walkContainer.position = CGPoint(x: size.width / 2, y: startY - containerHeight - containerSpacing)
+        walkContainer.zPosition = 5
+        addChild(walkContainer)
+        
+        // White background for walk container
+        let walkBackground = SKShapeNode(rectOf: CGSize(width: containerWidth, height: containerHeight), cornerRadius: 12)
+        walkBackground.fillColor = SKColor.white
+        walkBackground.strokeColor = SKColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0)
+        walkBackground.lineWidth = 2
+        walkBackground.position = CGPoint.zero
+        walkBackground.zPosition = 0
+        walkContainer.addChild(walkBackground)
+        
+        // Walk label
         let walkLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
         walkLabel.text = "Walking Animations"
-        walkLabel.fontSize = 28
+        walkLabel.fontSize = isLandscape ? 24 : 28
         walkLabel.fontColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        walkLabel.position = CGPoint(x: size.width / 2, y: walkY + 200)
-        addChild(walkLabel)
+        walkLabel.position = CGPoint(x: 0, y: containerHeight / 2 - labelHeight / 2 - 10)
+        walkLabel.zPosition = 1
+        walkContainer.addChild(walkLabel)
         
+        // Walk frames - centered horizontally
+        let walkStartX: CGFloat = -totalFramesWidth / 2 + frameSize / 2
+        let walkY: CGFloat = -labelHeight / 2
         let walkDirections = ["south", "west", "east", "north"]
         for (index, direction) in walkDirections.enumerated() {
             if let path = framePaths.first(where: { $0.contains("walk_\(direction)") }) {
-                loadAndDisplayFrame(path: path, position: CGPoint(x: startX + CGFloat(index) * (frameSize + spacing), y: walkY), size: frameSize, label: direction.capitalized)
+                let xPos: CGFloat = walkStartX + CGFloat(index) * (frameSize + spacing)
+                loadAndDisplayFrame(path: path, position: CGPoint(x: xPos, y: walkY), size: frameSize, label: direction.capitalized, parent: walkContainer)
             }
         }
         
-        // Start Game button
-        let startButton = SKShapeNode(rect: CGRect(x: -100, y: -25, width: 200, height: 50), cornerRadius: 10)
-        startButton.fillColor = SKColor(red: 0.1, green: 0.6, blue: 0.1, alpha: 1.0)
-        startButton.strokeColor = SKColor(red: 0.05, green: 0.4, blue: 0.05, alpha: 1.0)
-        startButton.lineWidth = 2
-        startButton.position = CGPoint(x: size.width / 2, y: 100)
-        startButton.name = "startGameButton"
+        // Start Game button - positioned above bottom border
+        let buttonPadding: CGFloat = isLandscape ? 70 : 80
+        let buttonY: CGFloat = panelBottom + borderMargin + buttonPadding
+        let startButton = MenuStyling.createBookButton(
+            text: "Start Game",
+            size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
+            color: MenuStyling.bookSecondary,
+            position: CGPoint(x: size.width / 2, y: buttonY),
+            name: "startGameButton",
+            fontSize: isLandscape ? 22 : 26
+        )
+        startButton.zPosition = 10
         addChild(startButton)
-        
-        let startLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
-        startLabel.text = "Start Game"
-        startLabel.fontSize = 32
-        startLabel.fontColor = SKColor.white
-        startLabel.verticalAlignmentMode = .center
-        startLabel.name = "startGameButton"
-        startButton.addChild(startLabel)
     }
     
     /// Load and display a frame image
-    func loadAndDisplayFrame(path: String, position: CGPoint, size: CGFloat, label: String) {
+    func loadAndDisplayFrame(path: String, position: CGPoint, size: CGFloat, label: String, parent: SKNode) {
         // Resolve relative path (CharacterSprites/...) to full path
         let fileURL: URL
         if path.hasPrefix("CharacterSprites/") {
@@ -1426,14 +1559,16 @@ class CharacterCreationScene: SKScene {
         sprite.size = CGSize(width: size, height: size)
         sprite.position = position
         sprite.name = "frame_\(label)"
-        addChild(sprite)
+        sprite.zPosition = 1
+        parent.addChild(sprite)
         
         // Add direction label below
         let labelNode = SKLabelNode(fontNamed: "Arial")
         labelNode.text = label
-        labelNode.fontSize = 18
+        labelNode.fontSize = size > 100 ? 18 : 16
         labelNode.fontColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        labelNode.position = CGPoint(x: 0, y: -size/2 - 25)
+        labelNode.position = CGPoint(x: 0, y: -size/2 - 20)
+        labelNode.zPosition = 2
         sprite.addChild(labelNode)
     }
     
@@ -1444,12 +1579,21 @@ class CharacterCreationScene: SKScene {
             return
         }
         
-        // Show loading indicator
+        // Show loading indicator - positioned above the button with high z-position
+        let isLandscape = size.width > size.height
+        let dims = MenuStyling.getResponsiveDimensions(size: size)
+        let panelBottom: CGFloat = size.height / 2.0 - dims.panelHeight / 2.0
+        let borderMargin: CGFloat = 15.0
+        let buttonPadding: CGFloat = isLandscape ? 70 : 80
+        let buttonY: CGFloat = panelBottom + borderMargin + buttonPadding
+        
+        // Position loading label above the button
         let loadingLabel = SKLabelNode(fontNamed: "Arial")
         loadingLabel.text = "Removing backgrounds..."
-        loadingLabel.fontSize = 24
-        loadingLabel.fontColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        loadingLabel.position = CGPoint(x: size.width / 2, y: 50)
+        loadingLabel.fontSize = isLandscape ? 20 : 24
+        loadingLabel.fontColor = MenuStyling.inkColor
+        loadingLabel.position = CGPoint(x: size.width / 2, y: buttonY + (isLandscape ? 50 : 60))
+        loadingLabel.zPosition = 20  // Higher than button (which is 10)
         loadingLabel.name = "loadingLabel"
         addChild(loadingLabel)
         

@@ -1,6 +1,6 @@
 //
 //  StartScreenScene.swift
-//  Domaterra Shared
+//  FableForge Shared
 //
 //  Created by Scott Landes on 1/7/26.
 //
@@ -86,15 +86,18 @@ class StartScreenScene: SKScene {
         let titleFontSize: CGFloat = isLandscape ? min(48, size.width * 0.08) : min(64, size.height * 0.1)
         let subtitleFontSize: CGFloat = isLandscape ? min(18, size.width * 0.03) : min(24, size.height * 0.04)
         
-        // Create wolf logo container
-        let wolfContainer = SKNode()
-        let wolfY = isLandscape ? size.height / 2 + 80 : size.height / 2 + 120
-        wolfContainer.position = CGPoint(x: size.width / 2, y: wolfY)
-        wolfContainer.setScale(logoScale)
-        addChild(wolfContainer)
+        // Create logo sprite from asset
+        let logoSprite = SKSpriteNode(imageNamed: "main_logo")
+        let spriteLogoY = isLandscape ? size.height / 2 + 80 : size.height / 2 + 120
+        logoSprite.position = CGPoint(x: size.width / 2, y: spriteLogoY)
         
-        // Create stylized wolf head in shield
-        createWolfLogo(container: wolfContainer, size: wolfSize)
+        // Scale logo to appropriate size
+        let logoAspectRatio = logoSprite.size.width / logoSprite.size.height
+        let targetLogoHeight = wolfSize * 1.8
+        let targetLogoWidth = targetLogoHeight * logoAspectRatio
+        logoSprite.size = CGSize(width: targetLogoWidth, height: targetLogoHeight)
+        logoSprite.setScale(logoScale)
+        addChild(logoSprite)
         
         // Main logo text container
         let logoContainer = SKNode()
@@ -104,7 +107,7 @@ class StartScreenScene: SKScene {
         
         // Main logo text with shadow
         let logoShadow = SKLabelNode(fontNamed: "Arial-BoldMT")
-        logoShadow.text = "DOMATERRA"
+        logoShadow.text = "FableForge"
         logoShadow.fontSize = titleFontSize
         logoShadow.fontColor = SKColor(white: 0.0, alpha: 0.4)
         logoShadow.position = CGPoint(x: 3, y: -3)
@@ -112,7 +115,7 @@ class StartScreenScene: SKScene {
         logoContainer.addChild(logoShadow)
         
         let logoMain = SKLabelNode(fontNamed: "Arial-BoldMT")
-        logoMain.text = "DOMATERRA"
+        logoMain.text = "FableForge"
         logoMain.fontSize = titleFontSize
         logoMain.fontColor = MenuStyling.bookAccent
         logoMain.zPosition = 2
@@ -344,8 +347,8 @@ class StartScreenScene: SKScene {
         panel.zPosition = 1
         addChild(panel)
         
-        // Book title
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 40 : size.height / 2 + dims.panelHeight / 2 - 50
+        // Book title - positioned with more padding from top border
+        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 90 : size.height / 2 + dims.panelHeight / 2 - 100
         let title = MenuStyling.createBookTitle(text: "Main Menu", position: CGPoint(x: size.width / 2, y: titleY))
         title.zPosition = 10
         addChild(title)
@@ -403,8 +406,8 @@ class StartScreenScene: SKScene {
         panel.name = "characterSelectionPanel"
         addChild(panel)
         
-        // Book title - moved down to avoid border overlap
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 70 : size.height / 2 + dims.panelHeight / 2 - 80
+        // Book title - positioned with more padding from top border
+        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
         let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
         title.zPosition = 10
         addChild(title)
@@ -578,7 +581,8 @@ class StartScreenScene: SKScene {
         addChild(panel)
         
         // Book title - moved down to avoid border overlap
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 70 : size.height / 2 + dims.panelHeight / 2 - 80
+        // Book title - positioned with more padding from top border
+        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
         let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
         title.zPosition = 10
         addChild(title)

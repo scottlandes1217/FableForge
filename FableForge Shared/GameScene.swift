@@ -73,6 +73,10 @@ class GameScene: SKScene {
     var movementSpeed: CGFloat = 2.0
     let encounterDistance: CGFloat = 40.0 // Distance to trigger encounter
     
+    // Character zPosition based on max zOffset from layers
+    // This allows layers to control whether characters appear behind or in front
+    var characterZPosition: CGFloat = 100 // Default to 100 if no zOffset is set
+    
     // Touch handling properties (moved from extension)
     var touchStartLocation: CGPoint? // Screen coordinates where touch began
     var isMoving: Bool = false
@@ -454,18 +458,29 @@ class GameScene: SKScene {
         addChild(mapContainer)
         
         // Second pass: Render layers
+        // Calculate maximum zOffset from all layers (for character positioning)
+        var maxZOffset: CGFloat = 0
+        var hasZOffset = false
+        for layer in tiledMap.layers {
+            let zOffset = layer.floatProperty("zOffset", default: 0)
+            if zOffset != 0 {
+                hasZOffset = true
+                maxZOffset = max(maxZOffset, CGFloat(zOffset))
+            }
+        }
+        // Store maxZOffset for character positioning
+        // If no zOffset is set, use default (100), otherwise use the max zOffset
+        characterZPosition = hasZOffset ? maxZOffset : 100
+        
+        // Render layers using natural order (layer index only, zOffset is ignored for layers)
         for (layerIndex, layer) in tiledMap.layers.enumerated() {
             // Z-Position hierarchy:
             // - Background: -100000 (far behind)
-            // - Tiles: 0 to ~60 (based on layer index or zOffset property - layers are typically 0-60)
-            // - Animals/Enemies: 50 (above tiles, below entities)
-            // - Companion: 99 (above animals/enemies)
-            // - Player: 100 (always on top of world objects)
+            // - Tiles: 0 to ~60 (based on layer index only - layers follow natural order)
+            // - Characters: based on max zOffset from layers (allows layers to go behind/in front)
             // - UI: 200+ (above everything)
-            // Use zOffset property if set, otherwise use layer index
-            let baseZPosition = CGFloat(layerIndex)
-            let zOffset = layer.floatProperty("zOffset", default: 0)
-            let tileZPosition = baseZPosition + CGFloat(zOffset)
+            // Layers use their natural index order, zOffset only affects characters
+            let tileZPosition = CGFloat(layerIndex)
             renderTiledLayer(layer, tileSize: tileSize, zPosition: tileZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
         }
         
@@ -475,11 +490,24 @@ class GameScene: SKScene {
         print("📦 Rendering \(tiledMap.objectGroups.count) object groups...")
         if tiledMap.objectGroups.isEmpty {
             print("⚠️ WARNING: No object groups found in Tiled map!")
+            print("   → Make sure your Tiled map has at least one Object Layer (not a Tile Layer)")
+            print("   → Object Layers are created by right-clicking in the Layers panel and selecting 'Add Object Layer'")
+        } else {
+            for objectGroup in tiledMap.objectGroups {
+                print("   📋 Found object group: '\(objectGroup.name)' with \(objectGroup.objects.count) objects")
+            }
         }
         for objectGroup in tiledMap.objectGroups {
             renderTiledObjectGroup(objectGroup, tileSize: tileSize, zPosition: objectZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
         }
         print("📦 Finished rendering all object groups. Total object sprites: \(objectSprites.count)")
+        if objectSprites.isEmpty && !tiledMap.objectGroups.isEmpty {
+            print("⚠️ WARNING: No object sprites were created despite having object groups!")
+            print("   → Check console logs above for individual object rendering errors")
+            print("   → Make sure objects have valid positions (x, y) within the map bounds")
+            print("   → Objects without GIDs will appear as yellow rectangles")
+            print("   → Objects with GIDs will show the tile image from your tileset")
+        }
         
         
         
@@ -829,10 +857,9 @@ class GameScene: SKScene {
         sprite.position = player.position
         // Ensure center anchor point (default, but make explicit)
         sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        // Player should be above ground/terrain layers but below objects, fences, and roofs
-        // Ground layers are typically at index 0-10, objects at 10-30+
-        // Using zPosition = 10 keeps player above ground but below objects
-        sprite.zPosition = 11
+        // Player zPosition is based on max zOffset from layers
+        // This allows specific layers to go behind or in front of characters
+        sprite.zPosition = characterZPosition
         sprite.name = "player"
         sprite.alpha = 1.0
         sprite.isHidden = false
@@ -1005,8 +1032,8 @@ class GameScene: SKScene {
         
         let sprite = SKSpriteNode(color: .orange, size: CGSize(width: 20, height: 20))
         sprite.position = playerSprite?.position ?? CGPoint.zero
-        // Companion should be slightly below player, but still above ground layers
-        sprite.zPosition = 99
+        // Companion uses characterZPosition (slightly below player for layering)
+        sprite.zPosition = characterZPosition - 1
         sprite.name = "companion"
         addChild(sprite)
         companionSprites[companion.id] = sprite
@@ -1097,8 +1124,8 @@ class GameScene: SKScene {
                 // Create visual representation
                 let sprite = SKSpriteNode(color: .red, size: CGSize(width: 16, height: 16))
                 sprite.position = position
-                // Animals should be above tiles but below player
-                sprite.zPosition = 50
+                // Animals use characterZPosition (based on max zOffset from layers)
+                sprite.zPosition = characterZPosition
                 sprite.name = "animal"
                 addChild(sprite)
                 
@@ -1124,8 +1151,8 @@ class GameScene: SKScene {
             // Create visual representation for enemy
             let sprite = SKSpriteNode(color: .purple, size: CGSize(width: 18, height: 18))
             sprite.position = position
-            // Enemies should be above tiles but below player
-            sprite.zPosition = 50
+            // Enemies use characterZPosition (based on max zOffset from layers)
+            sprite.zPosition = characterZPosition
             sprite.name = "enemy"
             addChild(sprite)
             
@@ -1932,15 +1959,37 @@ class GameScene: SKScene {
                     width: object.width > 0 ? object.width : tileSize.width,
                     height: object.height > 0 ? object.height : tileSize.height
                 )
-                sprite = SKSpriteNode(color: .yellow, size: objectSize)
-                sprite?.alpha = 0.7  // More visible
+                
+                // Ensure minimum size so objects are always visible
+                let minSize: CGFloat = max(16, tileSize.width * 0.5) // At least 16px or half tile size
+                let finalWidth = max(objectSize.width, minSize)
+                let finalHeight = max(objectSize.height, minSize)
+                let finalSize = CGSize(width: finalWidth, height: finalHeight)
+                
+                sprite = SKSpriteNode(color: .yellow, size: finalSize)
+                sprite?.alpha = 0.9  // More visible
                 
                 // Add a border to make it more visible
-                let border = SKShapeNode(rect: CGRect(origin: .zero, size: objectSize))
+                let border = SKShapeNode(rect: CGRect(origin: .zero, size: finalSize), cornerRadius: 2)
                 border.strokeColor = .orange
-                border.lineWidth = 2.0
+                border.lineWidth = 3.0  // Thicker border
                 border.fillColor = .clear
                 sprite?.addChild(border)
+                
+                // Add a label with object name for debugging
+                if !object.name.isEmpty {
+                    let nameLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+                    nameLabel.text = object.name
+                    nameLabel.fontSize = 10
+                    nameLabel.fontColor = .black
+                    nameLabel.position = CGPoint(x: finalSize.width / 2, y: finalSize.height / 2)
+                    nameLabel.verticalAlignmentMode = .center
+                    nameLabel.horizontalAlignmentMode = .center
+                    nameLabel.zPosition = 1
+                    sprite?.addChild(nameLabel)
+                }
+                
+                print("   ℹ️ Object '\(object.name)' has no GID - displaying as yellow rectangle with size \(finalSize)")
             }
             
             guard let objectSprite = sprite else {
@@ -2009,6 +2058,13 @@ class GameScene: SKScene {
             parentNode.addChild(objectSprite)
             
             print("✅ Added object '\(object.name)' (id: \(object.id)) at Tiled(\(Int(object.x)), \(Int(object.y))) -> SpriteKit(\(Int(worldX)), \(Int(adjustedWorldY))), size: \(objectSprite.size), zPosition: \(zPosition), hasGID: \(object.gid?.description ?? "nil")")
+            
+            // Debug: Check if object is within reasonable bounds
+            let mapBounds = self.mapBounds
+            if !mapBounds.contains(CGPoint(x: worldX, y: adjustedWorldY)) {
+                print("   ⚠️ WARNING: Object position (\(Int(worldX)), \(Int(adjustedWorldY))) is outside map bounds (\(mapBounds))")
+                print("   → Object may not be visible on screen")
+            }
             
             // Log collectable objects
             if isCollectable {
