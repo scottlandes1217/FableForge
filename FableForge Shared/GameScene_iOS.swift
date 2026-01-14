@@ -424,7 +424,26 @@ extension GameScene {
     }
     
     func loadGame(fromSlot slot: Int) {
-        guard let loadedState = SaveManager.loadGame(fromSlot: slot) else {
+        // Try to find character by matching player name and class
+        if currentCharacterId == nil {
+            let characters = SaveManager.getAllCharacters()
+            if let gameState = gameState {
+                currentCharacterId = characters.first(where: {
+                    $0.name == gameState.player.name && $0.characterClass == gameState.player.characterClass
+                })?.id
+            }
+        }
+        
+        // If we have a character ID, use it; otherwise fall back to legacy load
+        let loadedState: GameState?
+        if let characterId = currentCharacterId {
+            loadedState = SaveManager.loadGame(characterId: characterId, fromSlot: slot)
+        } else {
+            // Legacy load (for backward compatibility)
+            loadedState = SaveManager.loadGame(fromSlot: slot)
+        }
+        
+        guard let loadedState = loadedState else {
             showMessage("Failed to load game from slot \(slot)", color: .red)
             return
         }
@@ -471,8 +490,26 @@ extension GameScene {
         title.verticalAlignmentMode = .center
         titleBg.addChild(title)
         
-        // Get all save slots
-        let saveSlots = SaveManager.getAllSaveSlots()
+        // Get all save slots for current character, or all slots if no character
+        let saveSlots: [SaveSlot]
+        if let characterId = currentCharacterId {
+            saveSlots = SaveManager.getAllSaveSlots(characterId: characterId)
+        } else {
+            // Try to find character
+            if let gameState = gameState {
+                let characters = SaveManager.getAllCharacters()
+                if let character = characters.first(where: {
+                    $0.name == gameState.player.name && $0.characterClass == gameState.player.characterClass
+                }) {
+                    currentCharacterId = character.id
+                    saveSlots = SaveManager.getAllSaveSlots(characterId: character.id)
+                } else {
+                    saveSlots = SaveManager.getAllSaveSlots() // Legacy
+                }
+            } else {
+                saveSlots = SaveManager.getAllSaveSlots() // Legacy
+            }
+        }
         
         // Create buttons for each slot (only non-empty slots are clickable)
         var slotY: CGFloat = 150

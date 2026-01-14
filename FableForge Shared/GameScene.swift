@@ -1939,6 +1939,7 @@ class GameScene: SKScene {
                     width: object.width > 0 ? object.width : tileSize.width,
                     height: object.height > 0 ? object.height : tileSize.height
                 )
+                print("   🔍 Attempting to create sprite for GID \(gid) with size \(objectSize)")
                 sprite = TileManager.shared.createSprite(for: gid, size: objectSize)
                 if sprite == nil {
                     print("⚠️ WARNING: Failed to create sprite for object '\(object.name)' with GID \(gid). Creating fallback sprite.")
@@ -1951,6 +1952,8 @@ class GameScene: SKScene {
                     border.lineWidth = 2.0
                     border.fillColor = .clear
                     sprite?.addChild(border)
+                } else {
+                    print("   ✅ Successfully created sprite for GID \(gid), sprite size: \(sprite?.size ?? .zero)")
                 }
             } else {
                 // Object doesn't use a tile - create a colored rectangle or use a default sprite
@@ -1992,8 +1995,24 @@ class GameScene: SKScene {
                 print("   ℹ️ Object '\(object.name)' has no GID - displaying as yellow rectangle with size \(finalSize)")
             }
             
-            guard let objectSprite = sprite else {
+            // If sprite creation failed, create a fallback sprite
+            if sprite == nil {
                 print("⚠️ Failed to create sprite for object '\(object.name)' (id: \(object.id))")
+                // Create a visible fallback sprite so we can at least see where the object should be
+                let fallbackSize = CGSize(width: max(object.width, 32), height: max(object.height, 32))
+                let fallbackSprite = SKSpriteNode(color: .cyan, size: fallbackSize)
+                fallbackSprite.alpha = 0.9
+                let border = SKShapeNode(rect: CGRect(origin: .zero, size: fallbackSize))
+                border.strokeColor = .blue
+                border.lineWidth = 3.0
+                border.fillColor = .clear
+                fallbackSprite.addChild(border)
+                sprite = fallbackSprite
+                print("   ✅ Created fallback cyan sprite for debugging")
+            }
+            
+            guard let objectSprite = sprite else {
+                print("⚠️ CRITICAL: Even fallback sprite creation failed for object '\(object.name)' (id: \(object.id))")
                 continue
             }
             
@@ -2058,12 +2077,20 @@ class GameScene: SKScene {
             parentNode.addChild(objectSprite)
             
             print("✅ Added object '\(object.name)' (id: \(object.id)) at Tiled(\(Int(object.x)), \(Int(object.y))) -> SpriteKit(\(Int(worldX)), \(Int(adjustedWorldY))), size: \(objectSprite.size), zPosition: \(zPosition), hasGID: \(object.gid?.description ?? "nil")")
+            print("   📍 Object sprite position: \(objectSprite.position), size: \(objectSprite.size), anchorPoint: \(objectSprite.anchorPoint)")
+            print("   🎯 Object sprite isHidden: \(objectSprite.isHidden), alpha: \(objectSprite.alpha)")
             
             // Debug: Check if object is within reasonable bounds
             let mapBounds = self.mapBounds
-            if !mapBounds.contains(CGPoint(x: worldX, y: adjustedWorldY)) {
-                print("   ⚠️ WARNING: Object position (\(Int(worldX)), \(Int(adjustedWorldY))) is outside map bounds (\(mapBounds))")
-                print("   → Object may not be visible on screen")
+            if mapBounds.width > 0 && mapBounds.height > 0 {
+                if !mapBounds.contains(CGPoint(x: worldX, y: adjustedWorldY)) {
+                    print("   ⚠️ WARNING: Object position (\(Int(worldX)), \(Int(adjustedWorldY))) is outside map bounds (\(mapBounds))")
+                    print("   → Object may not be visible on screen")
+                } else {
+                    print("   ✅ Object is within map bounds")
+                }
+            } else {
+                print("   ⚠️ Map bounds not yet calculated (will be set after object rendering)")
             }
             
             // Log collectable objects
