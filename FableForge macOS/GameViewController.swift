@@ -25,6 +25,13 @@ class GameViewController: NSViewController {
         skView.showsFPS = true
         skView.showsNodeCount = true
     }
+    
+    override func scrollWheel(with event: NSEvent) {
+        // Forward scroll wheel events to the scene
+        if let scene = (self.view as? SKView)?.scene as? StartScreenScene {
+            scene.scrollWheel(with: event)
+        }
+    }
 
 }
 

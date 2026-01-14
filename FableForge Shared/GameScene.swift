@@ -15,9 +15,15 @@ class GameScene: SKScene {
     var worldTiles: [SKSpriteNode] = []
     var animalSprites: [SKSpriteNode: Animal] = [:]
     var enemySprites: [SKSpriteNode: Enemy] = [:]
+    var objectSprites: [SKSpriteNode: TiledObject] = [:]  // Map of object sprites to their TiledObject data
+    var objectGroupNames: [SKSpriteNode: String] = [:]  // Map of object sprites to their objectgroup name
+    var questionMarkIndicators: [Int: SKNode] = [:]  // Map of object ID to question mark indicator node
     var gameUI: GameUI?
     var combatUI: CombatUI?
     var cameraNode: SKCameraNode?
+    
+    // Debug overlay for collision box visualization
+    private var collisionDebugOverlay: SKShapeNode?
     
     // Player position history for companions to follow
     private var playerPositionHistory: [CGPoint] = []
@@ -35,15 +41,29 @@ class GameScene: SKScene {
     private var mapBounds: CGRect = .zero  // Map bounds for collision checking
     private var mapYFlipOffset: CGFloat = 0  // Y flip offset for coordinate conversion
     private var mapTileSize: CGSize = .zero  // Tile size used for rendering (for collision checks)
+    private var hasInfiniteLayers: Bool = false  // Track if map uses infinite layers (chunks) or regular layers
+    private var regularLayerHeight: Int = 0  // Height of regular layers (for coordinate conversion)
+    private var collisionDebugCount: Int = 0  // Debug counter for collision checks
     
-    // Player collision box (matches sprite size exactly)
-    // Sprite is 24x24 pixels with center anchor (extends from -12 to +12 in both axes)
-    // Collision box: 24x24 pixels, matches sprite perfectly
-    private let playerCollisionSize: CGSize = CGSize(width: 24, height: 24)  // Width: 24px, Height: 24px (matches sprite)
-    private let playerCollisionOffsetY: CGFloat = 0.0  // No offset - collision box is centered on sprite
+    // Player collision box - calculated from sprite's actual frame
+    // This ensures the collision box perfectly matches the sprite's visual bounds
     
     var currentCharacterId: UUID? // Track which character is currently playing
     var label: SKLabelNode? // Label property (may be used by Actions.sks)
+    
+    // Frame animation properties
+    private var idleFrameTextures: [String: SKTexture] = [:] // ["south": texture, "west": texture, ...]
+    private var walkFrameTextures: [String: [SKTexture]] = [:] // ["south": [texture0, texture1, ...], ...]
+    private var currentAnimationFrame: Int = 0 // Current frame index for walk animation
+    private var animationTimer: TimeInterval = 0 // Timer for frame animation
+    private let animationFrameDuration: TimeInterval = 0.15 // 150ms per frame
+    private var lastFacingDirection: String = "south" // Track last facing direction for idle state
+    private var playerSpriteSize: CGSize = CGSize(width: 96, height: 96) // Store sprite size
+    
+    // Track last animation state to only update when it changes
+    private var lastAnimationFrame: Int = -1
+    private var lastAnimationDirection: String = ""
+    private var lastAnimationIsMoving: Bool = false
     
     var isInCombat: Bool = false
     var isInDialogue: Bool = false
@@ -229,15 +249,15 @@ class GameScene: SKScene {
             tiledMap = preParsed
             print("✓ Using pre-parsed TiledMap (skip parsing for performance)")
         } else {
-            guard let url = Bundle.main.url(forResource: fileName, withExtension: "tmx") else {
-                print("❌ ERROR: Could not find '\(fileName).tmx' to load tilesets")
+        guard let url = Bundle.main.url(forResource: fileName, withExtension: "tmx") else {
+            print("❌ ERROR: Could not find '\(fileName).tmx' to load tilesets")
                 return nil
-            }
-            
-            print("✓ Found TMX file at: \(url.path)")
-            
+        }
+        
+        print("✓ Found TMX file at: \(url.path)")
+        
             guard let parsedMap = TiledMapParser.parse(fileName: fileName) else {
-                print("❌ ERROR: Could not parse '\(fileName).tmx' to load tilesets")
+            print("❌ ERROR: Could not parse '\(fileName).tmx' to load tilesets")
                 return nil
             }
             tiledMap = parsedMap
@@ -267,6 +287,19 @@ class GameScene: SKScene {
         // Clear existing tiles
         worldTiles.forEach { $0.removeFromParent() }
         worldTiles.removeAll()
+        
+        // Clear existing object sprites
+        for (sprite, _) in objectSprites {
+            sprite.removeFromParent()
+        }
+        objectSprites.removeAll()
+        objectGroupNames.removeAll()
+        
+        // Clear question mark indicators
+        for (_, questionMark) in questionMarkIndicators {
+            questionMark.removeFromParent()
+        }
+        questionMarkIndicators.removeAll()
         
         print(String(repeating: "=", count: 50))
         print("ATTEMPTING TO LOAD TILED MAP: \(fileName)")
@@ -369,6 +402,7 @@ class GameScene: SKScene {
         print("Map dimensions: \(mapWidth)x\(mapHeight) base tiles, Scene: \(sceneWidth)x\(sceneHeight) points")
         
         // Second pass: Calculate bounds with scaled tile size for Y flip offset
+        // Include BOTH infinite and regular layers in bounds calculation
         var minX: CGFloat = CGFloat.greatestFiniteMagnitude
         var minY: CGFloat = CGFloat.greatestFiniteMagnitude
         var maxX: CGFloat = -CGFloat.greatestFiniteMagnitude
@@ -376,6 +410,7 @@ class GameScene: SKScene {
         
         for (layerIndex, layer) in tiledMap.layers.enumerated() {
             if layer.isInfinite, let chunks = layer.chunks {
+                // Infinite map with chunks
                 for chunk in chunks {
                     let chunkMinX = CGFloat(chunk.x) * tileSize.width
                     let chunkMinY = CGFloat(chunk.y) * tileSize.height
@@ -386,6 +421,16 @@ class GameScene: SKScene {
                     maxX = max(maxX, chunkMaxX)
                     maxY = max(maxY, chunkMaxY)
                 }
+            } else if let data = layer.data {
+                // Regular (non-infinite) map - include in bounds
+                let layerMinX: CGFloat = 0
+                let layerMinY: CGFloat = 0
+                let layerMaxX = CGFloat(layer.width) * tileSize.width
+                let layerMaxY = CGFloat(layer.height) * tileSize.height
+                minX = min(minX, layerMinX)
+                minY = min(minY, layerMinY)
+                maxX = max(maxX, layerMaxX)
+                maxY = max(maxY, layerMaxY)
             }
         }
         
@@ -402,6 +447,12 @@ class GameScene: SKScene {
         // Store for collision detection
         self.mapYFlipOffset = yFlipOffset
         
+        // OPTIMIZATION: Batch sprite additions by using a container node per layer
+        // This reduces the number of addChild calls to the scene from thousands to just a few
+        let mapContainer = SKNode()
+        mapContainer.name = "tiledMapContainer"
+        addChild(mapContainer)
+        
         // Second pass: Render layers
         for (layerIndex, layer) in tiledMap.layers.enumerated() {
             // Z-Position hierarchy:
@@ -415,8 +466,20 @@ class GameScene: SKScene {
             let baseZPosition = CGFloat(layerIndex)
             let zOffset = layer.floatProperty("zOffset", default: 0)
             let tileZPosition = baseZPosition + CGFloat(zOffset)
-            renderTiledLayer(layer, tileSize: tileSize, zPosition: tileZPosition, yFlipOffset: yFlipOffset)
+            renderTiledLayer(layer, tileSize: tileSize, zPosition: tileZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
         }
+        
+        // Third pass: Render object groups (object layers)
+        // Objects are rendered above tiles but below player/entities
+        let objectZPosition: CGFloat = 70  // Above tiles (0-60) but below player (100)
+        print("📦 Rendering \(tiledMap.objectGroups.count) object groups...")
+        if tiledMap.objectGroups.isEmpty {
+            print("⚠️ WARNING: No object groups found in Tiled map!")
+        }
+        for objectGroup in tiledMap.objectGroups {
+            renderTiledObjectGroup(objectGroup, tileSize: tileSize, zPosition: objectZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
+        }
+        print("📦 Finished rendering all object groups. Total object sprites: \(objectSprites.count)")
         
         
         
@@ -483,7 +546,24 @@ class GameScene: SKScene {
             
             // Parse collision layers from TMX and create collision map
             // Layers with "collision" in the name or properties will be used for collision
+            hasInfiniteLayers = tiledMap.layers.contains { $0.isInfinite }
+            let maxRegularHeight = tiledMap.layers.filter { !$0.isInfinite }.map { $0.height }.max() ?? 0
+            regularLayerHeight = maxRegularHeight
+            print("🗺️ Map info: hasInfiniteLayers=\(hasInfiniteLayers), regularLayerHeight=\(maxRegularHeight), yFlipOffset=\(yFlipOffset), tileSize=\(tileSize)")
             parseCollisionFromTiledMap(tiledMap, tileSize: tileSize, yFlipOffset: yFlipOffset)
+            print("🗺️ Collision map created with \(collisionMap.count) collision tiles")
+            // Print first 10 collision tile keys and their world positions for debugging
+            let first10Keys = Array(collisionMap.prefix(10))
+            print("🗺️ First 10 collision tiles with world positions:")
+            for key in first10Keys {
+                let parts = key.split(separator: ",")
+                if parts.count == 2, let tileX = Int(parts[0]), let tileY = Int(parts[1]) {
+                    let tileTiledY = CGFloat(tileY) * tileSize.height
+                    let tileWorldY = yFlipOffset - tileTiledY
+                    let tileWorldX = CGFloat(tileX) * tileSize.width
+                    print("  Tile (\(tileX), \(tileY)) -> world=(\(Int(tileWorldX)), \(Int(tileWorldY)))")
+                }
+            }
             
             // Note: Player position will be set to safe location after map center calculation
             // Note: Animations will be handled separately for animated tilesets
@@ -516,11 +596,13 @@ class GameScene: SKScene {
     }
     
     /// Render a single layer from a Tiled map
-    private func renderTiledLayer(_ layer: TiledLayer, tileSize: CGSize, zPosition: CGFloat, yFlipOffset: CGFloat = 0) {
+    private func renderTiledLayer(_ layer: TiledLayer, tileSize: CGSize, zPosition: CGFloat, yFlipOffset: CGFloat = 0, container: SKNode? = nil) {
+        let parentNode = container ?? self
+        
         if layer.isInfinite, let chunks = layer.chunks {
             // Render infinite map with chunks
             for chunk in chunks {
-                renderTiledChunk(chunk, tileSize: tileSize, zPosition: zPosition, yFlipOffset: yFlipOffset)
+                renderTiledChunk(chunk, tileSize: tileSize, zPosition: zPosition, yFlipOffset: yFlipOffset, container: parentNode)
             }
         } else if let data = layer.data {
             // Render regular (non-infinite) map
@@ -535,13 +617,15 @@ class GameScene: SKScene {
                     if let sprite = TileManager.shared.createSprite(for: gid, size: tileSize) {
                         // Verify sprite has valid texture
                         if sprite.texture == nil {
-                            print("⚠️ WARNING: Sprite created for GID \(gid) but has no texture!")
-                            continue
+                            continue  // Skip sprites without textures (removed print for performance)
                         }
                         
+                        // Regular layers use different Y positioning than chunks
+                        // Position: worldY = (layer.height - y - 1) * tileHeight
+                        // This means y=0 (top row) is at highest worldY
                         sprite.position = CGPoint(
                             x: CGFloat(x) * tileSize.width,
-                            y: CGFloat(layer.height - y - 1) * tileSize.height // Flip Y (Tiled uses top-left origin)
+                            y: CGFloat(layer.height - y - 1) * tileSize.height
                         )
                         sprite.anchorPoint = CGPoint(x: 0, y: 0)
                         sprite.zPosition = zPosition
@@ -550,11 +634,8 @@ class GameScene: SKScene {
                         sprite.alpha = 1.0
                         sprite.isHidden = false
                         
-                        addChild(sprite)
+                        parentNode.addChild(sprite)
                         worldTiles.append(sprite)
-                        
-                    } else {
-                        // Failed to create sprite - continue
                     }
                 }
             }
@@ -562,10 +643,11 @@ class GameScene: SKScene {
     }
     
     /// Render a chunk from an infinite map
-    private func renderTiledChunk(_ chunk: TiledChunk, tileSize: CGSize, zPosition: CGFloat, yFlipOffset: CGFloat = 0) {
+    private func renderTiledChunk(_ chunk: TiledChunk, tileSize: CGSize, zPosition: CGFloat, yFlipOffset: CGFloat = 0, container: SKNode? = nil) {
+        let parentNode = container ?? self
         let expectedDataCount = chunk.width * chunk.height
         if chunk.data.count != expectedDataCount {
-            print("Warning: Chunk data count (\(chunk.data.count)) doesn't match expected (\(expectedDataCount)) - will render what we have")
+            // Removed print for performance - only log if critical
         }
         
         var index = 0
@@ -584,8 +666,7 @@ class GameScene: SKScene {
                 if let sprite = TileManager.shared.createSprite(for: gid, size: tileSize) {
                     // Verify sprite has valid texture
                     if sprite.texture == nil {
-                        print("⚠️ WARNING: Sprite created for GID \(gid) but has no texture!")
-                        continue
+                        continue  // Skip sprites without textures (removed print for performance)
                     }
                     
                     // Calculate world position: chunk coordinates are in tile units
@@ -605,13 +686,8 @@ class GameScene: SKScene {
                     sprite.alpha = 1.0
                     sprite.isHidden = false
                     
-                    addChild(sprite)
+                    parentNode.addChild(sprite)
                     worldTiles.append(sprite)
-                    
-                    // Debug: Log first few sprites (disabled to improve performance)
-                    // if worldTiles.count <= 5 {
-                    //     print("✅ Created sprite #\(worldTiles.count) for GID \(gid) at (\(Int(worldX)), \(Int(worldY)))")
-                    // }
                 }
             }
         }
@@ -620,16 +696,149 @@ class GameScene: SKScene {
     func createPlayerSprite() {
         guard let player = gameState?.player else { return }
         
-        // Create simple colored square for player (replace with sprite later)
-        let sprite = SKSpriteNode(color: .blue, size: CGSize(width: 24, height: 24))
+        // Remove existing player sprite if it exists
+        playerSprite?.removeFromParent()
+        playerSprite = nil
+        
+        // Clear texture dictionaries to ensure fresh textures are loaded
+        idleFrameTextures.removeAll()
+        walkFrameTextures.removeAll()
+        
+        var sprite: SKSpriteNode
+        
+        // Try to load sprite from generated sprite sheet
+        if let characterId = currentCharacterId,
+           let character = SaveManager.getAllCharacters().first(where: { $0.id == characterId }),
+           let framePaths = character.framePaths {
+            
+            // Load idle frames
+            let directions = ["south", "west", "east", "north"]
+            print("🔍 Loading frames from \(framePaths.count) frame paths")
+            for direction in directions {
+                if let path = framePaths.first(where: { $0.contains("idle_\(direction)") }),
+                   let texture = SpriteGenerationService.shared.loadFrameTexture(from: path) {
+                    // Validate texture
+                    let texSize = texture.size()
+                    guard texSize.width > 0 && texSize.height > 0 else {
+                        print("   ⚠️ Invalid texture size for idle_\(direction): \(texSize)")
+                        continue
+                    }
+                    // Preload texture to ensure it's ready
+                    texture.preload { }
+                    texture.filteringMode = .nearest
+                    idleFrameTextures[direction] = texture
+                    let textureAddr = String(format: "%p", texture)
+                    print("   ✅ Loaded idle_\(direction) from: \(path), size: \(texSize), texture object: \(textureAddr)")
+                } else {
+                    print("   ❌ Failed to load idle_\(direction)")
+                    if let path = framePaths.first(where: { $0.contains("idle_\(direction)") }) {
+                        print("      Path found: \(path) but texture loading failed")
+                    } else {
+                        print("      No path found matching 'idle_\(direction)'")
+                        print("      Available paths: \(framePaths.filter { $0.contains("idle") })")
+                    }
+                }
+            }
+            
+            // Load walk frames (1 frame per direction)
+            // Walk frames are saved as "walk_south", "walk_west", etc. (no frame numbers)
+            for direction in directions {
+                // Look for paths that contain "walk_<direction>" but don't have frame numbers
+                // Frame numbers would be like "_0", "_1", "_2", "_3" which we want to exclude
+                let walkFrameName = "walk_\(direction)"
+                let matchingPaths = framePaths.filter { path in
+                    path.contains(walkFrameName) && 
+                    !path.contains("_0") && 
+                    !path.contains("_1") && 
+                    !path.contains("_2") && 
+                    !path.contains("_3")
+                }
+                
+                if let path = matchingPaths.first,
+                   let texture = SpriteGenerationService.shared.loadFrameTexture(from: path) {
+                    // Validate texture
+                    let texSize = texture.size()
+                    guard texSize.width > 0 && texSize.height > 0 else {
+                        print("   ⚠️ Invalid texture size for walk_\(direction): \(texSize)")
+                        continue
+                    }
+                    // Preload texture to ensure it's ready
+                    texture.preload { }
+                    texture.filteringMode = .nearest
+                    walkFrameTextures[direction] = [texture]  // Single frame as array for compatibility
+                    let textureAddr = String(format: "%p", texture)
+                    print("   ✅ Loaded walk_\(direction) from: \(path), size: \(texSize), texture object: \(textureAddr)")
+                } else {
+                    print("   ❌ Failed to load walk_\(direction)")
+                    if !matchingPaths.isEmpty {
+                        print("      Found matching paths but texture loading failed: \(matchingPaths)")
+                    } else {
+                        print("      No path found matching '\(walkFrameName)' (excluding numbered frames)")
+                        let allWalkPaths = framePaths.filter { $0.contains("walk") }
+                        print("      All walk paths: \(allWalkPaths)")
+                    }
+                }
+            }
+            
+            // Use first idle frame (south) as initial sprite
+            guard let firstFrameTexture = idleFrameTextures["south"] else {
+                print("⚠️ Failed to load idle frames")
+                sprite = SKSpriteNode(color: .blue, size: CGSize(width: 96, height: 96))
+                addChild(sprite)
+                playerSprite = sprite
+                return
+            }
+            
+            // Sprites are stored at 128x128, display at 96x96 (0.75x scale) for same visual size
+            // This gives us better quality than the old 32x32 -> 96x96 scaling
+            let scaleFactor: CGFloat = 0.75  // 128 * 0.75 = 96
+            let frameWidthPixels = CGFloat(SpriteSheetConstants.frameWidth)
+            let frameHeightPixels = CGFloat(SpriteSheetConstants.frameHeight)
+            let scaledSpriteSize = CGSize(width: frameWidthPixels * scaleFactor, height: frameHeightPixels * scaleFactor)
+            playerSpriteSize = scaledSpriteSize // Store for later use
+            
+            sprite = SKSpriteNode(texture: firstFrameTexture)
+            sprite.size = scaledSpriteSize
+            
+            // Ensure sprite is properly configured for rendering
+            sprite.alpha = 1.0
+            sprite.isHidden = false
+            sprite.colorBlendFactor = 0.0  // Don't blend with color, use texture as-is
+            sprite.color = .white  // Ensure color is white (no tinting)
+            sprite.blendMode = .alpha  // Use alpha blending for transparency
+            sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)  // Center anchor
+            
+            // Preload the initial texture
+            firstFrameTexture.preload { }
+            firstFrameTexture.filteringMode = .nearest
+            
+            // Initialize animation state
+            currentAnimationFrame = 0
+            animationTimer = 0
+            
+            print("✅ Loaded player sprite from individual frames")
+            print("   Idle frames loaded: \(idleFrameTextures.count)/4")
+            print("   Walk frames loaded: \(walkFrameTextures.count)/4 directions")
+            print("   Sprite size: \(scaledSpriteSize), texture size: \(firstFrameTexture.size())")
+        } else {
+            // Fall back to simple colored square
+            sprite = SKSpriteNode(color: .blue, size: CGSize(width: 24, height: 24))
+            print("⚠️ Using default blue square sprite (no sprite sheet found)")
+        }
+        
         sprite.position = player.position
+        // Ensure center anchor point (default, but make explicit)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         // Player should be above ground/terrain layers but below objects, fences, and roofs
         // Ground layers are typically at index 0-10, objects at 10-30+
         // Using zPosition = 10 keeps player above ground but below objects
         sprite.zPosition = 11
         sprite.name = "player"
+        sprite.alpha = 1.0
+        sprite.isHidden = false
         addChild(sprite)
         playerSprite = sprite
+        print("✅ Player sprite added to scene at position: \(player.position), size: \(sprite.size), texture: \(sprite.texture != nil ? "present" : "nil")")
         
         // Create companion sprites for all companions
         for companion in player.companions {
@@ -638,6 +847,154 @@ class GameScene: SKScene {
         
         // Initialize position history with current player position
         playerPositionHistory = [player.position]
+        
+        // Collision debug overlay disabled - remove call to updateCollisionDebugOverlay()
+        // updateCollisionDebugOverlay()
+    }
+    
+    /// Update player sprite animation based on movement state
+    func updatePlayerSpriteAnimation(isMoving: Bool) {
+        guard let sprite = playerSprite else {
+            print("⚠️ updatePlayerSpriteAnimation: No player sprite")
+            return
+        }
+        
+        // Determine direction based on movement
+        let x = currentMovementDirection.x
+        let y = currentMovementDirection.y
+        
+        // Determine primary direction
+        // Note: In SpriteKit, Y increases upward, so y > 0 means moving up (north)
+        let direction: String
+        if abs(y) > abs(x) {
+            // Primarily vertical movement
+            if y > 0 {
+                direction = "north"  // Moving up
+            } else if y < 0 {
+                direction = "south"  // Moving down
+            } else {
+                // y is 0, use last direction or default
+                direction = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+            }
+        } else if abs(x) > abs(y) {
+            // Primarily horizontal movement
+            // East sprite faces RIGHT, West sprite faces LEFT (side profile)
+            // Moving right should use east (faces right), moving left should use west (faces left)
+            if x > 0 {
+                direction = "east"  // Moving right - use east sprite (faces right)
+            } else if x < 0 {
+                direction = "west"  // Moving left - use west sprite (faces left)
+            } else {
+                // x is 0, use last direction or default
+                direction = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+            }
+        } else {
+            // Both are equal or zero, use last direction or default
+            direction = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+        }
+        
+        // Only update animation if direction or moving state changed
+        let animationChanged = direction != lastAnimationDirection || isMoving != lastAnimationIsMoving
+        
+        if animationChanged {
+            // Remove all existing actions only when we need to change
+            sprite.removeAllActions()
+            
+            if isMoving {
+                // Store the last facing direction
+                lastFacingDirection = direction
+                
+                // Update tracking
+                lastAnimationDirection = direction
+                lastAnimationIsMoving = true
+                
+                print("🔄 Animation direction changed to: \(direction)")
+            } else {
+                // When idle, use the idle frame for the last facing direction
+                let idleDirection = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+                
+                // Update tracking
+                lastAnimationDirection = idleDirection
+                lastAnimationIsMoving = false
+                
+                print("🔄 Set idle for direction: \(idleDirection)")
+            }
+        }
+        
+        // Check if this is a colored sprite (fallback) or textured sprite
+        let hasTextures = !idleFrameTextures.isEmpty && !walkFrameTextures.isEmpty
+        
+        if hasTextures {
+            // Always update texture based on current state (manual texture switching)
+            if isMoving {
+                // Use the direction we just calculated (the current direction)
+                let textureDirection = direction
+                // Get idle and walk textures for current direction
+                guard let idleTexture = idleFrameTextures[textureDirection],
+                      let walkFrames = walkFrameTextures[textureDirection],
+                      let walkTexture = walkFrames.first else {
+                    print("⚠️ Missing textures for direction: \(textureDirection), available: \(idleFrameTextures.keys.joined(separator: ", "))")
+                    return
+                }
+                
+                // Alternate between idle (even frames) and walk (odd frames)
+                let isWalkFrame = (currentAnimationFrame % 2) == 1
+                let textureToUse = isWalkFrame ? walkTexture : idleTexture
+                
+                // Debug: Log texture info
+                let currentTextureAddr = sprite.texture != nil ? String(format: "%p", sprite.texture!) : "nil"
+                let newTextureAddr = String(format: "%p", textureToUse)
+                if currentTextureAddr != newTextureAddr {
+                    print("🔄 Updating texture: direction=\(textureDirection), frame=\(currentAnimationFrame), isWalk=\(isWalkFrame), texture changed: \(currentTextureAddr) -> \(newTextureAddr)")
+                }
+                
+                // Always update texture directly (no SKAction for per-frame updates)
+                textureToUse.filteringMode = .nearest
+                sprite.texture = textureToUse
+                sprite.size = playerSpriteSize
+            } else {
+                // When idle, use the idle frame
+                let idleDirection = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+                if let idleTexture = idleFrameTextures[idleDirection] {
+                    // Always update texture directly
+                    idleTexture.filteringMode = .nearest
+                    sprite.texture = idleTexture
+                    sprite.size = playerSpriteSize
+                }
+            }
+            
+            // Ensure sprite is visible and properly configured (for textured sprites)
+            sprite.alpha = 1.0
+            sprite.isHidden = false
+            sprite.colorBlendFactor = 0.0
+            sprite.color = .white
+            sprite.xScale = 1.0
+            sprite.yScale = 1.0
+            sprite.zRotation = 0.0
+        } else {
+            // Fallback: colored sprite - change color based on direction
+            let colorForDirection: SKColor
+            switch direction {
+            case "north":
+                colorForDirection = .green
+            case "south":
+                colorForDirection = .blue
+            case "east":
+                colorForDirection = .yellow
+            case "west":
+                colorForDirection = .orange
+            default:
+                colorForDirection = .blue
+            }
+            
+            // For colored sprites (no texture), update the color property directly
+            sprite.color = colorForDirection
+            sprite.alpha = 1.0
+            sprite.isHidden = false
+            sprite.xScale = 1.0
+            sprite.yScale = 1.0
+            sprite.zRotation = 0.0
+        }
     }
     
     func createCompanionSprite(companion: Animal) {
@@ -778,6 +1135,9 @@ class GameScene: SKScene {
     }
     
     override func didMove(to view: SKView) {
+        // Enable user interaction for object clicking
+        self.isUserInteractionEnabled = true
+        
         // Always update scene size from view bounds to ensure correct rendering
         // This is critical for proper texture positioning and scaling
         size = view.bounds.size
@@ -845,6 +1205,9 @@ class GameScene: SKScene {
         if useTiledMap {
             // Check collision map for Tiled maps
             canMove = canMoveToTiledMap(position: newPosition)
+            if !canMove {
+                print("🛑 Movement blocked at position (\(Int(newPosition.x)), \(Int(newPosition.y)))")
+            }
         } else {
             canMove = gameState?.world.canMoveTo(position: newPosition) ?? false
         }
@@ -853,6 +1216,8 @@ class GameScene: SKScene {
             let oldPosition = player.position
             player.position = newPosition
             playerSprite?.position = newPosition
+            
+            // Animation is updated in update() loop based on timer, not here
             
             // Add position to history for companions to follow
             playerPositionHistory.append(newPosition)
@@ -865,6 +1230,12 @@ class GameScene: SKScene {
             
             // Update camera to follow player when near screen edges
             updateCamera()
+            
+            // Collision debug overlay disabled
+            // updateCollisionDebugOverlay()
+            
+            // Check for object collisions (collectables, etc.)
+            checkObjectCollisions(at: newPosition)
             
             // Check for encounters based on proximity to sprites
             checkForProximityEncounter()
@@ -1043,6 +1414,58 @@ class GameScene: SKScene {
         joystickVisual = nil
     }
     
+    func checkObjectCollisions(at position: CGPoint) {
+        guard let player = gameState?.player else { return }
+        
+        // Get player collision frame
+        let playerFrame = getPlayerCollisionFrame(at: position)
+        
+        // Check all object sprites for collision
+        var objectsToRemove: [SKSpriteNode] = []
+        
+        for (sprite, object) in objectSprites {
+            // Get object's bounding box
+            let objectFrame = CGRect(
+                x: sprite.position.x,
+                y: sprite.position.y,
+                width: sprite.size.width,
+                height: sprite.size.height
+            )
+            
+            // Check if player collides with object
+            if playerFrame.intersects(objectFrame) {
+                // Check if object is collectable
+                // Objects are collectable if:
+                // 1. They have the "collectable" property set to true, OR
+                // 2. They are in an objectgroup named "Collectables" (case-insensitive)
+                let objectGroupName = objectGroupNames[sprite] ?? ""
+                let isCollectable = object.boolProperty("collectable", default: false) || objectGroupName.lowercased().contains("collectable")
+                
+                // Only collect items on collision (not dialogue objects)
+                if isCollectable {
+                    // Use the collectObject function which handles stacking and GID
+                    // Note: collectObject already removes the sprite, so don't add to objectsToRemove
+                    collectObject(object, sprite: sprite)
+                }
+                // Dialogue objects are handled via question mark interaction, not collision
+            }
+        }
+        
+        // Remove collected objects from scene
+        for sprite in objectsToRemove {
+            if let object = objectSprites[sprite] {
+                // Remove question mark if it exists
+                if let questionMark = questionMarkIndicators[object.id] {
+                    questionMark.removeFromParent()
+                    questionMarkIndicators.removeValue(forKey: object.id)
+                }
+            }
+            sprite.removeFromParent()
+            objectSprites.removeValue(forKey: sprite)
+            objectGroupNames.removeValue(forKey: sprite)
+        }
+    }
+    
     func checkForProximityEncounter() {
         guard let player = gameState?.player, !isInCombat else { return }
         
@@ -1085,6 +1508,9 @@ class GameScene: SKScene {
         // Stop any movement
         currentMovementDirection = CGPoint.zero
         isMoving = false
+        #if os(macOS)
+        pressedKeys.removeAll() // Clear any pressed keys to prevent stuck movement
+        #endif
         hideJoystickVisual()
         
         // Pause the game
@@ -1120,6 +1546,9 @@ class GameScene: SKScene {
                 // Stop any movement that might have been happening
                 gameScene.currentMovementDirection = CGPoint.zero
                 gameScene.isMoving = false
+                #if os(macOS)
+                gameScene.pressedKeys.removeAll() // Clear any pressed keys to prevent stuck movement
+                #endif
                 
                 // Update player sprite position to match player's current position
                 // Remove any duplicate player sprites first
@@ -1187,6 +1616,9 @@ class GameScene: SKScene {
         // Stop any movement
         currentMovementDirection = CGPoint.zero
         isMoving = false
+        #if os(macOS)
+        pressedKeys.removeAll() // Clear any pressed keys to prevent stuck movement
+        #endif
         hideJoystickVisual()
         
         // Pause the game
@@ -1224,6 +1656,9 @@ class GameScene: SKScene {
                 // Stop any movement
                 gameScene.currentMovementDirection = CGPoint.zero
                 gameScene.isMoving = false
+                #if os(macOS)
+                gameScene.pressedKeys.removeAll() // Clear any pressed keys to prevent stuck movement
+                #endif
                 
                 // Update player sprite position to match player's current position
                 // Remove any duplicate player sprites first
@@ -1290,10 +1725,46 @@ class GameScene: SKScene {
             previousViewSize = currentViewSize
         }
         
+        // Update question mark indicators for dialogue objects
+        updateQuestionMarkIndicators()
+        
         // Continuous movement if direction is set
         if currentMovementDirection != CGPoint.zero {
             movePlayer(direction: currentMovementDirection)
+            
+            // Only advance frame based on timer
+            if currentTime - animationTimer > animationFrameDuration {
+                // Advance animation frame
+                let animationFrameCount = 4  // 4 frames per walk animation
+                currentAnimationFrame = (currentAnimationFrame + 1) % animationFrameCount
+                animationTimer = currentTime
+            }
+            
+            // Determine current direction
+            let x = currentMovementDirection.x
+            let y = currentMovementDirection.y
+            let direction: String
+            if abs(y) > abs(x) {
+                direction = y > 0 ? "north" : "south"
+            } else if abs(x) > abs(y) {
+                // East sprite faces RIGHT, West sprite faces LEFT (side profile)
+                // Moving right (x > 0) should use EAST (faces right), moving left (x < 0) should use WEST (faces left)
+                direction = x > 0 ? "east" : "west"
+            } else {
+                direction = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
+            }
+            
+            // Always update animation when moving - let the function handle texture changes
+            updatePlayerSpriteAnimation(isMoving: true)
         } else {
+            // Player is not moving - update to idle animation
+            if lastAnimationIsMoving != false {
+                updatePlayerSpriteAnimation(isMoving: false)
+                lastAnimationIsMoving = false
+                lastAnimationFrame = 0
+            }
+            animationTimer = currentTime  // Reset timer when stopped
+            currentAnimationFrame = 0  // Reset frame when stopped
             // Update camera even when not moving (in case player stops near edge)
             updateCamera()
         }
@@ -1322,7 +1793,11 @@ class GameScene: SKScene {
         playerSprite?.removeFromParent()
         companionSprites.values.forEach { $0.removeFromParent() }
         companionSprites.removeAll()
-        worldTiles.forEach { $0.removeFromParent() }
+        
+        // OPTIMIZATION: Remove map container node if it exists (much faster than removing individual tiles)
+        enumerateChildNodes(withName: "tiledMapContainer") { node, _ in
+            node.removeFromParent()
+        }
         worldTiles.removeAll()
         
         // Clear animal and enemy sprites
@@ -1407,6 +1882,150 @@ class GameScene: SKScene {
         return shape
     }
     
+    /// Render an object group (object layer) from a Tiled map
+    private func renderTiledObjectGroup(_ objectGroup: TiledObjectGroup, tileSize: CGSize, zPosition: CGFloat, yFlipOffset: CGFloat = 0, container: SKNode? = nil) {
+        let parentNode = container ?? self
+        
+        print("🎯 Rendering object group '\(objectGroup.name)' with \(objectGroup.objects.count) objects")
+        
+        if objectGroup.objects.isEmpty {
+            print("⚠️ WARNING: Object group '\(objectGroup.name)' has no objects!")
+            return
+        }
+        
+        for object in objectGroup.objects {
+            // Calculate world position
+            // Tiled uses top-left origin (Y increases downward)
+            // SpriteKit uses bottom-left origin (Y increases upward)
+            // We need to flip the Y coordinate: newY = yFlipOffset - oldY
+            let tiledY = object.y
+            let worldY = yFlipOffset - tiledY
+            let worldX = object.x
+            
+            // Create sprite for object
+            var sprite: SKSpriteNode?
+            
+            if let gid = object.gid {
+                // Object uses a tile (has a GID)
+                // Use the object's width/height if specified, otherwise use tile size
+                let objectSize = CGSize(
+                    width: object.width > 0 ? object.width : tileSize.width,
+                    height: object.height > 0 ? object.height : tileSize.height
+                )
+                sprite = TileManager.shared.createSprite(for: gid, size: objectSize)
+                if sprite == nil {
+                    print("⚠️ WARNING: Failed to create sprite for object '\(object.name)' with GID \(gid). Creating fallback sprite.")
+                    // Create a fallback visible sprite so we can see the object
+                    sprite = SKSpriteNode(color: .red, size: objectSize)
+                    sprite?.alpha = 0.8
+                    // Add a border to make it more visible
+                    let border = SKShapeNode(rect: CGRect(origin: .zero, size: objectSize))
+                    border.strokeColor = .magenta
+                    border.lineWidth = 2.0
+                    border.fillColor = .clear
+                    sprite?.addChild(border)
+                }
+            } else {
+                // Object doesn't use a tile - create a colored rectangle or use a default sprite
+                // Make it more visible with a border
+                let objectSize = CGSize(
+                    width: object.width > 0 ? object.width : tileSize.width,
+                    height: object.height > 0 ? object.height : tileSize.height
+                )
+                sprite = SKSpriteNode(color: .yellow, size: objectSize)
+                sprite?.alpha = 0.7  // More visible
+                
+                // Add a border to make it more visible
+                let border = SKShapeNode(rect: CGRect(origin: .zero, size: objectSize))
+                border.strokeColor = .orange
+                border.lineWidth = 2.0
+                border.fillColor = .clear
+                sprite?.addChild(border)
+            }
+            
+            guard let objectSprite = sprite else {
+                print("⚠️ Failed to create sprite for object '\(object.name)' (id: \(object.id))")
+                continue
+            }
+            
+            // Position the sprite
+            // In Tiled, object Y coordinate is typically the top of the object (in Tiled's coordinate system)
+            // In SpriteKit with anchorPoint (0,0), position is the bottom-left corner
+            // So we need to adjust: if object has height, we need to account for it in the Y conversion
+            // Tiled Y is top of object, SpriteKit Y (with anchor 0,0) is bottom of object
+            // After Y flip: worldY = yFlipOffset - tiledY gives us the top in SpriteKit coords
+            // But we want the bottom, so subtract object height
+            let adjustedWorldY: CGFloat
+            if object.height > 0 {
+                // Account for object height: Tiled Y is top, we need bottom
+                adjustedWorldY = worldY - object.height
+            } else {
+                adjustedWorldY = worldY
+            }
+            
+            objectSprite.position = CGPoint(x: worldX, y: adjustedWorldY)
+            objectSprite.anchorPoint = CGPoint(x: 0, y: 0)  // Bottom-left corner
+            objectSprite.zPosition = zPosition
+            
+            // Set object name for debugging
+            objectSprite.name = "object_\(object.id)_\(object.name)"
+            
+            // Store the object data with the sprite for collision detection
+            objectSprites[objectSprite] = object
+            objectGroupNames[objectSprite] = objectGroup.name
+            
+            // Add visual indicator for dialogue objects (subtle glow)
+            // Collectables don't need glow since they auto-collect on collision
+            let isCollectable = object.boolProperty("collectable", default: false) || objectGroup.name.lowercased().contains("collectable")
+            let hasDialogue = object.boolProperty("dialogue", default: false) || 
+                             object.type?.lowercased() == "npc" ||
+                             object.type?.lowercased() == "dialogue"
+            
+            if hasDialogue {
+                // Add a subtle glow effect for dialogue objects
+                let glow = SKShapeNode(rect: CGRect(origin: CGPoint(x: -2, y: -2), size: CGSize(width: objectSprite.size.width + 4, height: objectSprite.size.height + 4)), cornerRadius: 4)
+                glow.strokeColor = .blue
+                glow.lineWidth = 1.5
+                glow.fillColor = .clear
+                glow.alpha = 0.6
+                glow.zPosition = -1  // Behind the object
+                objectSprite.addChild(glow)
+                
+                // Make object slightly more visible
+                objectSprite.alpha = 1.0
+            }
+            
+            // Ensure objects with GIDs are fully visible
+            if object.gid != nil {
+                objectSprite.alpha = 1.0
+                objectSprite.isHidden = false
+            }
+            
+            // Ensure sprite is visible before adding
+            objectSprite.alpha = 1.0
+            objectSprite.isHidden = false
+            
+            // Add to scene
+            parentNode.addChild(objectSprite)
+            
+            print("✅ Added object '\(object.name)' (id: \(object.id)) at Tiled(\(Int(object.x)), \(Int(object.y))) -> SpriteKit(\(Int(worldX)), \(Int(adjustedWorldY))), size: \(objectSprite.size), zPosition: \(zPosition), hasGID: \(object.gid?.description ?? "nil")")
+            
+            // Log collectable objects
+            if isCollectable {
+                print("   → Collectable object")
+            }
+            
+            // Log dialogue objects
+            if hasDialogue {
+                print("   → Dialogue object")
+            }
+            
+            // Note: Question mark indicators will be added/removed dynamically based on player proximity
+        }
+        
+        print("✅ Finished rendering object group '\(objectGroup.name)': \(objectGroup.objects.count) objects added")
+    }
+    
     // MARK: - Collision Detection for Tiled Maps
     
     /// Parse collision data from Tiled map layers
@@ -1424,6 +2043,14 @@ class GameScene: SKScene {
         // First, log all available layers
         for layer in tiledMap.layers {
             allLayerNames.append(layer.name)
+        }
+        
+        // First, find max height of regular layers (for coordinate conversion)
+        var maxRegularHeight = 0
+        for layer in tiledMap.layers {
+            if !layer.isInfinite {
+                maxRegularHeight = max(maxRegularHeight, layer.height)
+            }
         }
         
         for layer in tiledMap.layers {
@@ -1479,6 +2106,8 @@ class GameScene: SKScene {
                     }
                 } else if let data = layer.data {
                     // Process regular (non-infinite) maps
+                    // Regular layers: tile at (x, y) in Tiled coords is at worldY = (layer.height - y - 1) * tileHeight
+                    // Store using actual Tiled coordinates (x, y)
                     var index = 0
                     for y in 0..<layer.height {
                         for x in 0..<layer.width {
@@ -1488,18 +2117,13 @@ class GameScene: SKScene {
                             index += 1
                             
                             if gid > 0 {
-                                // Store tile position as tile coordinates for collision checking
+                                // Store using actual Tiled coordinates
                                 let key = "\(x),\(y)"
                                 collisionMap.insert(key)
                                 
                                 // Store which layer this collision tile came from
-                                // If multiple layers contribute to same tile, keep the first one
                                 if collisionLayerMap[key] == nil {
                                     collisionLayerMap[key] = layer.name
-                                }
-                                
-                                // Debug: Log first few collision tiles to verify parsing
-                                if collisionMap.count <= 10 {
                                 }
                             }
                         }
@@ -1510,6 +2134,47 @@ class GameScene: SKScene {
         
         if foundLayers.isEmpty {
         }
+    }
+    
+    /// Update the collision debug overlay to show the collision box
+    private func updateCollisionDebugOverlay() {
+        guard let player = gameState?.player else { return }
+        
+        let collisionFrame = getPlayerCollisionFrame(at: player.position)
+        
+        // Remove existing overlay
+        collisionDebugOverlay?.removeFromParent()
+        
+        // Create new overlay - use rectOf with size and position at center
+        let overlay = SKShapeNode(rectOf: collisionFrame.size)
+        overlay.strokeColor = .red
+        overlay.fillColor = .clear
+        overlay.lineWidth = 2.0
+        overlay.position = CGPoint(x: collisionFrame.midX, y: collisionFrame.midY)
+        overlay.zPosition = 12  // Above player sprite (zPosition 11)
+        overlay.name = "collisionDebugOverlay"
+        addChild(overlay)
+        collisionDebugOverlay = overlay
+    }
+    
+    /// Get the player's collision bounding box from the sprite's actual size
+    /// Uses a slightly smaller collision box than the sprite for better gameplay feel
+    /// This allows the player to get closer to walls and multi-tile objects
+    /// Assumes center anchor point (SpriteKit default: 0.5, 0.5)
+    private func getPlayerCollisionFrame(at position: CGPoint) -> CGRect {
+        // Use a smaller collision box than the sprite (18x18 instead of 24x24)
+        // This creates a 3px buffer on all sides, allowing closer approach to walls
+        // The sprite is 24x24, so 18x18 gives 6px total reduction (3px per side)
+        let collisionSize = CGSize(width: 10, height: 10)
+        let halfWidth = collisionSize.width / 2
+        let halfHeight = collisionSize.height / 2
+        // Offset collision box downward to position it around the feet
+        // Sprite is 96x96 (32px * 3 scale), centered at position
+        // Feet are at approximately position.y - 48
+        // To position 10x10 collision box near feet (center around position.y - 40):
+        // offset = 40 - halfHeight = 40 - 5 = 35
+        let collisionYOffset: CGFloat = 35.0  // Move collision box down to position around feet
+        return CGRect(origin: CGPoint(x: position.x - halfWidth, y: position.y - halfHeight - collisionYOffset), size: collisionSize)
     }
     
     /// Check if player can move to a position on Tiled map
@@ -1525,32 +2190,91 @@ class GameScene: SKScene {
         let tileHeight = mapTileSize.height
         let yFlipOffset = mapYFlipOffset
         
-        // Calculate player's bounding box (matches sprite size exactly)
-        // Player sprite: 24x24 pixels, anchor at center (0.5, 0.5)
-        // Collision box: 24x24 pixels, centered on sprite position
-        let playerHalfWidth = playerCollisionSize.width / 2
-        let playerHalfHeight = playerCollisionSize.height / 2
-        
-        // Collision box is centered on sprite position (no offset)
-        let collisionCenterY = position.y + playerCollisionOffsetY
+        // Get player's bounding box from sprite's actual frame
+        let playerFrame = getPlayerCollisionFrame(at: position)
         
         // Player bounding box corners (in world coordinates)
-        let playerLeft = position.x - playerHalfWidth
-        let playerRight = position.x + playerHalfWidth
-        let playerBottom = collisionCenterY - playerHalfHeight
-        let playerTop = collisionCenterY + playerHalfHeight
+        let playerLeft = playerFrame.minX
+        let playerRight = playerFrame.maxX
+        let playerBottom = playerFrame.minY
+        let playerTop = playerFrame.maxY
         
         // Convert to Tiled tile coordinates
-        // Y coordinates: During rendering, worldY = yFlipOffset - tiledY
-        // So: tiledY = yFlipOffset - worldY, and tileY = tiledY / tileHeight
-        let playerLeftTiledY = yFlipOffset - playerTop    // Top of player in Tiled coords
-        let playerRightTiledY = yFlipOffset - playerBottom // Bottom of player in Tiled coords
-        
-        // Calculate which tiles the player's bounding box overlaps
+        // X is the same for both coordinate systems
         let minTileX = Int(floor(playerLeft / tileWidth))
         let maxTileX = Int(floor(playerRight / tileWidth))
-        let minTileY = Int(floor(playerLeftTiledY / tileHeight))
-        let maxTileY = Int(floor(playerRightTiledY / tileHeight))
+        
+        // Y coordinate conversion depends on layer type
+        let (minTileY, maxTileY): (Int, Int)
+        if hasInfiniteLayers {
+            // Infinite layers (chunks): 
+            // Tiles are rendered at: worldY = yFlipOffset - tiledY, where tiledY = tileY * tileHeight
+            // Tile at tileY has bottom at worldY = yFlipOffset - (tileY * tileHeight)
+            // Tile at tileY has top at worldY = yFlipOffset - (tileY * tileHeight) + tileHeight
+            // To find which tiles the player overlaps:
+            // - Player top (highest Y) overlaps tiles whose bottom is <= playerTop
+            // - Player bottom (lowest Y) overlaps tiles whose top is >= playerBottom
+            // Converting: tileY = (yFlipOffset - worldY) / tileHeight
+            // For playerTop: find tiles with tileY >= (yFlipOffset - playerTop) / tileHeight
+            // For playerBottom: find tiles with tileY <= (yFlipOffset - playerBottom) / tileHeight
+            // But we need to account for tile height - tile at tileY spans from (yFlipOffset - tileY*tileHeight) to (yFlipOffset - tileY*tileHeight + tileHeight)
+            // So for player at worldY, we check tileY where: (yFlipOffset - tileY*tileHeight) <= worldY < (yFlipOffset - tileY*tileHeight + tileHeight)
+            // Solving: tileY = floor((yFlipOffset - worldY) / tileHeight)
+            // But we need to check all tiles that overlap, so:
+            // Convert player world Y coordinates to Tiled tile Y coordinates
+            // Tiles are rendered at: worldY = yFlipOffset - (tileY * tileHeight)
+            // Tile at tileY spans from worldY = yFlipOffset - (tileY * tileHeight) to worldY = yFlipOffset - (tileY * tileHeight) + tileHeight
+            // To find which tile contains a worldY: tileY = (yFlipOffset - worldY) / tileHeight
+            // But we need to account for the tile's full height when checking overlap
+            // If collision is 20px too high, we need to adjust by checking tiles that are 20px lower
+            // 20px / 32px per tile = 0.625 tiles, so we need to subtract ~1 from tileY
+            let playerTiledYTop = (yFlipOffset - playerTop) / tileHeight
+            let playerTiledYBottom = (yFlipOffset - playerBottom) / tileHeight
+            // Convert to tile coordinates
+            // Collision is detected 20px too high, so we need to check tiles that are 20px lower
+            // Since higher tileY = lower worldY, we need to ADD 1 to tileY (20px ≈ 1 tile at 32px/tile)
+            let rawMinTileY = Int(floor(min(playerTiledYTop, playerTiledYBottom))) + 1
+            let rawMaxTileY = Int(floor(max(playerTiledYTop, playerTiledYBottom))) + 1
+            minTileY = rawMinTileY
+            maxTileY = rawMaxTileY
+        } else {
+            // Regular layers: worldY = (layer.height - y - 1) * tileHeight
+            // So: y = layer.height - 1 - (worldY / tileHeight)
+            // But wait - regular layers position at worldY = (layer.height - y - 1) * tileHeight
+            // This means y=0 (top row) is at worldY = (layer.height - 1) * tileHeight (highest Y)
+            // And y=layer.height-1 (bottom row) is at worldY = 0 (lowest Y)
+            // To convert worldY back: y = layer.height - 1 - Int(worldY / tileHeight)
+            let height = regularLayerHeight
+            if height > 0 {
+                let regularYTop = height - 1 - Int(floor(playerTop / tileHeight))
+                let regularYBottom = height - 1 - Int(floor(playerBottom / tileHeight))
+                minTileY = min(regularYTop, regularYBottom)
+                maxTileY = max(regularYTop, regularYBottom)
+            } else {
+                // Fallback: use chunk-style conversion if height not set
+                let playerLeftTiledY = yFlipOffset - playerTop
+                let playerRightTiledY = yFlipOffset - playerBottom
+                minTileY = Int(floor(playerLeftTiledY / tileHeight))
+                maxTileY = Int(floor(playerRightTiledY / tileHeight))
+            }
+        }
+        
+        // Debug: Print collision check details (only first few times to avoid spam)
+        collisionDebugCount += 1
+        if collisionDebugCount <= 10 {
+            print("🔍 Collision check #\(collisionDebugCount): pos=(\(Int(position.x)), \(Int(position.y))), frame=(\(Int(playerLeft)),\(Int(playerBottom)))-\(Int(playerRight)),\(Int(playerTop))), tiles=X[\(minTileX)...\(maxTileX)] Y[\(minTileY)...\(maxTileY)], hasInfinite=\(hasInfiniteLayers), height=\(regularLayerHeight), yFlipOffset=\(yFlipOffset)")
+            // Check a few sample keys and print what we're checking
+            for tileX in minTileX...min(maxTileX, minTileX + 2) {
+                for tileY in minTileY...min(maxTileY, minTileY + 2) {
+                    let key = "\(tileX),\(tileY)"
+                    let hasColl = collisionMap.contains(key)
+                    print("  Checking tile (\(tileX), \(tileY)): key='\(key)', found=\(hasColl)")
+                    if hasColl {
+                        print("  ✅ Found collision at tile (\(tileX), \(tileY))")
+                    }
+                }
+            }
+        }
         
         // Check all tiles that the player's bounding box overlaps
         var hasCollision = false
@@ -1564,6 +2288,12 @@ class GameScene: SKScene {
                     hasCollision = true
                     collisionKey = key
                     collisionLayer = collisionLayerMap[key]
+                    // Calculate where this tile should be in world coordinates for debugging
+                    let tileTiledY = CGFloat(tileY) * tileHeight
+                    let tileWorldY = yFlipOffset - tileTiledY
+                    let tileWorldX = CGFloat(tileX) * tileWidth
+                    // Always log collisions with debug info
+                    print("🚫 COLLISION! Player at world=(\(Int(position.x)), \(Int(position.y))), checking tile=(\(tileX), \(tileY)) which should be at world=(\(Int(tileWorldX)), \(Int(tileWorldY))), playerFrame=(\(Int(playerLeft)),\(Int(playerBottom))-\(Int(playerRight)),\(Int(playerTop))), layer=\(collisionLayer ?? "unknown")")
                     break
                 }
             }
@@ -1666,592 +2396,23 @@ class GameScene: SKScene {
     }
 }
 
-#if os(iOS) || os(tvOS)
-// Touch-based event handling
+// Shared UI functions available on all platforms
 extension GameScene {
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        guard let camera = cameraNode else { return }
-        
-        // Check if touching UI elements (panels are children of camera)
-        if let inventoryPanel = camera.childNode(withName: "inventoryPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if inventoryPanel.contains(cameraLocation) {
-                handleInventoryPanelTouch(at: location, in: inventoryPanel)
-                return
-            }
-        }
-        
-        if let buildPanel = camera.childNode(withName: "buildPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if buildPanel.contains(cameraLocation) {
-                handleBuildPanelTouch(at: location, in: buildPanel)
-                return
-            }
-        }
-        
-        if let settingsPanel = camera.childNode(withName: "settingsPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if settingsPanel.contains(cameraLocation) {
-                handleSettingsPanelTouch(at: location, in: settingsPanel)
-                return
-            }
-        }
-        
-        if let saveSlotPanel = camera.childNode(withName: "saveSlotPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if saveSlotPanel.contains(cameraLocation) {
-                handleSaveSlotPanelTouch(at: location, in: saveSlotPanel)
-                return
-            }
-        }
-        
-        if let loadSlotPanel = camera.childNode(withName: "loadSlotPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if loadSlotPanel.contains(cameraLocation) {
-                handleLoadSlotPanelTouch(at: location, in: loadSlotPanel)
-                return
-            }
-        }
-        
-        // Check for UI buttons (convert to camera coordinates)
-        if let inventoryButton = gameUI?.inventoryButton, let camera = cameraNode {
-            let cameraLocation = convert(location, to: camera)
-            if inventoryButton.contains(cameraLocation) {
-                showInventory()
-                return
-            }
-        }
-        
-        if let buildButton = gameUI?.buildButton, let camera = cameraNode {
-            let cameraLocation = convert(location, to: camera)
-            if buildButton.contains(cameraLocation) {
-                showBuildMenu()
-                return
-            }
-        }
-        
-        if let settingsButton = gameUI?.settingsButton, let camera = cameraNode {
-            let cameraLocation = convert(location, to: camera)
-            if settingsButton.contains(cameraLocation) {
-                showSettings()
-                return
-            }
-        }
-        
-        // Start joystick movement - store initial touch location in screen/camera coordinates
-        guard !isGamePaused, !isInCombat, !isInDialogue else { return }
-        guard let camera = cameraNode else { return }
-        
-        // Convert touch location to camera coordinates (screen space)
-        let cameraLocation = convert(location, to: camera)
-        touchStartLocation = cameraLocation
-        isMoving = true
-        
-        // Show joystick visual at touch location
-        showJoystickVisual(at: cameraLocation)
-    }
-    
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first, isMoving, !isGamePaused, !isInCombat, !isInDialogue else { return }
-        guard let startLocation = touchStartLocation, let camera = cameraNode else { return }
-        
-        let location = touch.location(in: self)
-        // Convert current touch location to camera coordinates (screen space)
-        let cameraLocation = convert(location, to: camera)
-        
-        // Calculate delta from initial touch point (joystick-style)
-        let delta = CGPoint(
-            x: cameraLocation.x - startLocation.x,
-            y: cameraLocation.y - startLocation.y
-        )
-        
-        let distance = sqrt(delta.x * delta.x + delta.y * delta.y)
-        let deadZone: CGFloat = 10.0 // Minimum distance to register movement
-        
-        if distance > deadZone {
-            // Normalize direction
-            let normalized = CGPoint(
-                x: delta.x / distance,
-                y: delta.y / distance
-            )
-            currentMovementDirection = normalized
-            updateJoystickVisual(direction: normalized)
-        } else {
-            currentMovementDirection = CGPoint.zero
-            updateJoystickVisual(direction: CGPoint.zero)
-        }
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isMoving = false
-        currentMovementDirection = CGPoint.zero
-        touchStartLocation = nil
-        hideJoystickVisual()
-    }
-    
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isMoving = false
-        currentMovementDirection = CGPoint.zero
-        touchStartLocation = nil
-        hideJoystickVisual()
-    }
-    
-    // Helper function to find a node with a specific name by traversing up the parent chain
-    func findNodeWithName(_ name: String, startingFrom node: SKNode) -> SKNode? {
-        var currentNode: SKNode? = node
-        while let current = currentNode {
-            if current.name == name {
-                return current
-            }
-            currentNode = current.parent
-        }
-        return nil
-    }
-    
-    func handleInventoryPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        if let closeButton = touchedNodes.first(where: { findNodeWithName("closeInventory", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeInventory", startingFrom: closeButton) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-            }
-        }
-    }
-    
-    func handleBuildPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        
-        // Check for close button
-        if let closeNode = touchedNodes.first(where: { findNodeWithName("closeBuild", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeBuild", startingFrom: closeNode) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-                return
-            }
-        }
-        
-        // Check for build buttons
-        for structureType in StructureType.allCases {
-            let buttonName = "build_\(structureType.rawValue)"
-            if let buildNode = touchedNodes.first(where: { findNodeWithName(buttonName, startingFrom: $0) != nil }) {
-                if findNodeWithName(buttonName, startingFrom: buildNode) != nil {
-                    attemptBuildStructure(type: structureType)
-                    panel.removeFromParent()
-                    isGamePaused = false
-                    return
-                }
-            }
-        }
-    }
-    
-    func handleSettingsPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        
-        // Check for close button
-        if let closeNode = touchedNodes.first(where: { findNodeWithName("closeSettings", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeSettings", startingFrom: closeNode) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-                return
-            }
-        }
-        
-        // Check for save game button
-        if let saveNode = touchedNodes.first(where: { findNodeWithName("saveGame", startingFrom: $0) != nil }) {
-            if findNodeWithName("saveGame", startingFrom: saveNode) != nil {
-                panel.removeFromParent()
-                saveGame() // This will show the save slot selection
-                return
-            }
-        }
-        
-        // Check for load game button
-        if let loadNode = touchedNodes.first(where: { findNodeWithName("loadGame", startingFrom: $0) != nil }) {
-            if findNodeWithName("loadGame", startingFrom: loadNode) != nil {
-                panel.removeFromParent()
-                loadGame() // This will show the load slot selection
-                return
-            }
-        }
-        
-        // Check for quit button
-        if let quitNode = touchedNodes.first(where: { findNodeWithName("quitToMenu", startingFrom: $0) != nil }) {
-            if findNodeWithName("quitToMenu", startingFrom: quitNode) != nil {
-                panel.removeFromParent()
-                quitToMainMenu()
-                return
-            }
-        }
-    }
-    
-    func handleSaveSlotPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        
-        // Check for close button
-        if let closeNode = touchedNodes.first(where: { findNodeWithName("closeSaveSlot", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeSaveSlot", startingFrom: closeNode) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-                return
-            }
-        }
-        
-        // Check for save slot buttons
-        for slotNum in 1...SaveManager.maxSlots {
-            let buttonName = "saveSlot_\(slotNum)"
-            if let slotNode = touchedNodes.first(where: { findNodeWithName(buttonName, startingFrom: $0) != nil }) {
-                if findNodeWithName(buttonName, startingFrom: slotNode) != nil {
-                    saveGame(toSlot: slotNum)
-                    panel.removeFromParent()
-                    isGamePaused = false
-                    return
-                }
-            }
-        }
-    }
-    
-    func handleLoadSlotPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        
-        // Check for close button
-        if let closeNode = touchedNodes.first(where: { findNodeWithName("closeLoadSlot", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeLoadSlot", startingFrom: closeNode) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-                return
-            }
-        }
-        
-        // Check for load slot buttons (only non-empty slots)
-        for slotNum in 1...SaveManager.maxSlots {
-            let buttonName = "loadSlot_\(slotNum)"
-            if let slotNode = touchedNodes.first(where: { findNodeWithName(buttonName, startingFrom: $0) != nil }) {
-                if findNodeWithName(buttonName, startingFrom: slotNode) != nil {
-                    loadGame(fromSlot: slotNum)
-                    panel.removeFromParent()
-                    isGamePaused = false
-                    return
-                }
-            }
-        }
-    }
-    
-    func saveGame() {
-        // Show save slot selection screen
-        showSaveSlotSelection()
-    }
-    
-    func saveGame(toSlot slot: Int) {
-        guard let gameState = gameState else { return }
-        
-        // Try to find character by matching player name and class
-        if currentCharacterId == nil {
-            let characters = SaveManager.getAllCharacters()
-            currentCharacterId = characters.first(where: {
-                $0.name == gameState.player.name && $0.characterClass == gameState.player.characterClass
-            })?.id
-        }
-        
-        // If we have a character ID, use it; otherwise fall back to legacy save
-        if let characterId = currentCharacterId {
-            if SaveManager.saveGame(gameState: gameState, characterId: characterId, toSlot: slot) {
-                showMessage("Game saved to slot \(slot)!", color: .green)
-            } else {
-                showMessage("Failed to save game", color: .red)
-            }
-        } else {
-            // Legacy save (for backward compatibility)
-            if SaveManager.saveGame(gameState: gameState, toSlot: slot) {
-                showMessage("Game saved to slot \(slot)!", color: .green)
-            } else {
-                showMessage("Failed to save game", color: .red)
-            }
-        }
-    }
-    
-    func showSaveSlotSelection() {
-        // Pause the game
-        isGamePaused = true
-        
-        // Create save slot selection UI (relative to camera)
-        guard let camera = cameraNode else { return }
-        let dims = MenuStyling.getResponsiveDimensions(size: size)
-        let isLandscape = size.width > size.height
-        
-        // Modern panel
-        let panelContainer = MenuStyling.createModernPanel(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
-        panelContainer.position = CGPoint(x: 0, y: 0) // Center relative to camera
-        panelContainer.zPosition = 200
-        panelContainer.name = "saveSlotPanel"
-        camera.addChild(panelContainer)
-        
-        // Get the actual panel node
-        guard let panel = panelContainer.children.first(where: { $0 is SKShapeNode }) as? SKShapeNode else { return }
-        
-        // Modern title
-        let titleY = isLandscape ? dims.panelHeight / 2 - 40 : dims.panelHeight / 2 - 50
-        let title = MenuStyling.createModernTitle(text: "Select Save Slot", position: CGPoint(x: 0, y: titleY), fontSize: isLandscape ? 28 : 32)
-        title.zPosition = 10
-        panelContainer.addChild(title)
-        
-        // Get all save slots for current character, or all slots if no character
-        let saveSlots: [SaveSlot]
-        if let characterId = currentCharacterId {
-            saveSlots = SaveManager.getAllSaveSlots(characterId: characterId)
-        } else {
-            // Try to find character
-            if let gameState = gameState {
-                let characters = SaveManager.getAllCharacters()
-                if let character = characters.first(where: {
-                    $0.name == gameState.player.name && $0.characterClass == gameState.player.characterClass
-                }) {
-                    currentCharacterId = character.id
-                    saveSlots = SaveManager.getAllSaveSlots(characterId: character.id)
-                } else {
-                    saveSlots = SaveManager.getAllSaveSlots() // Legacy
-                }
-            } else {
-                saveSlots = SaveManager.getAllSaveSlots() // Legacy
-            }
-        }
-        
-        // Create buttons for each slot
-        let cardWidth = min(dims.buttonWidth, isLandscape ? 400 : size.width * 0.8)
-        let cardHeight: CGFloat = isLandscape ? 65 : 75
-        let cardSpacing: CGFloat = isLandscape ? 12 : 15
-        var slotY: CGFloat = isLandscape ? 80 : 100
-        
-        for slot in saveSlots {
-            let displayText = slot.isEmpty ? "Slot \(slot.slotNumber) - Empty" : "Slot \(slot.slotNumber) - Overwrite: \(slot.displayName)"
-            let slotButton = MenuStyling.createCardButton(
-                text: displayText,
-                subtitle: nil,
-                size: CGSize(width: cardWidth, height: cardHeight),
-                position: CGPoint(x: 0.0, y: slotY),
-                name: "saveSlot_\(slot.slotNumber)",
-                isEmpty: slot.isEmpty
-            )
-            panelContainer.addChild(slotButton)
-            slotY -= (cardHeight + cardSpacing)
-        }
-        
-        // Close button
-        let closeY = isLandscape ? -dims.panelHeight / 2 + 50 : -dims.panelHeight / 2 + 60
-        let closeButton = MenuStyling.createModernButton(
-            text: "Cancel",
-            size: CGSize(width: min(150, dims.buttonWidth * 0.6), height: dims.buttonHeight * 0.8),
-            color: MenuStyling.dangerColor,
-            position: CGPoint(x: 0, y: closeY),
-            name: "closeSaveSlot",
-            fontSize: isLandscape ? 18 : 20
-        )
-        panelContainer.addChild(closeButton)
-    }
-    
-    func loadGame() {
-        // Show load slot selection screen
-        showLoadSlotSelection()
-    }
-    
-    func loadGame(fromSlot slot: Int) {
-        guard let loadedState = SaveManager.loadGame(fromSlot: slot) else {
-            showMessage("Failed to load game from slot \(slot)", color: .red)
-            return
-        }
-        
-        print("Game loaded successfully from slot \(slot)")
-        
-        // Replace current game state
-        gameState = loadedState
-        
-        // Restore the scene with loaded state
-        restoreGameFromState()
-        
-        showMessage("Game loaded from slot \(slot)!", color: .green)
-    }
-    
-    func showLoadSlotSelection() {
-        // Pause the game
-        isGamePaused = true
-        
-        // Create load slot selection UI (relative to camera)
-        guard let camera = cameraNode else { return }
-        let panel = SKShapeNode(rectOf: CGSize(width: size.width * 0.9, height: size.height * 0.8), cornerRadius: 12)
-        panel.fillColor = SKColor(white: 0.15, alpha: 0.98)
-        panel.strokeColor = SKColor(white: 0.9, alpha: 1.0)
-        panel.lineWidth = 3
-        panel.position = CGPoint(x: 0, y: 0) // Center relative to camera
-        panel.zPosition = 200
-        panel.name = "loadSlotPanel"
-        camera.addChild(panel)
-        
-        // Title background
-        let titleBg = SKShapeNode(rectOf: CGSize(width: panel.frame.width * 0.9, height: 50), cornerRadius: 8)
-        titleBg.fillColor = SKColor(red: 0.1, green: 0.4, blue: 0.6, alpha: 0.95)
-        titleBg.strokeColor = .white
-        titleBg.lineWidth = 2
-        titleBg.position = CGPoint(x: 0, y: 240)
-        panel.addChild(titleBg)
-        
-        let title = SKLabelNode(fontNamed: "Arial-BoldMT")
-        title.text = "Select Save Slot to Load"
-        title.fontSize = 28
-        title.fontColor = .white
-        title.position = CGPoint(x: 0, y: 0)
-        title.verticalAlignmentMode = .center
-        titleBg.addChild(title)
-        
-        // Get all save slots
-        let saveSlots = SaveManager.getAllSaveSlots()
-        
-        // Create buttons for each slot (only non-empty slots are clickable)
-        var slotY: CGFloat = 150
-        for slot in saveSlots {
-            let slotButton = createSaveSlotButtonForLoading(slot: slot, position: CGPoint(x: 0, y: slotY))
-            panel.addChild(slotButton)
-            slotY -= 90
-        }
-        
-        // Close button
-        let closeButton = SKShapeNode(rectOf: CGSize(width: 120, height: 50), cornerRadius: 8)
-        closeButton.fillColor = SKColor(red: 0.7, green: 0.1, blue: 0.1, alpha: 1.0)
-        closeButton.strokeColor = .white
-        closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: 0, y: -240)
-        closeButton.name = "closeLoadSlot"
-        
-        let closeLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
-        closeLabel.text = "Cancel"
-        closeLabel.fontSize = 20
-        closeLabel.fontColor = .white
-        closeLabel.verticalAlignmentMode = .center
-        closeLabel.isUserInteractionEnabled = false
-        closeButton.addChild(closeLabel)
-        panel.addChild(closeButton)
-    }
-    
-    func createSaveSlotButtonForLoading(slot: SaveSlot, position: CGPoint) -> SKNode {
-        let button = SKShapeNode(rectOf: CGSize(width: 400, height: 70), cornerRadius: 12)
-        button.fillColor = slot.isEmpty ? SKColor(white: 0.2, alpha: 0.8) : SKColor(red: 0.1, green: 0.4, blue: 0.6, alpha: 1.0)
-        button.strokeColor = .white
-        button.lineWidth = 2
-        button.position = position
-        button.name = slot.isEmpty ? "emptySlot_\(slot.slotNumber)" : "loadSlot_\(slot.slotNumber)"
-        button.zPosition = 1
-        
-        // Slot label
-        let label = SKLabelNode(fontNamed: slot.isEmpty ? "Arial" : "Arial-BoldMT")
-        label.text = slot.displayName
-        label.fontSize = slot.isEmpty ? 20 : 22
-        label.fontColor = slot.isEmpty ? SKColor(white: 0.6, alpha: 1.0) : .white
-        label.verticalAlignmentMode = .center
-        label.zPosition = 2
-        label.isUserInteractionEnabled = false
-        button.addChild(label)
-        
-        return button
-    }
-    
-    func showMessage(_ text: String, color: SKColor) {
-        guard let camera = cameraNode else { return }
-        
-        // Remove any existing message
-        camera.childNode(withName: "saveLoadMessage")?.removeFromParent()
-        
-        // Create message label
-        let message = SKLabelNode(fontNamed: "Arial-BoldMT")
-        message.text = text
-        message.fontSize = 24
-        message.fontColor = color
-        message.position = CGPoint(x: 0, y: -size.height / 2 + 100)
-        message.zPosition = 2000
-        message.name = "saveLoadMessage"
-        message.horizontalAlignmentMode = .center
-        camera.addChild(message)
-        
-        // Animate message appearance and fade out
-        message.alpha = 0
-        let fadeIn = SKAction.fadeIn(withDuration: 0.3)
-        let wait = SKAction.wait(forDuration: 2.0)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.3)
-        let remove = SKAction.removeFromParent()
-        let sequence = SKAction.sequence([fadeIn, wait, fadeOut, remove])
-        message.run(sequence)
-    }
-    
-    func attemptBuildStructure(type: StructureType) {
-        guard let player = gameState?.player, let world = gameState?.world else { return }
-        
-        // Check skills
-        let requiredSkills = type.requiredSkills
-        for (skill, minLevel) in requiredSkills {
-            if (player.buildingSkills[skill] ?? 0) < minLevel {
-                // Show error message
-                return
-            }
-        }
-        
-        // Check materials
-        let requiredMaterials = type.requiredMaterials
-        for (material, quantity) in requiredMaterials {
-            let hasQuantity = player.inventory
-                .compactMap { $0 as? Material }
-                .filter { $0.materialType == material }
-                .reduce(0) { $0 + $1.quantity }
-            
-            if hasQuantity < quantity {
-                // Show error message - need more materials
-                return
-            }
-        }
-        
-        // Build structure at player position
-        let structure = Structure(type: type, position: player.position)
-        if world.placeStructure(structure, at: player.position) {
-            gameState?.structures.append(structure)
-            // Re-render the world
-            if useTiledMap {
-                loadAndRenderTiledMap(fileName: tiledMapFileName)
-            } else {
-            renderWorld()
-            }
-        }
-    }
-    
     func showInventory() {
         // Pause the game
         isGamePaused = true
         
         // Create inventory UI (relative to camera)
-        guard let camera = cameraNode else { return }
-        let panel = SKShapeNode(rectOf: CGSize(width: size.width * 0.9, height: size.height * 0.8), cornerRadius: 12)
+        guard let camera = cameraNode, let player = gameState?.player else { return }
+        
+        let viewSize = getViewSize()
+        let isLandscape = viewSize.width > viewSize.height
+        
+        // Panel dimensions
+        let panelWidth = min(size.width * 0.9, isLandscape ? 800 : 600)
+        let panelHeight = min(size.height * 0.8, isLandscape ? 600 : 700)
+        
+        let panel = SKShapeNode(rectOf: CGSize(width: panelWidth, height: panelHeight), cornerRadius: 12)
         panel.fillColor = SKColor(white: 0.15, alpha: 0.98)
         panel.strokeColor = SKColor(white: 0.9, alpha: 1.0)
         panel.lineWidth = 3
@@ -2261,11 +2422,11 @@ extension GameScene {
         camera.addChild(panel)
         
         // Title background
-        let titleBg = SKShapeNode(rectOf: CGSize(width: panel.frame.width * 0.9, height: 50), cornerRadius: 8)
+        let titleBg = SKShapeNode(rectOf: CGSize(width: panelWidth * 0.9, height: 50), cornerRadius: 8)
         titleBg.fillColor = SKColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.95)
         titleBg.strokeColor = .cyan
         titleBg.lineWidth = 2
-        titleBg.position = CGPoint(x: 0, y: 240)
+        titleBg.position = CGPoint(x: 0, y: panelHeight / 2 - 40)
         panel.addChild(titleBg)
         
         let title = SKLabelNode(fontNamed: "Arial-BoldMT")
@@ -2276,33 +2437,107 @@ extension GameScene {
         title.verticalAlignmentMode = .center
         titleBg.addChild(title)
         
-        guard let player = gameState?.player else { return }
+        // Inventory slots configuration
+        let slotsPerRow = isLandscape ? 8 : 6
+        let numRows = isLandscape ? 6 : 8
+        let totalSlots = slotsPerRow * numRows
         
-        // Items list background
-        let itemsBg = SKShapeNode(rectOf: CGSize(width: panel.frame.width * 0.9, height: 400), cornerRadius: 8)
-        itemsBg.fillColor = SKColor(white: 0.1, alpha: 0.95)
-        itemsBg.strokeColor = .white
-        itemsBg.lineWidth = 2
-        itemsBg.position = CGPoint(x: 0, y: 20)
-        panel.addChild(itemsBg)
+        let slotSize: CGFloat = isLandscape ? 60 : 50
+        let slotSpacing: CGFloat = 8
+        let slotsAreaWidth = CGFloat(slotsPerRow) * slotSize + CGFloat(slotsPerRow - 1) * slotSpacing
+        let slotsAreaHeight = CGFloat(numRows) * slotSize + CGFloat(numRows - 1) * slotSpacing
         
-        var yOffset: CGFloat = 180
-        for item in player.inventory {
-            let itemLabel = SKLabelNode(fontNamed: "Arial")
-            itemLabel.text = "\(item.name) x\(item.quantity)"
-            itemLabel.fontSize = 18
-            itemLabel.fontColor = .white
-            itemLabel.position = CGPoint(x: -180, y: yOffset)
-            itemLabel.horizontalAlignmentMode = .left
-            itemsBg.addChild(itemLabel)
-            yOffset -= 35
+        // Slots container background
+        let slotsBg = SKShapeNode(rectOf: CGSize(width: slotsAreaWidth + 20, height: slotsAreaHeight + 20), cornerRadius: 8)
+        slotsBg.fillColor = SKColor(white: 0.1, alpha: 0.95)
+        slotsBg.strokeColor = .white
+        slotsBg.lineWidth = 2
+        slotsBg.position = CGPoint(x: 0, y: 0)
+        panel.addChild(slotsBg)
+        
+        // Create inventory slots
+        let startX = -slotsAreaWidth / 2 + slotSize / 2
+        let startY = slotsAreaHeight / 2 - slotSize / 2
+        
+        for row in 0..<numRows {
+            for col in 0..<slotsPerRow {
+                let slotIndex = row * slotsPerRow + col
+                
+                // Calculate slot position
+                let x = startX + CGFloat(col) * (slotSize + slotSpacing)
+                let y = startY - CGFloat(row) * (slotSize + slotSpacing)
+                
+                // Create slot background
+                let slotBg = SKShapeNode(rectOf: CGSize(width: slotSize, height: slotSize), cornerRadius: 4)
+                slotBg.fillColor = SKColor(white: 0.2, alpha: 0.8)
+                slotBg.strokeColor = SKColor(white: 0.5, alpha: 0.6)
+                slotBg.lineWidth = 1
+                slotBg.position = CGPoint(x: x, y: y)
+                slotBg.name = "inventorySlot_\(slotIndex)"
+                slotsBg.addChild(slotBg)
+                
+                // If we have an item for this slot, display it
+                if slotIndex < player.inventory.count {
+                    let item = player.inventory[slotIndex]
+                    
+                    // Create item sprite from GID if available
+                    if let gid = item.gid {
+                        let itemSize = CGSize(width: slotSize * 0.85, height: slotSize * 0.85)
+                        if let itemSprite = TileManager.shared.createSprite(for: gid, size: itemSize) {
+                            itemSprite.position = CGPoint(x: 0, y: 0)
+                            itemSprite.zPosition = 1
+                            itemSprite.name = "itemSprite_\(slotIndex)"
+                            slotBg.addChild(itemSprite)
+                        }
+                    } else {
+                        // Fallback: create a colored square with item name
+                        let fallbackSprite = SKSpriteNode(color: SKColor(red: 0.3, green: 0.3, blue: 0.7, alpha: 0.8), size: CGSize(width: slotSize * 0.7, height: slotSize * 0.7))
+                        fallbackSprite.position = CGPoint(x: 0, y: 0)
+                        fallbackSprite.zPosition = 1
+                        slotBg.addChild(fallbackSprite)
+                        
+                        // Add item name label (small)
+                        let nameLabel = SKLabelNode(fontNamed: "Arial")
+                        nameLabel.text = String(item.name.prefix(4)) // First 4 chars
+                        nameLabel.fontSize = 8
+                        nameLabel.fontColor = .white
+                        nameLabel.position = CGPoint(x: 0, y: 0)
+                        nameLabel.verticalAlignmentMode = .center
+                        nameLabel.zPosition = 2
+                        slotBg.addChild(nameLabel)
+                    }
+                    
+                    // Show quantity if > 1 or if stackable
+                    if item.quantity > 1 || item.stackable {
+                        let quantityLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+                        quantityLabel.text = "\(item.quantity)"
+                        quantityLabel.fontSize = 12
+                        quantityLabel.fontColor = .white
+                        quantityLabel.position = CGPoint(x: slotSize / 2 - 8, y: -slotSize / 2 + 8)
+                        quantityLabel.horizontalAlignmentMode = .right
+                        quantityLabel.verticalAlignmentMode = .bottom
+                        quantityLabel.zPosition = 3
+                        
+                        // Add background for quantity label
+                        let quantityBg = SKShapeNode(rectOf: CGSize(width: 20, height: 16), cornerRadius: 3)
+                        quantityBg.fillColor = SKColor(red: 0, green: 0, blue: 0, alpha: 0.7)
+                        quantityBg.strokeColor = .white
+                        quantityBg.lineWidth = 1
+                        quantityBg.position = CGPoint(x: slotSize / 2 - 10, y: -slotSize / 2 + 10)
+                        quantityBg.zPosition = 2
+                        slotBg.addChild(quantityBg)
+                        slotBg.addChild(quantityLabel)
+                    }
+                }
+            }
         }
         
+        // Close button
         let closeButton = SKShapeNode(rectOf: CGSize(width: 120, height: 50), cornerRadius: 8)
         closeButton.fillColor = SKColor(red: 0.7, green: 0.1, blue: 0.1, alpha: 1.0)
         closeButton.strokeColor = .white
         closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: 0, y: -240)
+        closeButton.position = CGPoint(x: 0, y: -panelHeight / 2 + 40)
         closeButton.name = "closeInventory"
         
         let closeLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
@@ -2312,6 +2547,14 @@ extension GameScene {
         closeLabel.verticalAlignmentMode = .center
         closeButton.addChild(closeLabel)
         panel.addChild(closeButton)
+    }
+    
+    // Helper function to get view size (for inventory UI)
+    private func getViewSize() -> CGSize {
+        guard let view = self.view else {
+            return size
+        }
+        return view.bounds.size
     }
     
     func showBuildMenu() {
@@ -2472,72 +2715,363 @@ extension GameScene {
         panelContainer.addChild(closeButton)
     }
     
-    func quitToMainMenu() {
-        guard let skView = self.view else { return }
-        
-        // Clean up game state
-        isGamePaused = false
-        
-        // Transition to start screen
-        let startScene = StartScreenScene(size: size)
-        startScene.scaleMode = .aspectFill
-        skView.presentScene(startScene, transition: SKTransition.fade(withDuration: 0.5))
-    }
-}
-#endif
-
-#if os(macOS)
-// Keyboard and mouse-based event handling
-extension GameScene {
-    override func keyDown(with event: NSEvent) {
-        guard !isGamePaused, !isInCombat, !isInDialogue else { return }
-        
-        let keyCode = event.keyCode
-        pressedKeys.insert(keyCode)
-        updateMovementFromKeys()
-    }
+    // MARK: - Object Interaction
     
-    override func keyUp(with event: NSEvent) {
-        let keyCode = event.keyCode
-        pressedKeys.remove(keyCode)
-        updateMovementFromKeys()
-    }
-    
-    func updateMovementFromKeys() {
-        var direction = CGPoint.zero
+    #if os(iOS) || os(tvOS)
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: self)
         
-        // Arrow key codes on macOS:
-        // 0x7B = Left Arrow
-        // 0x7C = Right Arrow
-        // 0x7D = Down Arrow
-        // 0x7E = Up Arrow
-        // Also support WASD:
-        // 0x00 = A (left)
-        // 0x02 = D (right)
-        // 0x01 = S (down)
-        // 0x0D = W (up)
-        
-        if pressedKeys.contains(0x7E) || pressedKeys.contains(0x0D) { // Up Arrow or W
-            direction.y += 1.0
-        }
-        if pressedKeys.contains(0x7D) || pressedKeys.contains(0x01) { // Down Arrow or S
-            direction.y -= 1.0
-        }
-        if pressedKeys.contains(0x7C) || pressedKeys.contains(0x02) { // Right Arrow or D
-            direction.x += 1.0
-        }
-        if pressedKeys.contains(0x7B) || pressedKeys.contains(0x00) { // Left Arrow or A
-            direction.x -= 1.0
-        }
-        
-        // Normalize direction if diagonal
-        let length = sqrt(direction.x * direction.x + direction.y * direction.y)
-        if length > 0 {
-            currentMovementDirection = CGPoint(x: direction.x / length, y: direction.y / length)
+        // Check if touching a dialogue button first
+        if isInDialogue {
+            handleDialogueInteraction(at: location)
         } else {
-            currentMovementDirection = CGPoint.zero
+            handleQuestionMarkInteraction(at: location)
         }
     }
+    #endif
+    
+    /// Handle dialogue button interactions
+    private func handleDialogueInteraction(at location: CGPoint) {
+        guard let camera = cameraNode else { return }
+        let touchedNodes = nodes(at: location)
+        
+        for node in touchedNodes {
+            if let name = node.name {
+                if name == "closeDialogue" {
+                    closeDialogue()
+                    return
+                } else if name.hasPrefix("dialogueResponse_") {
+                    if let indexString = name.components(separatedBy: "_").last,
+                       let index = Int(indexString) {
+                        handleDialogueResponse(index: index)
+                        return
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Handle interaction with question mark indicators
+    private func handleQuestionMarkInteraction(at location: CGPoint) {
+        guard let player = gameState?.player, !isInCombat, !isInDialogue else { return }
+        
+        // Find nodes at this location
+        let touchedNodes = nodes(at: location)
+        
+        // Check if clicking on a question mark
+        for node in touchedNodes {
+            if let name = node.name, name.hasPrefix("questionMark_") {
+                // Extract object ID from question mark name
+                let objectIdString = String(name.dropFirst("questionMark_".count))
+                if let objectId = Int(objectIdString) {
+                    // Find the object sprite with this ID
+                    for (sprite, object) in objectSprites {
+                        if object.id == objectId {
+                            startDialogueWithObject(object)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Collect an object and add it to player inventory (called from collision detection)
+    private func collectObject(_ object: TiledObject, sprite: SKSpriteNode) {
+        guard let player = gameState?.player else { return }
+        
+        // Create an item from the object
+        let itemName = object.name.isEmpty ? "Item" : object.name
+        let itemType: ItemType
+        
+        // Try to get item type from object properties
+        if let typeString = object.stringProperty("itemType"),
+           let parsedType = ItemType(rawValue: typeString) {
+            itemType = parsedType
+        } else {
+            // Default to food if not specified
+            itemType = .food
+        }
+        
+        // Get quantity from properties (default 1)
+        let quantity = Int(object.floatProperty("quantity", default: 1))
+        
+        // Get stackable property from Tiled object (default false)
+        let stackable = object.boolProperty("stackable", default: false)
+        
+        // Get GID from object (for displaying tile image)
+        let gid = object.gid
+        
+        // Create the item
+        let item = Item(
+            name: itemName,
+            type: itemType,
+            quantity: quantity,
+            description: object.stringProperty("description") ?? "",
+            value: Int(object.floatProperty("value", default: 0)),
+            gid: gid,
+            stackable: stackable
+        )
+        
+        // If stackable, try to merge with existing item of same type and GID
+        if stackable {
+            // Find existing item with same type and GID
+            if let existingIndex = player.inventory.firstIndex(where: { existingItem in
+                existingItem.type == itemType && existingItem.gid == gid && existingItem.stackable
+            }) {
+                // Merge quantities
+                player.inventory[existingIndex].quantity += quantity
+                print("✅ Stacked item: \(itemName) (type: \(itemType), total quantity: \(player.inventory[existingIndex].quantity))")
+                showMessage("Collected: \(itemName) x\(quantity) (Total: \(player.inventory[existingIndex].quantity))")
+            } else {
+                // No existing stackable item found, add as new item
+                player.inventory.append(item)
+                print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: true)")
+                showMessage("Collected: \(itemName) x\(quantity)")
+            }
+        } else {
+            // Not stackable, always add as new item
+            player.inventory.append(item)
+            print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: false)")
+            showMessage("Collected: \(itemName) x\(quantity)")
+        }
+        
+        // Remove object from scene
+        sprite.removeFromParent()
+        objectSprites.removeValue(forKey: sprite)
+        objectGroupNames.removeValue(forKey: sprite)
+    }
+    
+    /// Start dialogue with an object
+    func startDialogueWithObject(_ object: TiledObject) {
+        guard let player = gameState?.player else { return }
+        
+        print("💬 Starting dialogue with object '\(object.name)'")
+        
+        // Pause the game
+        isGamePaused = true
+        isInDialogue = true
+        
+        // Get dialogue text from object properties
+        let dialogueText = object.stringProperty("dialogueText") ?? 
+                          object.stringProperty("text") ?? 
+                          "Hello! I'm \(object.name.isEmpty ? "an object" : object.name)."
+        
+        // Create a simple dialogue node
+        let dialogueNode = DialogueNode(
+            text: dialogueText,
+            responses: [
+                DialogueResponse(text: "Goodbye", nextNodeId: nil)
+            ]
+        )
+        
+        // Show dialogue UI
+        showDialogueUI(dialogueNode, objectName: object.name.isEmpty ? "Object" : object.name)
+    }
+    
+    /// Show dialogue UI
+    private func showDialogueUI(_ dialogueNode: DialogueNode, objectName: String) {
+        guard let camera = cameraNode else { return }
+        
+        // Remove any existing dialogue UI
+        camera.childNode(withName: "dialoguePanel")?.removeFromParent()
+        
+        let dims = MenuStyling.getResponsiveDimensions(size: size)
+        let isLandscape = size.width > size.height
+        
+        // Create dialogue panel
+        let panelContainer = MenuStyling.createModernPanel(size: CGSize(width: dims.panelWidth * 0.9, height: dims.panelHeight * 0.4))
+        panelContainer.position = CGPoint(x: 0, y: -size.height * 0.25) // Bottom of screen
+        panelContainer.zPosition = 200
+        panelContainer.name = "dialoguePanel"
+        camera.addChild(panelContainer)
+        
+        // Get the actual panel node
+        guard let panel = panelContainer.children.first(where: { $0 is SKShapeNode }) as? SKShapeNode else { return }
+        
+        // Object name label
+        let nameLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+        nameLabel.text = objectName
+        nameLabel.fontSize = isLandscape ? 24 : 28
+        nameLabel.fontColor = .white
+        nameLabel.position = CGPoint(x: 0, y: panel.frame.height / 2 - 40)
+        nameLabel.zPosition = 10
+        panelContainer.addChild(nameLabel)
+        
+        // Dialogue text
+        let textLabel = SKLabelNode(fontNamed: "Arial")
+        textLabel.text = dialogueNode.text
+        textLabel.fontSize = isLandscape ? 18 : 20
+        textLabel.fontColor = .white
+        textLabel.position = CGPoint(x: 0, y: 0)
+        textLabel.zPosition = 10
+        textLabel.preferredMaxLayoutWidth = panel.frame.width * 0.8
+        textLabel.numberOfLines = 0
+        textLabel.lineBreakMode = .byWordWrapping
+        textLabel.verticalAlignmentMode = .center
+        panelContainer.addChild(textLabel)
+        
+        // Response buttons
+        var buttonY: CGFloat = -panel.frame.height / 2 + 60
+        for (index, response) in dialogueNode.responses.enumerated() {
+            let button = MenuStyling.createModernButton(
+                text: response.text,
+                size: CGSize(width: panel.frame.width * 0.8, height: 40),
+                color: MenuStyling.primaryColor,
+                position: CGPoint(x: 0, y: buttonY),
+                name: "dialogueResponse_\(index)",
+                fontSize: isLandscape ? 16 : 18
+            )
+            button.zPosition = 10
+            panelContainer.addChild(button)
+            buttonY -= 50
+        }
+        
+        // Close button (if no responses)
+        if dialogueNode.responses.isEmpty {
+            let closeButton = MenuStyling.createModernButton(
+                text: "Close",
+                size: CGSize(width: 120, height: 40),
+                color: MenuStyling.dangerColor,
+                position: CGPoint(x: 0, y: -panel.frame.height / 2 + 50),
+                name: "closeDialogue",
+                fontSize: isLandscape ? 16 : 18
+            )
+            closeButton.zPosition = 10
+            panelContainer.addChild(closeButton)
+        }
+    }
+    
+    /// Show a brief message to the player
+    private func showMessage(_ message: String) {
+        guard let camera = cameraNode else { return }
+        
+        // Remove any existing message
+        camera.childNode(withName: "messageLabel")?.removeFromParent()
+        
+        let messageLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+        messageLabel.text = message
+        messageLabel.fontSize = 24
+        messageLabel.fontColor = .white
+        messageLabel.position = CGPoint(x: 0, y: size.height * 0.3)
+        messageLabel.zPosition = 300
+        messageLabel.name = "messageLabel"
+        
+        // Add background
+        let background = SKShapeNode(rectOf: CGSize(width: messageLabel.frame.width + 40, height: messageLabel.frame.height + 20), cornerRadius: 8)
+        background.fillColor = SKColor(white: 0, alpha: 0.7)
+        background.strokeColor = .white
+        background.lineWidth = 2
+        background.position = CGPoint(x: 0, y: 0)
+        messageLabel.addChild(background)
+        messageLabel.insertChild(background, at: 0)
+        
+        camera.addChild(messageLabel)
+        
+        // Fade out after 2 seconds
+        let fadeOut = SKAction.fadeOut(withDuration: 0.5)
+        let remove = SKAction.removeFromParent()
+        messageLabel.run(SKAction.sequence([
+            SKAction.wait(forDuration: 2.0),
+            fadeOut,
+            remove
+        ]))
+    }
+    
+    /// Handle dialogue response selection
+    func handleDialogueResponse(index: Int) {
+        // For now, just close the dialogue
+        // You can extend this to handle multiple dialogue nodes
+        closeDialogue()
+    }
+    
+    /// Close the dialogue UI
+    func closeDialogue() {
+        guard let camera = cameraNode else { return }
+        camera.childNode(withName: "dialoguePanel")?.removeFromParent()
+        isGamePaused = false
+        isInDialogue = false
+    }
+    
+    /// Update question mark indicators for dialogue objects based on player proximity
+    private func updateQuestionMarkIndicators() {
+        guard let player = gameState?.player else { return }
+        
+        let playerPosition = player.position
+        let interactionRange: CGFloat = mapTileSize.width * 3.0  // 3 tiles away
+        
+        // Track which objects should have question marks
+        var objectsNeedingQuestionMarks: Set<Int> = []
+        
+        // Check all objects for dialogue capability
+        for (sprite, object) in objectSprites {
+            // Check if object has dialogue
+            let objectGroupName = objectGroupNames[sprite] ?? ""
+            let hasDialogue = object.boolProperty("dialogue", default: false) || 
+                             object.type?.lowercased() == "npc" ||
+                             object.type?.lowercased() == "dialogue"
+            
+            if hasDialogue {
+                // Calculate distance to player
+                let distance = sqrt(pow(sprite.position.x - playerPosition.x, 2) + pow(sprite.position.y - playerPosition.y, 2))
+                
+                if distance <= interactionRange {
+                    // Player is close enough - show question mark
+                    objectsNeedingQuestionMarks.insert(object.id)
+                    
+                    // Create or update question mark indicator
+                    if questionMarkIndicators[object.id] == nil {
+                        createQuestionMarkIndicator(for: object, sprite: sprite)
+                    } else {
+                        // Update position if it exists
+                        if let questionMark = questionMarkIndicators[object.id] {
+                            questionMark.position = CGPoint(x: sprite.position.x, y: sprite.position.y + sprite.size.height + 20)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Remove question marks for objects that are too far away
+        for (objectId, questionMark) in questionMarkIndicators {
+            if !objectsNeedingQuestionMarks.contains(objectId) {
+                questionMark.removeFromParent()
+                questionMarkIndicators.removeValue(forKey: objectId)
+            }
+        }
+    }
+    
+    /// Create a question mark indicator above an object
+    private func createQuestionMarkIndicator(for object: TiledObject, sprite: SKSpriteNode) {
+        // Create question mark label
+        let questionMark = SKLabelNode(fontNamed: "Arial-BoldMT")
+        questionMark.text = "?"
+        questionMark.fontSize = 32
+        questionMark.fontColor = .yellow
+        questionMark.position = CGPoint(x: sprite.position.x, y: sprite.position.y + sprite.size.height + 20)
+        questionMark.zPosition = sprite.zPosition + 1
+        questionMark.name = "questionMark_\(object.id)"
+        
+        // Add a background circle for visibility
+        let background = SKShapeNode(circleOfRadius: 20)
+        background.fillColor = SKColor(white: 0, alpha: 0.6)
+        background.strokeColor = .yellow
+        background.lineWidth = 2
+        background.position = CGPoint(x: 0, y: 0)
+        background.zPosition = -1
+        questionMark.addChild(background)
+        questionMark.insertChild(background, at: 0)
+        
+        // Add pulsing animation
+        let pulseUp = SKAction.scale(to: 1.2, duration: 0.5)
+        let pulseDown = SKAction.scale(to: 1.0, duration: 0.5)
+        let pulse = SKAction.sequence([pulseUp, pulseDown])
+        questionMark.run(SKAction.repeatForever(pulse))
+        
+        // Add to scene
+        addChild(questionMark)
+        questionMarkIndicators[object.id] = questionMark
+    }
 }
-#endif
 

@@ -62,6 +62,7 @@ struct TiledMap {
     let tileHeight: Int
     let tilesets: [TiledTileset]
     let layers: [TiledLayer]
+    let objectGroups: [TiledObjectGroup]  // Object layers (objectgroups)
 }
 
 /// Represents a chunk in an infinite map
@@ -98,6 +99,50 @@ struct TiledLayer {
     /// Get a string property, defaulting to nil if not found
     func stringProperty(_ name: String) -> String? {
         return properties[name]
+    }
+}
+
+/// Represents an object in a Tiled object layer
+struct TiledObject {
+    let id: Int
+    let name: String
+    let type: String?  // Object type (optional)
+    let x: CGFloat
+    let y: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let gid: Int?  // Global ID if object uses a tile (optional)
+    let properties: [String: String]  // Custom properties from Tiled
+    
+    /// Get a boolean property, defaulting to false if not found
+    func boolProperty(_ name: String, default: Bool = false) -> Bool {
+        guard let value = properties[name] else { return `default` }
+        return value.lowercased() == "true" || value == "1"
+    }
+    
+    /// Get a float property, defaulting to 0 if not found
+    func floatProperty(_ name: String, default: Float = 0) -> Float {
+        guard let value = properties[name], let floatValue = Float(value) else { return `default` }
+        return floatValue
+    }
+    
+    /// Get a string property, defaulting to nil if not found
+    func stringProperty(_ name: String) -> String? {
+        return properties[name]
+    }
+}
+
+/// Represents an object group (object layer) in a Tiled map
+struct TiledObjectGroup {
+    let id: Int
+    let name: String
+    let objects: [TiledObject]
+    let properties: [String: String]  // Custom properties from Tiled
+    
+    /// Get a boolean property, defaulting to false if not found
+    func boolProperty(_ name: String, default: Bool = false) -> Bool {
+        guard let value = properties[name] else { return `default` }
+        return value.lowercased() == "true" || value == "1"
     }
 }
 
@@ -168,13 +213,27 @@ class TiledMapParser {
             }
         }
         
+        // Parse object groups (object layers)
+        var objectGroups: [TiledObjectGroup] = []
+        let objectGroupStrings = extractAllTags(xmlString, tag: "objectgroup")
+        print("🔍 Found \(objectGroupStrings.count) objectgroup tags in TMX file")
+        for objectGroupString in objectGroupStrings {
+            if let objectGroup = parseObjectGroup(objectGroupString) {
+                print("✅ Parsed object group '\(objectGroup.name)' with \(objectGroup.objects.count) objects")
+                objectGroups.append(objectGroup)
+            } else {
+                print("⚠️ Failed to parse object group")
+            }
+        }
+        
         return TiledMap(
             width: width,
             height: height,
             tileWidth: tileWidth,
             tileHeight: tileHeight,
             tilesets: tilesets,
-            layers: layers
+            layers: layers,
+            objectGroups: objectGroups
         )
     }
     
@@ -339,6 +398,103 @@ class TiledMapParser {
         }
     }
     
+    /// Parse an objectgroup tag
+    private static func parseObjectGroup(_ objectGroupString: String) -> TiledObjectGroup? {
+        let id = Int(extractAttribute(objectGroupString, name: "id") ?? "0") ?? 0
+        let name = extractAttribute(objectGroupString, name: "name") ?? "objectgroup"
+        
+        // Parse properties
+        let properties = parseProperties(objectGroupString)
+        
+        // Parse all object tags within this objectgroup
+        // Objects can be either <object ... /> (self-closing) or <object ...></object>
+        var objects: [TiledObject] = []
+        var foundObjectIDs: Set<Int> = []
+        
+        // First try self-closing tags: <object ... />
+        let selfClosingPattern = "<object([^>]*)/>"
+        if let regex = try? NSRegularExpression(pattern: selfClosingPattern, options: []) {
+            let matches = regex.matches(in: objectGroupString, range: NSRange(objectGroupString.startIndex..., in: objectGroupString))
+            for match in matches {
+                if match.numberOfRanges > 0 {
+                    let range = Range(match.range(at: 0), in: objectGroupString)!
+                    let objectTag = String(objectGroupString[range])
+                    if let object = parseObject(objectTag) {
+                        if !foundObjectIDs.contains(object.id) {
+                            objects.append(object)
+                            foundObjectIDs.insert(object.id)
+                            print("   ✅ Parsed self-closing object: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
+                        }
+                    } else {
+                        print("   ⚠️ Failed to parse self-closing object tag: \(objectTag.prefix(100))")
+                    }
+                }
+            }
+        }
+        
+        // Then try regular tags with content (to catch any we might have missed)
+        let objectStrings = extractAllTags(objectGroupString, tag: "object")
+        for objectString in objectStrings {
+            // Extract just the opening tag (before any content)
+            if let tagStart = objectString.range(of: "<object"),
+               let tagEnd = objectString.range(of: ">", range: tagStart.upperBound..<objectString.endIndex) {
+                let objectTag = String(objectString[tagStart.lowerBound..<tagEnd.upperBound])
+                // Only add if we haven't already added this object (avoid duplicates)
+                if let object = parseObject(objectTag),
+                   !foundObjectIDs.contains(object.id) {
+                    objects.append(object)
+                    foundObjectIDs.insert(object.id)
+                    print("   ✅ Parsed object with content: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
+                }
+            } else if let object = parseObject(objectString),
+                      !foundObjectIDs.contains(object.id) {
+                objects.append(object)
+                foundObjectIDs.insert(object.id)
+                print("   ✅ Parsed object (fallback): id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
+            }
+        }
+        
+        print("   📦 Parsed \(objects.count) objects from object group '\(name)'")
+        
+        return TiledObjectGroup(id: id, name: name, objects: objects, properties: properties)
+    }
+    
+    /// Parse an object tag
+    private static func parseObject(_ objectString: String) -> TiledObject? {
+        let id = Int(extractAttribute(objectString, name: "id") ?? "0") ?? 0
+        let name = extractAttribute(objectString, name: "name") ?? ""
+        let type = extractAttribute(objectString, name: "type")
+        
+        // Parse position and size (required)
+        let x = CGFloat(Double(extractAttribute(objectString, name: "x") ?? "0") ?? 0)
+        let y = CGFloat(Double(extractAttribute(objectString, name: "y") ?? "0") ?? 0)
+        let width = CGFloat(Double(extractAttribute(objectString, name: "width") ?? "0") ?? 0)
+        let height = CGFloat(Double(extractAttribute(objectString, name: "height") ?? "0") ?? 0)
+        
+        // Parse GID if present (object uses a tile)
+        let gid: Int?
+        if let gidString = extractAttribute(objectString, name: "gid") {
+            gid = Int(gidString)
+        } else {
+            gid = nil
+        }
+        
+        // Parse properties
+        let properties = parseProperties(objectString)
+        
+        return TiledObject(
+            id: id,
+            name: name,
+            type: type,
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            gid: gid,
+            properties: properties
+        )
+    }
+    
     /// Parse properties from a tag (works for layers, objects, etc.)
     private static func parseProperties(_ tagString: String) -> [String: String] {
         var properties: [String: String] = [:]
@@ -453,18 +609,52 @@ class TiledMapParser {
     }
     
     /// Extract all occurrences of a tag
+    /// Handles both self-closing tags (<tag .../>) and tags with content (<tag>content</tag>)
     private static func extractAllTags(_ xml: String, tag: String) -> [String] {
-        let pattern = "<\(tag)[^>]*>([\\s\\S]*?)</\(tag)>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return []
+        var results: [String] = []
+        
+        // First, find all self-closing tags: <tag .../>
+        let selfClosingPattern = "<\(tag)([^>]*)/>"
+        if let regex = try? NSRegularExpression(pattern: selfClosingPattern, options: []) {
+            let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
+            for match in matches {
+                if match.numberOfRanges > 0 {
+                    let range = Range(match.range(at: 0), in: xml)!
+                    results.append(String(xml[range]))
+                }
+            }
         }
         
-        let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
-        return matches.compactMap { match -> String? in
-            guard match.numberOfRanges > 1 else { return nil }
-            let range = Range(match.range(at: 0), in: xml)!
-            return String(xml[range])
+        // Then, find all tags with content: <tag>content</tag>
+        let contentPattern = "<\(tag)[^>]*>([\\s\\S]*?)</\(tag)>"
+        if let regex = try? NSRegularExpression(pattern: contentPattern, options: []) {
+            let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
+            for match in matches {
+                if match.numberOfRanges > 0 {
+                    let range = Range(match.range(at: 0), in: xml)!
+                    let tagString = String(xml[range])
+                    // Only add if we haven't already added this tag (avoid duplicates from self-closing)
+                    // Check by comparing the opening tag portion
+                    if !results.contains(where: { existingTag in
+                        // Extract opening tag from both and compare
+                        if let existingStart = existingTag.range(of: "<\(tag)"),
+                           let newStart = tagString.range(of: "<\(tag)") {
+                            // Get up to 200 characters from the opening tag, or to the end if shorter
+                            let existingEnd = existingTag.index(existingStart.upperBound, offsetBy: 200, limitedBy: existingTag.endIndex) ?? existingTag.endIndex
+                            let newEnd = tagString.index(newStart.upperBound, offsetBy: 200, limitedBy: tagString.endIndex) ?? tagString.endIndex
+                            let existingOpening = String(existingTag[existingStart.lowerBound..<existingEnd])
+                            let newOpening = String(tagString[newStart.lowerBound..<newEnd])
+                            return existingOpening == newOpening
+                        }
+                        return false
+                    }) {
+                        results.append(tagString)
+                    }
+                }
+            }
         }
+        
+        return results
     }
     
     /// Extract an attribute value from a tag

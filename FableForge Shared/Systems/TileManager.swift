@@ -47,6 +47,7 @@ class TileManager {
     private var tiledTilesets: [TiledTileset] = []
     private var tiledTextures: [String: SKTexture] = [:]  // Cache tileset textures by image name
     private var extractedTextureCache: [String: SKTexture] = [:]  // Cache extracted tile textures by "tilesetName_row_col"
+    private var tilesetDimensionsCache: [String: (tilesPerRow: Int, tilesPerCol: Int)] = [:]  // Cache tileset dimensions to avoid calling cgImage() repeatedly
     
     // Mapping of tile types to positions in tileset (row, column)
     // If nil, will try individual images first, then fall back to colors
@@ -524,17 +525,26 @@ class TileManager {
         // The texture size in points already accounts for @2x/@3x scaling
         // So we should normalize using the texture size in points, not the pixel dimensions
         
-        // CRITICAL: Calculate tile layout based on ACTUAL image dimensions, not TMX dimensions
-        // The TMX file may have wrong dimensions, but the actual loaded image is what matters
-        // Get actual pixel dimensions to calculate how many tiles fit
-        let cgImage = tilesetTexture.cgImage()
-        let actualImageWidthPixels = CGFloat(cgImage.width)
-        let actualImageHeightPixels = CGFloat(cgImage.height)
-        
-        // Calculate how many tiles fit in the actual image (in pixels)
-        // This is the REAL layout of the image file, regardless of what TMX says
-        let tilesPerRow = max(1, Int(actualImageWidthPixels / CGFloat(tileset.tileWidth)))
-        let tilesPerCol = max(1, Int(actualImageHeightPixels / CGFloat(tileset.tileHeight)))
+        // CRITICAL PERFORMANCE FIX: Cache tileset dimensions to avoid calling cgImage() for every tile!
+        // cgImage() is a blocking call that's extremely slow when called thousands of times
+        let (tilesPerRow, tilesPerCol): (Int, Int)
+        if let cached = tilesetDimensionsCache[tileset.imageName] {
+            tilesPerRow = cached.tilesPerRow
+            tilesPerCol = cached.tilesPerCol
+        } else {
+            // Only call cgImage() once per tileset (not once per tile!)
+            let cgImage = tilesetTexture.cgImage()
+            let actualImageWidthPixels = CGFloat(cgImage.width)
+            let actualImageHeightPixels = CGFloat(cgImage.height)
+            
+            // Calculate how many tiles fit in the actual image (in pixels)
+            // This is the REAL layout of the image file, regardless of what TMX says
+            tilesPerRow = max(1, Int(actualImageWidthPixels / CGFloat(tileset.tileWidth)))
+            tilesPerCol = max(1, Int(actualImageHeightPixels / CGFloat(tileset.tileHeight)))
+            
+            // Cache the dimensions for this tileset
+            tilesetDimensionsCache[tileset.imageName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol)
+        }
         
         // Validate that row/col are within actual bounds
         guard row < tilesPerCol && col < tilesPerRow else {

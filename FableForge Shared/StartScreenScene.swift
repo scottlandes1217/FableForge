@@ -26,12 +26,22 @@ class StartScreenScene: SKScene {
     var selectedCharacter: GameCharacter?
     var characterToDelete: GameCharacter?  // Character pending deletion confirmation
     
+    // Scrolling state
+    var scrollContainer: SKNode?
+    var isScrolling: Bool = false
+    var lastTouchLocation: CGPoint = .zero
+    var scrollMinY: CGFloat = 0
+    var scrollMaxY: CGFloat = 0
+    
+    // Prevent touch events immediately after state transitions
+    var isTransitioning: Bool = false
+    
     override func didMove(to view: SKView) {
         // Update size to match view
         size = view.bounds.size
         
-        // Set background color
-        backgroundColor = SKColor(red: 0.1, green: 0.1, blue: 0.15, alpha: 1.0)
+        // Set background color (parchment/paper texture background)
+        backgroundColor = SKColor(red: 0.88, green: 0.82, blue: 0.72, alpha: 1.0)
         
         // Check for save file
         checkForSaveFile()
@@ -104,7 +114,7 @@ class StartScreenScene: SKScene {
         let logoMain = SKLabelNode(fontNamed: "Arial-BoldMT")
         logoMain.text = "DOMATERRA"
         logoMain.fontSize = titleFontSize
-        logoMain.fontColor = MenuStyling.secondaryColor
+        logoMain.fontColor = MenuStyling.bookAccent
         logoMain.zPosition = 2
         logoContainer.addChild(logoMain)
         
@@ -112,7 +122,7 @@ class StartScreenScene: SKScene {
         let subtitle = SKLabelNode(fontNamed: "Arial")
         subtitle.text = "A World of Adventure"
         subtitle.fontSize = subtitleFontSize
-        subtitle.fontColor = MenuStyling.lightText
+        subtitle.fontColor = MenuStyling.inkColor
         let subtitleY = isLandscape ? -titleFontSize * 0.6 : -titleFontSize * 0.7
         subtitle.position = CGPoint(x: 0, y: subtitleY)
         subtitle.zPosition = 2
@@ -129,7 +139,7 @@ class StartScreenScene: SKScene {
         let prompt = SKLabelNode(fontNamed: "Arial")
         prompt.text = "Tap to Continue"
         prompt.fontSize = isLandscape ? min(18, size.width * 0.03) : min(20, size.height * 0.03)
-        prompt.fontColor = MenuStyling.lightText
+        prompt.fontColor = MenuStyling.inkMuted
         prompt.position = CGPoint(x: size.width / 2, y: promptY)
         prompt.zPosition = 10
         addChild(prompt)
@@ -328,15 +338,15 @@ class StartScreenScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
-        // Modern panel
-        let panel = MenuStyling.createModernPanel(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
+        // Book page panel
+        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
         panel.zPosition = 1
         addChild(panel)
         
-        // Modern title
+        // Book title
         let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 40 : size.height / 2 + dims.panelHeight / 2 - 50
-        let title = MenuStyling.createModernTitle(text: "Main Menu", position: CGPoint(x: size.width / 2, y: titleY))
+        let title = MenuStyling.createBookTitle(text: "Main Menu", position: CGPoint(x: size.width / 2, y: titleY))
         title.zPosition = 10
         addChild(title)
         
@@ -350,10 +360,10 @@ class StartScreenScene: SKScene {
         
         // Continue button (only show if save exists)
         if hasSaveFile {
-            let continueButton = MenuStyling.createModernButton(
+            let continueButton = MenuStyling.createBookButton(
                 text: "Continue",
                 size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
-                color: MenuStyling.accentColor,
+                color: MenuStyling.parchmentBg,
                 position: CGPoint(x: 0.0, y: buttonY),
                 name: "continueButton",
                 fontSize: isLandscape ? 22 : 26
@@ -363,10 +373,10 @@ class StartScreenScene: SKScene {
         }
         
         // Start New Game button
-        let newGameButton = MenuStyling.createModernButton(
+        let newGameButton = MenuStyling.createBookButton(
             text: "Start New Game",
             size: CGSize(width: dims.buttonWidth, height: dims.buttonHeight),
-            color: MenuStyling.secondaryColor,
+            color: MenuStyling.parchmentBg,
             position: CGPoint(x: 0.0, y: buttonY),
             name: "newGameButton",
             fontSize: isLandscape ? 22 : 26
@@ -379,32 +389,49 @@ class StartScreenScene: SKScene {
         removeAllChildren()
         currentState = .characterSelection
         
+        // Reset scroll state
+        scrollContainer = nil
+        isScrolling = false
+        
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
-        // Modern panel
-        let panel = MenuStyling.createModernPanel(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
+        // Book page panel
+        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
         panel.zPosition = 1
         panel.name = "characterSelectionPanel"
         addChild(panel)
         
-        // Modern title
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 40 : size.height / 2 + dims.panelHeight / 2 - 50
-        let title = MenuStyling.createModernTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
+        // Book title - moved down to avoid border overlap
+        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 70 : size.height / 2 + dims.panelHeight / 2 - 80
+        let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
         title.zPosition = 10
         addChild(title)
         
         // Get all characters
         let characters = SaveManager.getAllCharacters()
         
-        // Scrollable container for characters
-        let container = SKNode()
-        let containerY = isLandscape ? size.height / 2 + 20 : size.height / 2 + 30
-        container.position = CGPoint(x: size.width / 2, y: containerY)
-        container.zPosition = 10
-        container.name = "characterContainer"
-        addChild(container)
+        // Back button (calculate position first to determine available space)
+        // Moved down to ensure it's below the border (border margin is 15px, button needs space)
+        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 75 : size.height / 2 - dims.panelHeight / 2 + 85
+        
+        // Calculate available space for characters
+        // Top boundary: below title (with some spacing)
+        let titleHeight: CGFloat = isLandscape ? 30 : 34
+        let titleBottom = titleY - titleHeight / 2
+        let topSpacing: CGFloat = isLandscape ? 20 : 25
+        let containerTop = titleBottom - topSpacing
+        
+        // Bottom boundary: above back button (with spacing)
+        let backButtonHeight = dims.buttonHeight
+        let backButtonTop = backY + backButtonHeight / 2
+        let bottomSpacing: CGFloat = isLandscape ? 20 : 25
+        let containerBottom = backButtonTop + bottomSpacing
+        
+        // Available height for the container
+        let availableHeight = containerTop - containerBottom
+        let containerCenterY = (containerTop + containerBottom) / 2
         
         // Calculate card dimensions - ensure they fit properly in both orientations
         let deleteButtonWidth: CGFloat = isLandscape ? 50 : 55
@@ -415,7 +442,28 @@ class StartScreenScene: SKScene {
         let cardHeight: CGFloat = isLandscape ? 70 : 80
         let cardSpacing: CGFloat = isLandscape ? 12 : 14
         
-        var charY: CGFloat = isLandscape ? 100 : 110
+        // Create scrollable container with clipping
+        let container = SKNode()
+        container.position = CGPoint(x: 0, y: 0) // Position will be set on the crop node
+        container.name = "characterContainer"
+        
+        // Create clipping mask
+        let cropNode = SKCropNode()
+        let mask = SKShapeNode(rectOf: CGSize(width: totalCardWidth + 40, height: availableHeight))
+        mask.fillColor = .white
+        mask.strokeColor = .clear
+        cropNode.maskNode = mask
+        cropNode.position = CGPoint(x: size.width / 2, y: containerCenterY)
+        cropNode.zPosition = 10
+        cropNode.name = "characterCropNode"
+        cropNode.addChild(container)
+        addChild(cropNode)
+        
+        // Position characters starting from top of available space
+        // Account for card height to ensure top card isn't cut off
+        let topPadding = cardHeight / 2 + (isLandscape ? 10 : 15) // Half card height + small padding
+        let startY = availableHeight / 2 - topPadding
+        var charY = startY
         for character in characters {
             let formatter = DateFormatter()
             formatter.dateStyle = .short
@@ -432,7 +480,7 @@ class StartScreenScene: SKScene {
             let deleteButtonX = (cardWidth + deleteButtonSpacing) / 2
             
             // Main character button (left side, clickable)
-            let charButton = MenuStyling.createCardButton(
+            let charButton = MenuStyling.createBookCardButton(
                 text: character.displayName,
                 subtitle: subtitle,
                 size: CGSize(width: cardWidth, height: cardHeight),
@@ -443,10 +491,10 @@ class StartScreenScene: SKScene {
             
             // Delete button (right side)
             let deleteButtonSize = CGSize(width: deleteButtonWidth, height: cardHeight - 6)
-            let deleteButton = MenuStyling.createModernButton(
+            let deleteButton = MenuStyling.createBookButton(
                 text: "✕",
                 size: deleteButtonSize,
-                color: MenuStyling.dangerColor,
+                color: MenuStyling.parchmentDark,
                 position: CGPoint(x: deleteButtonX, y: 0.0),
                 name: "deleteCharacter_\(character.id.uuidString)",
                 fontSize: isLandscape ? 22 : 24
@@ -456,8 +504,47 @@ class StartScreenScene: SKScene {
             charY -= (cardHeight + cardSpacing)
         }
         
-        // Back button
-        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 50 : size.height / 2 - dims.panelHeight / 2 + 60
+        // Calculate scroll bounds
+        // After loop, charY is the position where the NEXT item would be centered
+        // So we need to go back one step to get the last item's center
+        let lastItemCenterY: CGFloat
+        if !characters.isEmpty {
+            lastItemCenterY = charY + (cardHeight + cardSpacing)
+        } else {
+            lastItemCenterY = startY
+        }
+        let firstItemTop = startY + cardHeight / 2
+        let lastItemBottom = lastItemCenterY - cardHeight / 2
+        let contentHeight = firstItemTop - lastItemBottom
+        print("📊 Scroll calculation: contentHeight=\(contentHeight), availableHeight=\(availableHeight), firstItemTop=\(firstItemTop), lastItemBottom=\(lastItemBottom)")
+        if contentHeight > availableHeight {
+            // Content exceeds available space, enable scrolling
+            // The container starts at position 0 relative to the crop node
+            // The visible area extends from -availableHeight/2 to +availableHeight/2 relative to crop node center
+            // When container is at 0:
+            //   - First item top is at firstItemTop relative to container center
+            //   - Last item bottom is at lastItemBottom relative to container center (negative, below center)
+            // In SpriteKit, moving container UP (positive Y) makes content appear to move DOWN on screen
+            // To show the bottom content, we need to move container UP so lastItemBottom aligns with -availableHeight/2
+            // When container is at position Y: lastItemBottom + Y = -availableHeight/2
+            // So: Y = -availableHeight/2 - lastItemBottom
+            // This gives us a positive Y (container moves up to show bottom content)
+            let scrollDownAmount = -availableHeight / 2 - lastItemBottom
+            scrollMinY = 0 // Start position, showing top content
+            scrollMaxY = scrollDownAmount // Maximum scroll down (positive Y to show bottom content)
+            scrollContainer = container
+            // Ensure container starts at the correct position
+            container.position.y = 0
+            print("✅ Scrolling enabled: scrollMinY=\(scrollMinY), scrollMaxY=\(scrollMaxY), container start Y=\(container.position.y)")
+        } else {
+            // Content fits, no scrolling needed
+            scrollContainer = nil
+            scrollMinY = 0
+            scrollMaxY = 0
+            print("⚠️ Scrolling disabled: content fits")
+        }
+        
+        // Back button - ensure it's on top of everything
         let backButton = MenuStyling.createModernButton(
             text: "Back",
             size: CGSize(width: min(200, dims.buttonWidth * 0.7), height: dims.buttonHeight),
@@ -466,7 +553,7 @@ class StartScreenScene: SKScene {
             name: "backButton",
             fontSize: isLandscape ? 20 : 24
         )
-        backButton.zPosition = 10
+        backButton.zPosition = 1000 // High zPosition to ensure it's on top
         addChild(backButton)
     }
     
@@ -476,19 +563,23 @@ class StartScreenScene: SKScene {
         currentState = .saveSlotSelection
         selectedCharacter = character
         
+        // Reset scroll state
+        scrollContainer = nil
+        isScrolling = false
+        
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
-        // Modern panel
-        let panel = MenuStyling.createModernPanel(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
+        // Book page panel
+        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
         panel.zPosition = 1
         panel.name = "saveSlotPanel"
         addChild(panel)
         
-        // Modern title
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 40 : size.height / 2 + dims.panelHeight / 2 - 50
-        let title = MenuStyling.createModernTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
+        // Book title - moved down to avoid border overlap
+        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 70 : size.height / 2 + dims.panelHeight / 2 - 80
+        let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
         title.zPosition = 10
         addChild(title)
         
@@ -497,7 +588,7 @@ class StartScreenScene: SKScene {
         let charName = SKLabelNode(fontNamed: "Arial")
         charName.text = character.displayName
         charName.fontSize = isLandscape ? 20 : 24
-        charName.fontColor = MenuStyling.mutedText
+        charName.fontColor = MenuStyling.inkMuted
         charName.position = CGPoint(x: size.width / 2, y: charNameY)
         charName.zPosition = 10
         addChild(charName)
@@ -505,21 +596,56 @@ class StartScreenScene: SKScene {
         // Get all save slots for this character
         let saveSlots = SaveManager.getAllSaveSlots(characterId: character.id)
         
-        // Scrollable container for save slots
-        let container = SKNode()
-        let containerY = isLandscape ? size.height / 2 + 20 : size.height / 2 + 30
-        container.position = CGPoint(x: size.width / 2, y: containerY)
-        container.zPosition = 10
-        container.name = "saveSlotContainer"
-        addChild(container)
+        // Back button (calculate position first to determine available space)
+        // Moved down to ensure it's below the border (border margin is 15px, button needs space)
+        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 75 : size.height / 2 - dims.panelHeight / 2 + 85
         
+        // Calculate available space for save slots
+        // Top boundary: below character name (with some spacing)
+        let charNameHeight: CGFloat = isLandscape ? 20 : 24
+        let charNameBottom = charNameY - charNameHeight / 2
+        let topSpacing: CGFloat = isLandscape ? 20 : 25
+        let containerTop = charNameBottom - topSpacing
+        
+        // Bottom boundary: above back button (with spacing)
+        let backButtonHeight = dims.buttonHeight
+        let backButtonTop = backY + backButtonHeight / 2
+        let bottomSpacing: CGFloat = isLandscape ? 20 : 25
+        let containerBottom = backButtonTop + bottomSpacing
+        
+        // Available height for the container
+        let availableHeight = containerTop - containerBottom
+        let containerCenterY = (containerTop + containerBottom) / 2
+        
+        // Card dimensions
         let cardWidth = min(dims.buttonWidth, isLandscape ? 400 : size.width * 0.8)
         let cardHeight: CGFloat = isLandscape ? 70 : 85
         let cardSpacing: CGFloat = isLandscape ? 12 : 15
         
-        var slotY: CGFloat = isLandscape ? 100 : 120
+        // Create scrollable container with clipping
+        let container = SKNode()
+        container.position = CGPoint(x: 0, y: 0) // Position will be set on the crop node
+        container.name = "saveSlotContainer"
+        
+        // Create clipping mask
+        let cropNode = SKCropNode()
+        let mask = SKShapeNode(rectOf: CGSize(width: cardWidth + 40, height: availableHeight))
+        mask.fillColor = .white
+        mask.strokeColor = .clear
+        cropNode.maskNode = mask
+        cropNode.position = CGPoint(x: size.width / 2, y: containerCenterY)
+        cropNode.zPosition = 10
+        cropNode.name = "saveSlotCropNode"
+        cropNode.addChild(container)
+        addChild(cropNode)
+        
+        // Position slots starting from top of available space
+        // Account for card height to ensure top card isn't cut off
+        let topPadding = cardHeight / 2 + (isLandscape ? 10 : 15) // Half card height + small padding
+        let startY = availableHeight / 2 - topPadding
+        var slotY = startY
         for slot in saveSlots {
-            let slotButton = MenuStyling.createCardButton(
+            let slotButton = MenuStyling.createBookCardButton(
                 text: slot.displayName,
                 subtitle: nil,
                 size: CGSize(width: cardWidth, height: cardHeight),
@@ -531,17 +657,47 @@ class StartScreenScene: SKScene {
             slotY -= (cardHeight + cardSpacing)
         }
         
-        // Back button
-        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 50 : size.height / 2 - dims.panelHeight / 2 + 60
-        let backButton = MenuStyling.createModernButton(
+        // Calculate scroll bounds
+        // After loop, slotY is the center position for the next item
+        // Last item center is at slotY + (cardHeight + cardSpacing)
+        // Content height: from first item top to last item bottom
+        let lastItemCenterY = slotY + (cardHeight + cardSpacing)
+        let firstItemTop = startY + cardHeight / 2
+        let lastItemBottom = lastItemCenterY - cardHeight / 2
+        let contentHeight = firstItemTop - lastItemBottom
+        if contentHeight > availableHeight {
+            // Content exceeds available space, enable scrolling
+            // The container starts at position 0 relative to the crop node
+            // The visible area extends from -availableHeight/2 to +availableHeight/2 relative to crop node center
+            // When container is at 0, lastItemBottom is relative to container center (negative, below center)
+            // In SpriteKit, moving container UP (positive Y) makes content appear to move DOWN on screen
+            // To show the bottom content, we need to move container UP so lastItemBottom aligns with -availableHeight/2
+            // When container is at position Y: lastItemBottom + Y = -availableHeight/2
+            // So: Y = -availableHeight/2 - lastItemBottom
+            // This gives us a positive Y (container moves up to show bottom content)
+            let scrollDownAmount = -availableHeight / 2 - lastItemBottom
+            scrollMinY = 0 // Start position, showing top content
+            scrollMaxY = scrollDownAmount // Maximum scroll down (positive Y to show bottom content)
+            scrollContainer = container
+            // Ensure container starts at the correct position
+            container.position.y = 0
+        } else {
+            // Content fits, no scrolling needed
+            scrollContainer = nil
+            scrollMinY = 0
+            scrollMaxY = 0
+        }
+        
+        // Back button - ensure it's on top of everything
+        let backButton = MenuStyling.createBookButton(
             text: "Back",
             size: CGSize(width: min(200, dims.buttonWidth * 0.7), height: dims.buttonHeight),
-            color: MenuStyling.dangerColor,
+            color: MenuStyling.parchmentDark,
             position: CGPoint(x: size.width / 2, y: backY),
             name: "backButton",
             fontSize: isLandscape ? 20 : 24
         )
-        backButton.zPosition = 10
+        backButton.zPosition = 1000 // High zPosition to ensure it's on top
         addChild(backButton)
     }
     
@@ -563,25 +719,275 @@ class StartScreenScene: SKScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
+        
+        // Ignore touches during transitions
+        if isTransitioning {
+            return
+        }
+        
+        // Check if we're in a scrollable area
+        if scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) {
+            // Check if touch is in the crop node area or on any scrollable content
+            if let cropNode = childNode(withName: currentState == .characterSelection ? "characterCropNode" : "saveSlotCropNode") {
+                // Convert location to crop node's coordinate space for accurate bounds checking
+                let locationInCropNode = convert(location, to: cropNode)
+                
+                // Check if touch is within crop node bounds
+                if cropNode.contains(location) || cropNode.frame.contains(locationInCropNode) {
+                    // Initialize scroll state
+                    isScrolling = false
+                    lastTouchLocation = location
+                    return // Don't handle as button click yet
+                }
+                // Also check if touch is on any node that's a descendant of the scroll container
+                // Check all nodes at this location to find if any are descendants of scrollContainer
+                let nodesAtLocation = nodes(at: location)
+                for node in nodesAtLocation {
+                    var currentNode: SKNode? = node
+                    while let current = currentNode {
+                        if current == scrollContainer || current.parent == scrollContainer {
+                            // Touch is on scrollable content
+                            isScrolling = false
+                            lastTouchLocation = location
+                            return // Don't handle as button click yet
+                        }
+                        currentNode = current.parent
+                    }
+                }
+            }
+        }
+        
         handleTouch(location: location)
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        guard scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) else { return }
+        
+        // Only process if we have a valid lastTouchLocation (from touchesBegan in scrollable area)
+        guard lastTouchLocation != .zero else { return }
+        
+        let location = touch.location(in: self)
+        let deltaY = location.y - lastTouchLocation.y
+        
+        // If movement is significant, start scrolling
+        if abs(deltaY) > 5 {
+            isScrolling = true
+            
+            // Update container position
+            // Dragging down (positive deltaY) should scroll down (show content below) = container moves down (toward scrollMinY, negative Y)
+            // Dragging up (negative deltaY) should scroll up (show content above) = container moves up (toward 0, positive Y)
+            let currentY = scrollContainer!.position.y
+            let proposedY = currentY - deltaY
+            let clampedY = min(scrollMaxY, proposedY)
+            let newY = max(scrollMinY, clampedY)
+            print("📜 touchesMoved: currentY=\(currentY), deltaY=\(deltaY), proposedY=\(proposedY), clampedY=\(clampedY), newY=\(newY), bounds=[\(scrollMinY), \(scrollMaxY)]")
+            scrollContainer!.position.y = newY
+        }
+        
+        lastTouchLocation = location
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) else {
+            // Not in scrollable area, handle normally
+            return
+        }
+        
+        // Ignore touches during transitions
+        if isTransitioning {
+            return
+        }
+        
+        // If we were scrolling, don't trigger button clicks
+        if isScrolling {
+            isScrolling = false
+            return
+        }
+        
+        // Otherwise, handle as a tap
+        if let touch = touches.first {
+            let location = touch.location(in: self)
+            handleTouch(location: location)
+        }
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isScrolling = false
+        lastTouchLocation = .zero
     }
     #endif
     
     #if os(macOS)
+    var mouseDownLocation: CGPoint = .zero
+    
     override func mouseDown(with event: NSEvent) {
         let location = event.location(in: self)
+        mouseDownLocation = location
         print("🟢 StartScreenScene: mouseDown at (\(Int(location.x)), \(Int(location.y))), currentState: \(currentState)")
+        
+        // Ignore clicks during transitions
+        if isTransitioning {
+            mouseDownLocation = .zero
+            return
+        }
+        
+        // Always initialize scroll state if we're in a scrollable area
+        if scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) {
+            // Check if click is in the crop node area or on any scrollable content
+            if let cropNode = childNode(withName: currentState == .characterSelection ? "characterCropNode" : "saveSlotCropNode") {
+                // Convert location to crop node's coordinate space for accurate bounds checking
+                let locationInCropNode = convert(location, to: cropNode)
+                
+                // Check if click is within crop node bounds
+                if cropNode.contains(location) || cropNode.frame.contains(locationInCropNode) {
+                    // Initialize scroll state - track this as a potential scroll
+                    isScrolling = false
+                    lastTouchLocation = location
+                    print("✅ mouseDown: Set lastTouchLocation=\(location) (cropNode)")
+                    return // Don't handle as button click yet - wait for mouseUp/mouseDragged
+                }
+                // Also check if click is on any node that's a descendant of the scroll container
+                // Check all nodes at this location to find if any are descendants of scrollContainer
+                let nodesAtLocation = nodes(at: location)
+                for node in nodesAtLocation {
+                    var currentNode: SKNode? = node
+                    while let current = currentNode {
+                        if current == scrollContainer || current.parent == scrollContainer {
+                            // Click is on scrollable content
+                            isScrolling = false
+                            lastTouchLocation = location
+                            print("✅ mouseDown: Set lastTouchLocation=\(location) (scrollContainer descendant)")
+                            return // Don't handle as button click yet - wait for mouseUp/mouseDragged
+                        }
+                        currentNode = current.parent
+                    }
+                }
+                print("❌ mouseDown: Click not in scrollable area (checked \(nodesAtLocation.count) nodes at \(location))")
+            }
+        }
+        
+        // Not in scrollable area, handle as click immediately
         handleTouch(location: location)
+    }
+    
+    override func mouseDragged(with event: NSEvent) {
+        print("🖱️ mouseDragged called")
+        guard scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) else {
+            print("❌ mouseDragged: scrollContainer=nil or wrong state")
+            return
+        }
+        
+        let location = event.location(in: self)
+        
+        // Only process if we have a valid lastTouchLocation (from mouseDown in scrollable area)
+        guard lastTouchLocation != .zero else {
+            print("❌ mouseDragged: lastTouchLocation is zero")
+            return
+        }
+        
+        let deltaY = location.y - lastTouchLocation.y
+        print("🖱️ mouseDragged: deltaY=\(deltaY), location=\(location), lastTouchLocation=\(lastTouchLocation)")
+        
+        // If movement is significant, start scrolling
+        if abs(deltaY) > 5 {
+            isScrolling = true
+            
+            // Update container position
+            // Dragging down (positive deltaY) should scroll down (show content below) = container moves down (toward scrollMinY, negative Y)
+            // Dragging up (negative deltaY) should scroll up (show content above) = container moves up (toward 0, positive Y)
+            let currentY = scrollContainer!.position.y
+            let proposedY = currentY - deltaY
+            let clampedY = min(scrollMaxY, proposedY)
+            let newY = max(scrollMinY, clampedY)
+            print("📜 mouseDragged: currentY=\(currentY), deltaY=\(deltaY), proposedY=\(proposedY), clampedY=\(clampedY), newY=\(newY), bounds=[\(scrollMinY), \(scrollMaxY)]")
+            scrollContainer!.position.y = newY
+            
+            lastTouchLocation = location
+        }
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        let location = event.location(in: self)
+        
+        // Ignore clicks during transitions
+        if isTransitioning {
+            mouseDownLocation = .zero
+            return
+        }
+        
+        // If we were scrolling, don't trigger button clicks
+        if isScrolling {
+            isScrolling = false
+            lastTouchLocation = .zero
+            return
+        }
+        
+        // Reset scroll tracking
+        lastTouchLocation = .zero
+        
+        // If we initialized scroll tracking (clicked in scrollable area), handle as click
+        if mouseDownLocation != .zero {
+            handleTouch(location: location)
+            mouseDownLocation = .zero
+        }
+    }
+    
+    override func scrollWheel(with event: NSEvent) {
+        print("🖱️ scrollWheel called: scrollingDeltaY=\(event.scrollingDeltaY), hasPreciseScrollingDeltas=\(event.hasPreciseScrollingDeltas)")
+        guard scrollContainer != nil && (currentState == .characterSelection || currentState == .saveSlotSelection) else {
+            print("❌ scrollWheel: scrollContainer=nil or wrong state")
+            return
+        }
+        
+        // Handle trackpad/mouse wheel scrolling
+        // event.scrollingDeltaY is positive when scrolling up, negative when scrolling down
+        // Scrolling up should show content above (container moves up/positive Y)
+        // Scrolling down should show content below (container moves down/negative Y)
+        // Use precise scrolling deltas if available (trackpad), otherwise use regular deltas (mouse wheel)
+        let deltaY: CGFloat
+        if event.hasPreciseScrollingDeltas {
+            // Trackpad: deltas are already smooth, use a moderate scale
+            deltaY = event.scrollingDeltaY * 1.0
+        } else {
+            // Mouse wheel: deltas are larger, use a smaller scale
+            deltaY = event.scrollingDeltaY * 2.0
+        }
+        
+        // Update container position
+        // Scrolling up (positive scrollingDeltaY) should show content above (container moves up toward 0, positive Y)
+        // Scrolling down (negative scrollingDeltaY) should show content below (container moves down toward scrollMinY, negative Y)
+        // Invert deltaY: positive scrollingDeltaY (scroll up) moves container up (positive Y), negative scrollingDeltaY (scroll down) moves container down (negative Y)
+        let currentY = scrollContainer!.position.y
+        let proposedY = currentY - deltaY
+        let clampedY = min(scrollMaxY, proposedY)
+        let newY = max(scrollMinY, clampedY)
+        print("📜 scrollWheel: currentY=\(currentY), deltaY=\(deltaY), proposedY=\(proposedY), clampedY=\(clampedY), newY=\(newY), bounds=[\(scrollMinY), \(scrollMaxY)]")
+        scrollContainer!.position.y = newY
     }
     #endif
     
     func handleTouch(location: CGPoint) {
         print("🟢 StartScreenScene: handleTouch called, currentState: \(currentState)")
+        
+        // Ignore touches during transitions
+        if isTransitioning {
+            return
+        }
+        
         switch currentState {
         case .logo:
             // Transition to menu
             print("  → Transitioning from logo to menu")
+            isTransitioning = true
             showMenuScreen()
+            // Clear the transitioning flag after a brief delay to prevent click-through
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.2),
+                SKAction.run { [weak self] in
+                    self?.isTransitioning = false
+                }
+            ]))
             
         case .menu:
             // Check which button was tapped
@@ -855,10 +1261,11 @@ class StartScreenScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         let panelWidth: CGFloat = isLandscape ? 400 : size.width * 0.8
-        let panelHeight: CGFloat = isLandscape ? 200 : 250
+        // Increased height to provide proper spacing between text and buttons
+        let panelHeight: CGFloat = isLandscape ? 280 : 320
         
         // Confirmation panel
-        let panel = MenuStyling.createModernPanel(size: CGSize(width: panelWidth, height: panelHeight))
+        let panel = MenuStyling.createBookPage(size: CGSize(width: panelWidth, height: panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
         panel.zPosition = 101
         panel.name = "deleteConfirmationPanel"
@@ -868,7 +1275,7 @@ class StartScreenScene: SKScene {
         let warningText = SKLabelNode(fontNamed: "Arial-BoldMT")
         warningText.text = "Delete Character?"
         warningText.fontSize = isLandscape ? 28 : 32
-        warningText.fontColor = MenuStyling.dangerColor
+        warningText.fontColor = MenuStyling.bookDanger
         warningText.position = CGPoint(x: size.width / 2, y: size.height / 2 + (isLandscape ? 50 : 70))
         warningText.zPosition = 102
         warningText.horizontalAlignmentMode = .center
@@ -878,7 +1285,7 @@ class StartScreenScene: SKScene {
         let charName = SKLabelNode(fontNamed: "Arial")
         charName.text = character.displayName
         charName.fontSize = isLandscape ? 22 : 26
-        charName.fontColor = MenuStyling.lightText
+        charName.fontColor = MenuStyling.inkColor
         charName.position = CGPoint(x: size.width / 2, y: size.height / 2 + (isLandscape ? 10 : 20))
         charName.zPosition = 102
         charName.horizontalAlignmentMode = .center
@@ -888,8 +1295,9 @@ class StartScreenScene: SKScene {
         let message = SKLabelNode(fontNamed: "Arial")
         message.text = "This will permanently delete the character"
         message.fontSize = isLandscape ? 18 : 20
-        message.fontColor = MenuStyling.mutedText
-        message.position = CGPoint(x: size.width / 2, y: size.height / 2 - (isLandscape ? 20 : 30))
+        message.fontColor = MenuStyling.inkMuted
+        // Adjusted to keep messages grouped together
+        message.position = CGPoint(x: size.width / 2, y: size.height / 2 - (isLandscape ? 10 : 15))
         message.zPosition = 102
         message.horizontalAlignmentMode = .center
         addChild(message)
@@ -897,23 +1305,33 @@ class StartScreenScene: SKScene {
         let message2 = SKLabelNode(fontNamed: "Arial")
         message2.text = "and all associated save files."
         message2.fontSize = isLandscape ? 18 : 20
-        message2.fontColor = MenuStyling.mutedText
-        message2.position = CGPoint(x: size.width / 2, y: size.height / 2 - (isLandscape ? 45 : 55))
+        message2.fontColor = MenuStyling.inkMuted
+        // Positioned higher to ensure spacing above buttons
+        message2.position = CGPoint(x: size.width / 2, y: size.height / 2 - (isLandscape ? 30 : 40))
         message2.zPosition = 102
         message2.horizontalAlignmentMode = .center
         addChild(message2)
         
-        // Buttons
+        // Buttons - positioned to fit within panel with proper spacing from border
+        // Panel has 15px border margin, so buttons need to be at least that far from edges
         let buttonWidth: CGFloat = isLandscape ? 140 : 150
         let buttonHeight: CGFloat = isLandscape ? 50 : 55
         let buttonSpacing: CGFloat = isLandscape ? 20 : 25
         
+        // Calculate button Y position: panel bottom + border margin + button half height + padding
+        // Panel bottom is at: size.height / 2 - panelHeight / 2
+        // Border is at: panel bottom + 15px
+        // Button center should be: border + button half height + padding (at least 10px)
+        let panelBottom = size.height / 2 - panelHeight / 2
+        let borderY = panelBottom + 15
+        let buttonY = borderY + buttonHeight / 2 + 15 // 15px padding above border
+        
         // Cancel button
-        let cancelButton = MenuStyling.createModernButton(
+        let cancelButton = MenuStyling.createBookButton(
             text: "Cancel",
             size: CGSize(width: buttonWidth, height: buttonHeight),
-            color: MenuStyling.secondaryColor,
-            position: CGPoint(x: size.width / 2 - buttonWidth / 2 - buttonSpacing / 2, y: size.height / 2 - (isLandscape ? 80 : 100)),
+            color: MenuStyling.parchmentBg,
+            position: CGPoint(x: size.width / 2 - buttonWidth / 2 - buttonSpacing / 2, y: buttonY),
             name: "cancelDeleteButton",
             fontSize: isLandscape ? 20 : 24
         )
@@ -921,11 +1339,11 @@ class StartScreenScene: SKScene {
         addChild(cancelButton)
         
         // Confirm button
-        let confirmButton = MenuStyling.createModernButton(
+        let confirmButton = MenuStyling.createBookButton(
             text: "Delete",
             size: CGSize(width: buttonWidth, height: buttonHeight),
-            color: MenuStyling.dangerColor,
-            position: CGPoint(x: size.width / 2 + buttonWidth / 2 + buttonSpacing / 2, y: size.height / 2 - (isLandscape ? 80 : 100)),
+            color: MenuStyling.parchmentDark,
+            position: CGPoint(x: size.width / 2 + buttonWidth / 2 + buttonSpacing / 2, y: buttonY),
             name: "confirmDeleteButton",
             fontSize: isLandscape ? 20 : 24
         )

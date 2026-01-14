@@ -92,3 +92,6 @@ iOSInjectionProject/
 # macOS
 .DS_Store
 
+# API keys and sensitive config
+SpriteGenerationService.swift
+

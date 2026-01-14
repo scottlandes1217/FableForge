@@ -94,18 +94,22 @@ class Item: NSObject, Codable {
     var quantity: Int = 1
     var itemDescription: String = ""
     var value: Int = 0 // Gold value
+    var gid: Int? = nil // Global Tile ID from Tiled map (for displaying tile image)
+    var stackable: Bool = false // Whether this item can stack with others of the same type
     
     enum CodingKeys: String, CodingKey {
-        case id, name, type, quantity, itemDescription, value
+        case id, name, type, quantity, itemDescription, value, gid, stackable
     }
     
-    init(id: UUID = UUID(), name: String, type: ItemType, quantity: Int = 1, description: String = "", value: Int = 0) {
+    init(id: UUID = UUID(), name: String, type: ItemType, quantity: Int = 1, description: String = "", value: Int = 0, gid: Int? = nil, stackable: Bool = false) {
         self.id = id
         self.name = name
         self.type = type
         self.quantity = quantity
         self.itemDescription = description
         self.value = value
+        self.gid = gid
+        self.stackable = stackable
         super.init()
     }
     
@@ -117,6 +121,8 @@ class Item: NSObject, Codable {
         quantity = try container.decode(Int.self, forKey: .quantity)
         itemDescription = try container.decode(String.self, forKey: .itemDescription)
         value = try container.decode(Int.self, forKey: .value)
+        gid = try container.decodeIfPresent(Int.self, forKey: .gid)
+        stackable = try container.decodeIfPresent(Bool.self, forKey: .stackable) ?? false
         super.init()
     }
     
@@ -128,6 +134,8 @@ class Item: NSObject, Codable {
         try container.encode(quantity, forKey: .quantity)
         try container.encode(itemDescription, forKey: .itemDescription)
         try container.encode(value, forKey: .value)
+        try container.encodeIfPresent(gid, forKey: .gid)
+        try container.encode(stackable, forKey: .stackable)
     }
     
     func use(on target: Any?) -> Bool {
