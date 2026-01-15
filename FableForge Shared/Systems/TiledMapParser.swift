@@ -412,7 +412,8 @@ class TiledMapParser {
         var foundObjectIDs: Set<Int> = []
         
         // First try self-closing tags: <object ... />
-        let selfClosingPattern = "<object([^>]*)/>"
+        // Use negative lookahead to ensure we don't match <objectgroup
+        let selfClosingPattern = "<object(?![a-zA-Z])([^>]*)/>"
         if let regex = try? NSRegularExpression(pattern: selfClosingPattern, options: []) {
             let matches = regex.matches(in: objectGroupString, range: NSRange(objectGroupString.startIndex..., in: objectGroupString))
             for match in matches {
@@ -423,7 +424,8 @@ class TiledMapParser {
                         if !foundObjectIDs.contains(object.id) {
                             objects.append(object)
                             foundObjectIDs.insert(object.id)
-                            print("   ✅ Parsed self-closing object: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
+                            let propsInfo = object.properties.isEmpty ? "no properties" : "\(object.properties.count) properties: \(object.properties.keys.joined(separator: ", "))"
+                            print("   ✅ Parsed self-closing object: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil"), \(propsInfo)")
                         }
                     } else {
                         print("   ⚠️ Failed to parse self-closing object tag: \(objectTag.prefix(100))")
@@ -435,22 +437,14 @@ class TiledMapParser {
         // Then try regular tags with content (to catch any we might have missed)
         let objectStrings = extractAllTags(objectGroupString, tag: "object")
         for objectString in objectStrings {
-            // Extract just the opening tag (before any content)
-            if let tagStart = objectString.range(of: "<object"),
-               let tagEnd = objectString.range(of: ">", range: tagStart.upperBound..<objectString.endIndex) {
-                let objectTag = String(objectString[tagStart.lowerBound..<tagEnd.upperBound])
-                // Only add if we haven't already added this object (avoid duplicates)
-                if let object = parseObject(objectTag),
-                   !foundObjectIDs.contains(object.id) {
-                    objects.append(object)
-                    foundObjectIDs.insert(object.id)
-                    print("   ✅ Parsed object with content: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
-                }
-            } else if let object = parseObject(objectString),
-                      !foundObjectIDs.contains(object.id) {
+            // Parse the FULL object tag including content (properties are inside the tag)
+            // extractAllTags returns the full tag including content for tags with </tag>
+            if let object = parseObject(objectString),
+               !foundObjectIDs.contains(object.id) {
                 objects.append(object)
                 foundObjectIDs.insert(object.id)
-                print("   ✅ Parsed object (fallback): id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil")")
+                let propsInfo = object.properties.isEmpty ? "no properties" : "\(object.properties.count) properties: \(object.properties.keys.joined(separator: ", "))"
+                print("   ✅ Parsed object with content: id=\(object.id), name='\(object.name)', gid=\(object.gid?.description ?? "nil"), \(propsInfo)")
             }
         }
         
@@ -610,11 +604,22 @@ class TiledMapParser {
     
     /// Extract all occurrences of a tag
     /// Handles both self-closing tags (<tag .../>) and tags with content (<tag>content</tag>)
+    /// Note: For "object" tag, ensures we don't match "objectgroup" by using word boundary
     private static func extractAllTags(_ xml: String, tag: String) -> [String] {
         var results: [String] = []
         
+        // For "object" tag, we need to ensure we don't match "objectgroup"
+        // Use word boundary or check that next char is not a letter
+        let tagBoundary: String
+        if tag == "object" {
+            // Match <object but not <objectgroup - ensure next char is space, >, or /
+            tagBoundary = "<\(tag)(?![a-zA-Z])"
+        } else {
+            tagBoundary = "<\(tag)"
+        }
+        
         // First, find all self-closing tags: <tag .../>
-        let selfClosingPattern = "<\(tag)([^>]*)/>"
+        let selfClosingPattern = "\(tagBoundary)([^>]*)/>"
         if let regex = try? NSRegularExpression(pattern: selfClosingPattern, options: []) {
             let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
             for match in matches {
@@ -626,7 +631,7 @@ class TiledMapParser {
         }
         
         // Then, find all tags with content: <tag>content</tag>
-        let contentPattern = "<\(tag)[^>]*>([\\s\\S]*?)</\(tag)>"
+        let contentPattern = "\(tagBoundary)[^>]*>([\\s\\S]*?)</\(tag)>"
         if let regex = try? NSRegularExpression(pattern: contentPattern, options: []) {
             let matches = regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
             for match in matches {

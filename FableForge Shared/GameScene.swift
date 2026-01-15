@@ -546,8 +546,17 @@ class GameScene: SKScene {
             addChild(backgroundSprite)
             
             
+            // Store map bounds and rendering info for collision detection
+            self.mapBounds = CGRect(x: minX, y: minY, width: mapWidth, height: mapHeight)
+            self.mapTileSize = tileSize
+            
+            // Parse collision layers from TMX and create collision map
+            // Layers with "collision" in the name or properties will be used for collision
+            hasInfiniteLayers = tiledMap.layers.contains { $0.isInfinite }
+            
             // Constrain camera to map bounds to prevent seeing empty areas
-            if let camera = cameraNode {
+            // BUT: Skip constraints for infinite maps - they should scroll freely
+            if let camera = cameraNode, !hasInfiniteLayers {
                 // Calculate camera bounds - ensure camera doesn't go outside map
                 let halfScreenWidth = size.width / 2
                 let halfScreenHeight = size.height / 2
@@ -566,15 +575,13 @@ class GameScene: SKScene {
                     ]
                     print("Camera constrained to map bounds: X(\(xMin)-\(xMax)), Y(\(yMin)-\(yMax))")
                 }
+            } else if hasInfiniteLayers {
+                // For infinite maps, remove any existing constraints to allow free scrolling
+                if let camera = cameraNode {
+                    camera.constraints = []
+                    print("Camera constraints removed for infinite map - free scrolling enabled")
+                }
             }
-            
-            // Store map bounds and rendering info for collision detection
-            self.mapBounds = CGRect(x: minX, y: minY, width: mapWidth, height: mapHeight)
-            self.mapTileSize = tileSize
-            
-            // Parse collision layers from TMX and create collision map
-            // Layers with "collision" in the name or properties will be used for collision
-            hasInfiniteLayers = tiledMap.layers.contains { $0.isInfinite }
             let maxRegularHeight = tiledMap.layers.filter { !$0.isInfinite }.map { $0.height }.max() ?? 0
             regularLayerHeight = maxRegularHeight
             print("🗺️ Map info: hasInfiniteLayers=\(hasInfiniteLayers), regularLayerHeight=\(maxRegularHeight), yFlipOffset=\(yFlipOffset), tileSize=\(tileSize)")
@@ -1451,28 +1458,39 @@ class GameScene: SKScene {
         var objectsToRemove: [SKSpriteNode] = []
         
         for (sprite, object) in objectSprites {
-            // Get object's bounding box
+            // Get object's bounding box (accounting for scale)
+            let scaleX = sprite.xScale
+            let scaleY = sprite.yScale
             let objectFrame = CGRect(
                 x: sprite.position.x,
                 y: sprite.position.y,
-                width: sprite.size.width,
-                height: sprite.size.height
+                width: sprite.size.width * scaleX,
+                height: sprite.size.height * scaleY
             )
             
             // Check if player collides with object
             if playerFrame.intersects(objectFrame) {
                 // Check if object is collectable
                 // Objects are collectable if:
-                // 1. They have the "collectable" property set to true, OR
-                // 2. They are in an objectgroup named "Collectables" (case-insensitive)
-                let objectGroupName = objectGroupNames[sprite] ?? ""
-                let isCollectable = object.boolProperty("collectable", default: false) || objectGroupName.lowercased().contains("collectable")
+                // Only mark as collectible if the property is explicitly set to true
+                let isCollectable = object.boolProperty("collectable", default: false)
+                
+                // Debug: Log collision and collectable status
+                print("🔍 Object collision detected: '\(object.name)' (id: \(object.id)), collectable=\(isCollectable)")
+                if let collectableValue = object.stringProperty("collectable") {
+                    print("   📋 Raw collectable property value: '\(collectableValue)'")
+                } else {
+                    print("   ⚠️ No 'collectable' property found on object")
+                }
                 
                 // Only collect items on collision (not dialogue objects)
                 if isCollectable {
+                    print("   ✅ Collecting object '\(object.name)'")
                     // Use the collectObject function which handles stacking and GID
                     // Note: collectObject already removes the sprite, so don't add to objectsToRemove
                     collectObject(object, sprite: sprite)
+                } else {
+                    print("   ❌ Object is not collectable (property not set or false)")
                 }
                 // Dialogue objects are handled via question mark interaction, not collision
             }
@@ -1923,11 +1941,24 @@ class GameScene: SKScene {
         for object in objectGroup.objects {
             // Calculate world position
             // Tiled uses top-left origin (Y increases downward)
-            // SpriteKit uses bottom-left origin (Y increases upward)
-            // We need to flip the Y coordinate: newY = yFlipOffset - oldY
-            let tiledY = object.y
-            let worldY = yFlipOffset - tiledY
-            let worldX = object.x
+            // Object coordinates in Tiled are in BASE tile pixel coordinates (e.g., 16x16)
+            // But we're rendering at SCALED tile size (e.g., 32x32 with scale factor 2.0)
+            // So we need to scale the object coordinates by the same factor
+            // Scale factor = tileSize.width / baseTileWidth (typically 16)
+            let baseTileWidth: CGFloat = 16.0  // Base tile size in Tiled
+            let scaleFactor = tileSize.width / baseTileWidth
+            
+            // Scale object coordinates to match the rendered tile size
+            let scaledX = object.x * scaleFactor
+            let scaledY = object.y * scaleFactor
+            
+            // Convert to SpriteKit coordinates (Y flip)
+            // For infinite maps with yFlipOffset=0, tiles use: worldY = -tiledY
+            // Objects should align with tiles, so we use the same calculation
+            let worldX = scaledX
+            let worldY = yFlipOffset - scaledY
+            
+            print("   📍 Object coordinate conversion: Tiled base coords (\(Int(object.x)), \(Int(object.y))) -> scaled (\(Int(scaledX)), \(Int(scaledY))) -> SpriteKit world (\(Int(worldX)), \(Int(worldY))), scaleFactor=\(scaleFactor), yFlipOffset=\(yFlipOffset)")
             
             // Create sprite for object
             var sprite: SKSpriteNode?
@@ -1935,25 +1966,48 @@ class GameScene: SKScene {
             if let gid = object.gid {
                 // Object uses a tile (has a GID)
                 // Use the object's width/height if specified, otherwise use tile size
+                // IMPORTANT: Scale object size by scaleFactor to match rendered tile size
+                let baseObjectWidth = object.width > 0 ? object.width : baseTileWidth
+                let baseObjectHeight = object.height > 0 ? object.height : baseTileWidth
                 let objectSize = CGSize(
-                    width: object.width > 0 ? object.width : tileSize.width,
-                    height: object.height > 0 ? object.height : tileSize.height
+                    width: baseObjectWidth * scaleFactor,
+                    height: baseObjectHeight * scaleFactor
                 )
-                print("   🔍 Attempting to create sprite for GID \(gid) with size \(objectSize)")
+                print("   🔍 Attempting to create sprite for GID \(gid) with size \(objectSize) (base: \(baseObjectWidth)x\(baseObjectHeight), scale: \(scaleFactor))")
                 sprite = TileManager.shared.createSprite(for: gid, size: objectSize)
                 if sprite == nil {
                     print("⚠️ WARNING: Failed to create sprite for object '\(object.name)' with GID \(gid). Creating fallback sprite.")
                     // Create a fallback visible sprite so we can see the object
                     sprite = SKSpriteNode(color: .red, size: objectSize)
                     sprite?.alpha = 0.8
-                    // Add a border to make it more visible
-                    let border = SKShapeNode(rect: CGRect(origin: .zero, size: objectSize))
-                    border.strokeColor = .magenta
-                    border.lineWidth = 2.0
-                    border.fillColor = .clear
-                    sprite?.addChild(border)
                 } else {
                     print("   ✅ Successfully created sprite for GID \(gid), sprite size: \(sprite?.size ?? .zero)")
+                    // Debug: Check if texture is loaded
+                    if let texture = sprite?.texture {
+                        print("   ✅ Sprite has texture: size=\(texture.size()), cgImage=\(texture.cgImage() != nil ? "present" : "nil")")
+                        // CRITICAL: Ensure no color tinting that could show as yellow
+                        sprite?.colorBlendFactor = 0.0
+                        sprite?.color = .white
+                        // Remove any yellow child nodes (backgrounds, borders, etc.) that might be covering the sprite
+                        let childrenToRemove = sprite?.children.filter { child in
+                            if let shapeNode = child as? SKShapeNode {
+                                return shapeNode.fillColor == .yellow || shapeNode.strokeColor == .yellow
+                            }
+                            if let spriteChild = child as? SKSpriteNode {
+                                return spriteChild.color == .yellow
+                            }
+                            return false
+                        } ?? []
+                        for child in childrenToRemove {
+                            child.removeFromParent()
+                            print("   🗑️ Removed yellow child node from object sprite")
+                        }
+                    } else {
+                        print("   ⚠️ WARNING: Sprite created but has no texture! Creating fallback.")
+                        // If sprite has no texture, create a fallback instead
+                        sprite = SKSpriteNode(color: .red, size: objectSize)
+                        sprite?.alpha = 0.8
+                    }
                 }
             } else {
                 // Object doesn't use a tile - create a colored rectangle or use a default sprite
@@ -1971,13 +2025,6 @@ class GameScene: SKScene {
                 
                 sprite = SKSpriteNode(color: .yellow, size: finalSize)
                 sprite?.alpha = 0.9  // More visible
-                
-                // Add a border to make it more visible
-                let border = SKShapeNode(rect: CGRect(origin: .zero, size: finalSize), cornerRadius: 2)
-                border.strokeColor = .orange
-                border.lineWidth = 3.0  // Thicker border
-                border.fillColor = .clear
-                sprite?.addChild(border)
                 
                 // Add a label with object name for debugging
                 if !object.name.isEmpty {
@@ -2002,11 +2049,6 @@ class GameScene: SKScene {
                 let fallbackSize = CGSize(width: max(object.width, 32), height: max(object.height, 32))
                 let fallbackSprite = SKSpriteNode(color: .cyan, size: fallbackSize)
                 fallbackSprite.alpha = 0.9
-                let border = SKShapeNode(rect: CGRect(origin: .zero, size: fallbackSize))
-                border.strokeColor = .blue
-                border.lineWidth = 3.0
-                border.fillColor = .clear
-                fallbackSprite.addChild(border)
                 sprite = fallbackSprite
                 print("   ✅ Created fallback cyan sprite for debugging")
             }
@@ -2016,24 +2058,36 @@ class GameScene: SKScene {
                 continue
             }
             
-            // Position the sprite
-            // In Tiled, object Y coordinate is typically the top of the object (in Tiled's coordinate system)
-            // In SpriteKit with anchorPoint (0,0), position is the bottom-left corner
-            // So we need to adjust: if object has height, we need to account for it in the Y conversion
-            // Tiled Y is top of object, SpriteKit Y (with anchor 0,0) is bottom of object
-            // After Y flip: worldY = yFlipOffset - tiledY gives us the top in SpriteKit coords
-            // But we want the bottom, so subtract object height
-            let adjustedWorldY: CGFloat
-            if object.height > 0 {
-                // Account for object height: Tiled Y is top, we need bottom
-                adjustedWorldY = worldY - object.height
-            } else {
-                adjustedWorldY = worldY
-            }
-            
-            objectSprite.position = CGPoint(x: worldX, y: adjustedWorldY)
+            // Set anchor point and z-position first
             objectSprite.anchorPoint = CGPoint(x: 0, y: 0)  // Bottom-left corner
             objectSprite.zPosition = zPosition
+            
+            // Make objects more visible - scale them up if they're too small
+            // Do this BEFORE calculating position so we can use the final sprite size
+            let minVisibleSize: CGFloat = 32.0
+            let originalSize = objectSprite.size
+            var visibilityScaleFactor: CGFloat = 1.0
+            if originalSize.width < minVisibleSize || originalSize.height < minVisibleSize {
+                visibilityScaleFactor = max(minVisibleSize / originalSize.width, minVisibleSize / originalSize.height)
+                objectSprite.setScale(visibilityScaleFactor)
+                print("   📏 Scaled object sprite by \(visibilityScaleFactor)x to make it more visible (original: \(originalSize), scaled: \(CGSize(width: originalSize.width * visibilityScaleFactor, height: originalSize.height * visibilityScaleFactor)))")
+            }
+            
+            // Position the sprite using the EXACT same calculation as chunks
+            // Chunks position tiles at: worldY = yFlipOffset - tiledY
+            // where tiledY = (chunk.y + y) * tileSize.height
+            // The position is the bottom-left corner (anchorPoint 0,0)
+            // For objects: Object Y in Tiled is the TOP
+            // We calculate: worldY = yFlipOffset - scaledY (this gives us the TOP)
+            // But we need the BOTTOM position for anchorPoint (0,0)
+            // So: bottomY = topY - height
+            // Add 65px offset to align better with tile grid (user feedback: final fine-tuning)
+            let actualObjectHeight = objectSprite.size.height * visibilityScaleFactor
+            let adjustedWorldY = worldY - actualObjectHeight + 65.0
+            
+            objectSprite.position = CGPoint(x: worldX, y: adjustedWorldY)
+            
+            // Debug border removed per user request
             
             // Set object name for debugging
             objectSprite.name = "object_\(object.id)_\(object.name)"
@@ -2044,7 +2098,8 @@ class GameScene: SKScene {
             
             // Add visual indicator for dialogue objects (subtle glow)
             // Collectables don't need glow since they auto-collect on collision
-            let isCollectable = object.boolProperty("collectable", default: false) || objectGroup.name.lowercased().contains("collectable")
+            // Only mark as collectible if the property is explicitly set to true
+            let isCollectable = object.boolProperty("collectable", default: false)
             let hasDialogue = object.boolProperty("dialogue", default: false) || 
                              object.type?.lowercased() == "npc" ||
                              object.type?.lowercased() == "dialogue"
@@ -2063,10 +2118,13 @@ class GameScene: SKScene {
                 objectSprite.alpha = 1.0
             }
             
-            // Ensure objects with GIDs are fully visible
+            // Ensure objects with GIDs are fully visible and have no color tint
             if object.gid != nil {
                 objectSprite.alpha = 1.0
                 objectSprite.isHidden = false
+                // Ensure no color tinting (like tiles)
+                objectSprite.colorBlendFactor = 0.0
+                objectSprite.color = .white
             }
             
             // Ensure sprite is visible before adding
@@ -2076,9 +2134,23 @@ class GameScene: SKScene {
             // Add to scene
             parentNode.addChild(objectSprite)
             
-            print("✅ Added object '\(object.name)' (id: \(object.id)) at Tiled(\(Int(object.x)), \(Int(object.y))) -> SpriteKit(\(Int(worldX)), \(Int(adjustedWorldY))), size: \(objectSprite.size), zPosition: \(zPosition), hasGID: \(object.gid?.description ?? "nil")")
+            print("✅ Added object '\(object.name)' (id: \(object.id)) at Tiled base(\(Int(object.x)), \(Int(object.y))) -> scaled(\(Int(scaledX)), \(Int(scaledY))) -> SpriteKit(\(Int(worldX)), \(Int(adjustedWorldY))), size: \(objectSprite.size), zPosition: \(zPosition), hasGID: \(object.gid?.description ?? "nil")")
+            if !object.properties.isEmpty {
+                print("   📋 Object properties: \(object.properties)")
+            } else {
+                print("   ⚠️ Object has no properties")
+            }
             print("   📍 Object sprite position: \(objectSprite.position), size: \(objectSprite.size), anchorPoint: \(objectSprite.anchorPoint)")
             print("   🎯 Object sprite isHidden: \(objectSprite.isHidden), alpha: \(objectSprite.alpha)")
+            
+            // Debug: Calculate what tile this object should be near (using base tile coordinates)
+            let debugObjectTileX = Int(object.x / baseTileWidth)
+            let debugObjectTileY = Int(object.y / baseTileWidth)
+            let expectedWorldX = CGFloat(debugObjectTileX) * tileSize.width
+            let expectedWorldY = yFlipOffset - (CGFloat(debugObjectTileY) * tileSize.height)
+            print("   🗺️ Object is at Tiled tile grid approximately: (\(debugObjectTileX), \(debugObjectTileY))")
+            print("   🗺️ A tile at grid (\(debugObjectTileX), \(debugObjectTileY)) would be at world position: (\(Int(expectedWorldX)), \(Int(expectedWorldY)))")
+            print("   🗺️ Object actual world position: (\(Int(worldX)), \(Int(adjustedWorldY)))")
             
             // Debug: Check if object is within reasonable bounds
             let mapBounds = self.mapBounds
@@ -2909,7 +2981,7 @@ extension GameScene {
                 showMessage("Collected: \(itemName) x\(quantity) (Total: \(player.inventory[existingIndex].quantity))")
             } else {
                 // No existing stackable item found, add as new item
-                player.inventory.append(item)
+        player.inventory.append(item)
                 print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: true)")
                 showMessage("Collected: \(itemName) x\(quantity)")
             }
@@ -3047,7 +3119,6 @@ extension GameScene {
         background.strokeColor = .white
         background.lineWidth = 2
         background.position = CGPoint(x: 0, y: 0)
-        messageLabel.addChild(background)
         messageLabel.insertChild(background, at: 0)
         
         camera.addChild(messageLabel)

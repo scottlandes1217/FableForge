@@ -8079,6 +8079,10 @@
   </data>
  </layer>
  <layer id="48" name="Objects4" width="16" height="24">
+  <properties>
+   <property name="collision" type="bool" value="true"/>
+   <property name="zOffset" type="float" value="40"/>
+  </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8137,6 +8141,10 @@
   </data>
  </layer>
  <layer id="45" name="Objects1" width="16" height="24">
+  <properties>
+   <property name="collision" type="bool" value="true"/>
+   <property name="zOffset" type="float" value="40"/>
+  </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8233,7 +8241,7 @@
  <layer id="46" name="Objects2" width="16" height="24">
   <properties>
    <property name="collision" type="bool" value="true"/>
-   <property name="zOffset" type="float" value="80"/>
+   <property name="zOffset" type="float" value="40"/>
   </properties>
   <data encoding="csv">
    <chunk x="-32" y="-16" width="16" height="16">
@@ -8427,6 +8435,10 @@
   </data>
  </layer>
  <layer id="50" name="House_wall" width="16" height="24">
+  <properties>
+   <property name="collision" type="bool" value="true"/>
+   <property name="zOffset" type="float" value="40"/>
+  </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8467,6 +8479,10 @@
   </data>
  </layer>
  <layer id="52" name="Windows" width="16" height="24">
+  <properties>
+   <property name="collision" type="bool" value="false"/>
+   <property name="zOffset" type="float" value="40"/>
+  </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8507,6 +8523,10 @@
   </data>
  </layer>
  <layer id="51" name="House_roof" width="16" height="24">
+  <properties>
+   <property name="collision" type="bool" value="false"/>
+   <property name="zOffset" type="float" value="40"/>
+  </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8743,7 +8763,13 @@
   </data>
  </layer>
  <objectgroup id="58" name="Collectables">
-  <object id="2" gid="1684" x="193.125" y="100.052" width="16" height="16"/>
+  <object id="2" gid="1684" x="193.125" y="100.052" width="16" height="16">
+   <properties>
+    <property name="collectable" type="bool" value="true"/>
+    <property name="quantity" type="float" value="5"/>
+    <property name="stackable" type="bool" value="true"/>
+   </properties>
+  </object>
  </objectgroup>
  <layer id="55" name="Birds" width="16" height="24">
   <data encoding="csv">
