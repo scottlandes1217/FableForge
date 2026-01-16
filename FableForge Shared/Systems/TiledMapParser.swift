@@ -63,6 +63,18 @@ struct TiledMap {
     let tilesets: [TiledTileset]
     let layers: [TiledLayer]
     let objectGroups: [TiledObjectGroup]  // Object layers (objectgroups)
+    let properties: [String: String]  // Custom properties from Tiled (property name -> value)
+    
+    /// Get a boolean property, defaulting to false if not found
+    func boolProperty(_ name: String, default: Bool = false) -> Bool {
+        guard let value = properties[name] else { return `default` }
+        return value.lowercased() == "true" || value == "1"
+    }
+    
+    /// Get a string property, defaulting to nil if not found
+    func stringProperty(_ name: String) -> String? {
+        return properties[name]
+    }
 }
 
 /// Represents a chunk in an infinite map
@@ -226,6 +238,9 @@ class TiledMapParser {
             }
         }
         
+        // Parse map properties
+        let properties = parseProperties(mapTag)
+        
         return TiledMap(
             width: width,
             height: height,
@@ -233,7 +248,8 @@ class TiledMapParser {
             tileHeight: tileHeight,
             tilesets: tilesets,
             layers: layers,
-            objectGroups: objectGroups
+            objectGroups: objectGroups,
+            properties: properties
         )
     }
     

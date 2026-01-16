@@ -1,0 +1,121 @@
+{
+  "chests": [
+    {
+      "id": "chest_wooden_01",
+      "name": "Wooden Chest",
+      "description": "A simple wooden chest. May contain basic items.",
+      "tileMap": "2,2",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-2500", "exterior-2501"],
+            ["exterior-2502", "exterior-2503"]
+          ],
+          "offset": {"x": -16, "y": -16},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 64, "height": 64},
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 10,
+      "lootTable": [
+        {
+          "itemId": "health_potion",
+          "dropRate": 0.7,
+          "minQuantity": 1,
+          "maxQuantity": 3
+        },
+        {
+          "itemId": "mana_potion",
+          "dropRate": 0.5,
+          "minQuantity": 1,
+          "maxQuantity": 2
+        },
+        {
+          "itemId": "wood",
+          "dropRate": 0.8,
+          "minQuantity": 1,
+          "maxQuantity": 5
+        },
+        {
+          "itemId": "iron_ore",
+          "dropRate": 0.3,
+          "minQuantity": 1,
+          "maxQuantity": 3
+        }
+      ],
+      "lockLevel": null,
+      "requiredKey": null
+    },
+    {
+      "id": "chest_treasure_01",
+      "name": "Treasure Chest",
+      "description": "An ornate treasure chest. Contains valuable loot!",
+      "tileMap": "3,3,3",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-2600", "exterior-2601", "exterior-2602"],
+            ["exterior-2603", "exterior-2604", "exterior-2605"],
+            ["exterior-2606", "exterior-2607", "exterior-2608"]
+          ],
+          "offset": {"x": -32, "y": -32},
+          "size": {"width": 96, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 96, "height": 96},
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 96}
+      },
+      "zPosition": 10,
+      "lootTable": [
+        {
+          "itemId": "iron_sword",
+          "dropRate": 0.6,
+          "minQuantity": 1,
+          "maxQuantity": 1
+        },
+        {
+          "itemId": "magic_staff",
+          "dropRate": 0.4,
+          "minQuantity": 1,
+          "maxQuantity": 1
+        },
+        {
+          "itemId": "health_potion",
+          "dropRate": 1.0,
+          "minQuantity": 2,
+          "maxQuantity": 5
+        },
+        {
+          "itemId": "mana_potion",
+          "dropRate": 0.8,
+          "minQuantity": 2,
+          "maxQuantity": 4
+        },
+        {
+          "itemId": "iron_ore",
+          "dropRate": 0.9,
+          "minQuantity": 3,
+          "maxQuantity": 10
+        }
+      ],
+      "lockLevel": 1,
+      "requiredKey": null
+    }
+  ]
+}

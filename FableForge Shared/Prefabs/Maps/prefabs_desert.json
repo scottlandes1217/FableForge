@@ -1,0 +1,142 @@
+{
+  "worldConfig": {
+    "name": "Default World",
+    "description": "A temperate grassland world with forests and rivers",
+    "seed": 12345,
+    "terrain": {
+      "waterThreshold": 0.15,
+      "grassThreshold": 0.9,
+      "dirtThreshold": 0.95,
+      "groundTiles": {
+        "water": ["exterior-257"],
+        "grass": ["exterior-257"],
+        "dirt": ["exterior-357"],
+        "stone": ["exterior-852", "exterior-853", "exterior-839"]
+      }
+    },
+    "entities": {
+      "treeDensity": 0.02,
+      "rockDensity": 0.005,
+      "treePrefabs": ["tree_oak_01"],
+      "rockPrefabs": ["rock_stone_01"],
+      "chests": [
+        {
+          "chestId": "chest_wooden_01",
+          "count": 3
+        },
+        {
+          "chestId": "chest_treasure_01",
+          "count": 1
+        }
+      ]
+    },
+    "enemies": {
+      "spawnRate": 0.001,
+      "types": ["Goblin", "Orc", "Bandit", "Wild Beast"],
+      "minLevel": 1,
+      "maxLevel": 5
+    },
+    "animals": {
+      "spawnRate": 0.002,
+      "types": ["deer", "rabbit", "fox", "owl"],
+      "friendlyChance": 0.7
+    },
+    "waterFeatures": {
+      "type": "rivers",
+      "density": "medium"
+    }
+  },
+  "prefabs": [
+    {
+      "id": "tree_oak_01",
+      "type": "tree",
+      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-4125"]],
+          "assetName": null,
+          "offset": {"x": -8, "y": 0},
+          "size": {"width": 16, "height": 24},
+          "zOffset": 0,
+          "tileSize": 0
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            [null, "exterior-4200", null],
+            ["exterior-4201", "exterior-4202", "exterior-4203"],
+            [null, "exterior-4204", null]
+          ],
+          "assetName": null,
+          "offset": {"x": -48, "y": 24},
+          "size": {"width": 96, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 16, "height": 16}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "rock_stone_01",
+      "type": "rock",
+      "description": "A medium stone rock. Can be mined for stone materials. Found scattered in the wilderness.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-800"]],
+          "assetName": null,
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 0
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 22.4, "height": 16}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "cabin_small_01",
+      "type": "building",
+      "description": "A small wooden cabin with a thatched roof. Can house basic crafting stations. Buildable by players.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731"],
+            ["exterior-1732", "exterior-1733"]
+          ],
+          "assetName": null,
+          "offset": {"x": -32, "y": 0},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            ["exterior-1800", "exterior-1801", "exterior-1802"],
+            [null, "exterior-1803", null]
+          ],
+          "assetName": null,
+          "offset": {"x": -48, "y": 64},
+          "size": {"width": 96, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 0
+    }
+  ]
+}

@@ -276,6 +276,28 @@ class WorldMap: NSObject, Codable {
 
 class EncounterSystem {
     static func generateRandomEnemy(level: Int) -> Enemy {
+        // Try to use prefabs first
+        let allEnemyPrefabs = PrefabFactory.shared.getAllEnemyPrefabs()
+        if !allEnemyPrefabs.isEmpty {
+            let prefabArray = Array(allEnemyPrefabs.values)
+            if let randomPrefab = prefabArray.randomElement() {
+                // Scale stats by level if prefab level is different
+                let prefabLevel = randomPrefab.level ?? 1
+                let levelMultiplier = level > prefabLevel ? Double(level) / Double(prefabLevel) : 1.0
+                
+                return Enemy(
+                    name: randomPrefab.name,
+                    hitPoints: Int(Double(randomPrefab.hitPoints) * levelMultiplier),
+                    armorClass: Int(Double(randomPrefab.defensePoints) * levelMultiplier),
+                    attackBonus: Int(Double(randomPrefab.attackPoints) * levelMultiplier),
+                    damageDie: 6, // Default damage die (could be added to prefab later)
+                    experienceReward: randomPrefab.experienceReward ?? (10 * level),
+                    goldReward: randomPrefab.goldReward ?? (5 * level)
+                )
+            }
+        }
+        
+        // Fallback to old hardcoded system if no prefabs available
         let enemyNames = ["Goblin", "Orc", "Bandit", "Wild Beast", "Skeleton", "Zombie"]
         let name = enemyNames.randomElement()!
         

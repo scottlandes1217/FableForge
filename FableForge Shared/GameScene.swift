@@ -6,6 +6,7 @@
 //
 
 import SpriteKit
+import QuartzCore
 
 class GameScene: SKScene {
     
@@ -22,6 +23,12 @@ class GameScene: SKScene {
     var combatUI: CombatUI?
     var cameraNode: SKCameraNode?
     
+    // Inventory drag and drop state
+    var draggedItemIndex: Int? = nil
+    var draggedItemNode: SKNode? = nil
+    var inventoryContextMenu: SKNode? = nil
+    var contextMenuItemIndex: Int? = nil
+    
     // Debug overlay for collision box visualization
     private var collisionDebugOverlay: SKShapeNode?
     
@@ -34,10 +41,34 @@ class GameScene: SKScene {
     var useTiledMap: Bool = true  // Use TMX file instead of procedural generation
     var tiledMapFileName: String = "Exterior"
     
+    // Hybrid world system (chunk-based procedural + TMX instances)
+    var chunkManager: ChunkManager?
+    var worldGenerator: WorldGenerator?
+    var deltaPersistence: DeltaPersistence?
+    private var lastPlayerChunk: ChunkKey?
+    
+    // Building entry/exit tracking
+    private var previousMapFileName: String?  // Store previous map when entering a building
+    private var previousPlayerPosition: CGPoint?  // Store player position before entering building
+    private var entryDoorPosition: CGPoint?  // Store entry door position for linking with exit
+    private var entryDoorLayerName: String?  // Store entry door layer name
+    private var entryDoorId: String?  // Store entry door ID for linking with matching exit door
+    private var currentTiledMap: TiledMap?  // Store the current parsed TiledMap for door finding
+    
+    // Procedural world transition tracking
+    private var proceduralWorldExitPosition: CGPoint?  // Position in procedural world to return to TMX map
+    private var tmxMapEntryPosition: CGPoint?  // Position in TMX map where player entered procedural world
+    private var lastTransitionTime: TimeInterval = 0  // Time of last transition (to prevent immediate re-trigger)
+    private let transitionCooldown: TimeInterval = 1.0  // 1 second cooldown between transitions
+    
+    // Loading screen overlay
+    private var loadingScreen: SKNode?
+    
     // Collision detection for Tiled maps
     // Use (Int, Int) tuple for tile coordinates instead of CGPoint (CGPoint is not Hashable)
     private var collisionMap: Set<String> = []  // Set of non-walkable tile positions as "x,y" strings
     private var collisionLayerMap: [String: String] = [:]  // Map of "x,y" -> layer name that created the collision
+    private var layerProperties: [String: [String: String]] = [:]  // Map of layer name -> properties (for door detection)
     private var mapBounds: CGRect = .zero  // Map bounds for collision checking
     private var mapYFlipOffset: CGFloat = 0  // Y flip offset for coordinate conversion
     private var mapTileSize: CGSize = .zero  // Tile size used for rendering (for collision checks)
@@ -74,7 +105,9 @@ class GameScene: SKScene {
     let encounterDistance: CGFloat = 40.0 // Distance to trigger encounter
     
     // Character zPosition based on max zOffset from layers
-    // This allows layers to control whether characters appear behind or in front
+    // This allows specific layers to go behind or in front of characters
+    // Layers maintain their natural order (by layer index), but character position
+    // is determined by zOffset - if a layer has zOffset > characterZPosition, it appears in front
     var characterZPosition: CGFloat = 100 // Default to 100 if no zOffset is set
     
     // Touch handling properties (moved from extension)
@@ -96,7 +129,7 @@ class GameScene: SKScene {
         // Create scene programmatically (no .sks file needed)
         let scene = GameScene()
         scene.scaleMode = .aspectFill
-        scene.backgroundColor = SKColor(red: 0.15, green: 0.15, blue: 0.2, alpha: 1.0)
+        scene.backgroundColor = SKColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)  // Dark grey
         return scene
     }
     
@@ -141,13 +174,42 @@ class GameScene: SKScene {
         
         // Load tilesets from TMX file for use with procedural generation
         // This gives us access to all the tileset images even when generating procedurally
-        loadTilesetsFromTMX(fileName: tiledMapFileName)
+        let parsedTiledMap = loadTilesetsFromTMX(fileName: tiledMapFileName)
         
-        // Load and render Tiled map (or use renderWorld() for generated world)
+        // Check if TMX map has a property to enable procedural world
+        // If the map has "useProceduralWorld" property set to "true", use procedural generation
+        if let tiledMap = parsedTiledMap {
+            // Debug: Print all map properties
+            if !tiledMap.properties.isEmpty {
+                print("🔍 TMX Map properties found: \(tiledMap.properties)")
+            } else {
+                print("⚠️ No map properties found in TMX (property must be on the MAP, not a layer)")
+            }
+            
+            // Check for useProceduralWorld property
+            let useProcedural = tiledMap.boolProperty("useProceduralWorld", default: false)
+            print("🔍 useProceduralWorld property value: \(useProcedural)")
+            
+            if useProcedural {
+                print("🌍 TMX map property 'useProceduralWorld' is true - using procedural world")
+                useTiledMap = false
+            } else {
+                print("📍 Using Tiled map (useProceduralWorld=false or not set)")
+            }
+        }
+        
+        // Load and render Tiled map (or use chunk-based procedural world)
         if useTiledMap {
-            loadAndRenderTiledMap(fileName: tiledMapFileName)
+            loadAndRenderTiledMap(fileName: tiledMapFileName, preParsedMap: parsedTiledMap)
         } else {
-            renderWorld()
+            // Initialize hybrid world system (chunk-based procedural)
+            setupHybridWorldSystem()
+        }
+        
+        // Update GameState with initial map information
+        if let gameState = gameState {
+            gameState.currentMapFileName = tiledMapFileName
+            gameState.useProceduralWorld = !useTiledMap
         }
         
         // Create player sprite
@@ -160,6 +222,54 @@ class GameScene: SKScene {
         
         // Spawn some initial animals
         spawnInitialAnimals()
+    }
+    
+    /// Setup hybrid world system (chunk-based procedural generation)
+    func setupHybridWorldSystem() {
+        print("🌍 Setting up hybrid world system (chunk-based)")
+        
+        guard let world = gameState?.world else {
+            print("❌ No world in gameState for hybrid system")
+            return
+        }
+        
+        // Use TMX tile size (16x16 base tiles scaled by 2.0 = 32.0) to match TMX maps
+        let tileSize: CGFloat = 32.0  // Matches TMX maps: 16x16 base tiles * 2.0 scale factor
+        let chunkSize = ChunkManager.defaultChunkSize
+        
+        // Get world config from PrefabFactory (loaded from prefabs JSON)
+        let worldConfig = PrefabFactory.shared.getWorldConfig()
+        
+        // Use seed from world config if available, otherwise use world.seed
+        let worldSeed = worldConfig?.seed ?? world.seed
+        
+        // Initialize components with world config
+        worldGenerator = WorldGenerator(seed: worldSeed, config: worldConfig)
+        deltaPersistence = DeltaPersistence()
+        // Use smaller load radius initially (1 = 3x3 chunks = 9 chunks) to improve load time
+        // Can increase to 2 or 3 later if needed, but 1 is much faster for initial load
+        chunkManager = ChunkManager(chunkSize: chunkSize, loadRadius: 1, tileSize: tileSize, scene: self)
+        
+        chunkManager?.setWorldGenerator(worldGenerator!)
+        chunkManager?.setDeltaPersistence(deltaPersistence!)
+        
+        // Register a TMX instance example: Town_01 at world tile (100, 100)
+        // This is a placeholder - you would load actual TMX instances from a config file
+        let townInstance = TMXInstance(
+            fileName: "Town_01",  // TODO: Create or reference actual TMX file
+            worldTileOrigin: (x: 100, y: 100),
+            worldBounds: nil,
+            tiledMap: nil
+        )
+        chunkManager?.registerTMXInstance(townInstance)
+        
+        // Load initial chunks around player
+        if let player = gameState?.player {
+            chunkManager?.updateChunks(around: player.position)
+            lastPlayerChunk = ChunkKey.fromWorldPosition(player.position, chunkSize: chunkSize, tileSize: tileSize)
+        }
+        
+        print("✅ Hybrid world system initialized")
     }
     
     func renderWorld() {
@@ -458,28 +568,49 @@ class GameScene: SKScene {
         addChild(mapContainer)
         
         // Second pass: Render layers
-        // Calculate maximum zOffset from all layers (for character positioning)
-        var maxZOffset: CGFloat = 0
-        var hasZOffset = false
-        for layer in tiledMap.layers {
-            let zOffset = layer.floatProperty("zOffset", default: 0)
-            if zOffset != 0 {
-                hasZOffset = true
-                maxZOffset = max(maxZOffset, CGFloat(zOffset))
+        // Find which layer has the "characterLayer" or "characterIndex" property
+        // This determines where the character should be positioned relative to layers
+        // Layers before this index render behind character, layers after render in front
+        // Example: If layer 3 has "characterLayer" property:
+        //   - Layers 0, 1, 2, 3 render behind character (z-position 0, 1, 2, 3)
+        //   - Layers 4, 5, ... render in front of character (z-position 4, 5, ...)
+        //   - Character renders at z-position 3.5 (between layer 3 and 4)
+        var characterLayerIndex: Int? = nil
+        for (layerIndex, layer) in tiledMap.layers.enumerated() {
+            // Check for "characterLayer" or "characterIndex" property (boolean or float)
+            let hasCharacterProperty = layer.boolProperty("characterLayer", default: false) || 
+                                     layer.boolProperty("characterIndex", default: false) ||
+                                     layer.floatProperty("characterLayer", default: -1) >= 0 ||
+                                     layer.floatProperty("characterIndex", default: -1) >= 0
+            if hasCharacterProperty {
+                characterLayerIndex = layerIndex
+                print("📍 Found characterLayer property on layer \(layerIndex) '\(layer.name)' - character will be positioned after this layer")
+                break
             }
         }
-        // Store maxZOffset for character positioning
-        // If no zOffset is set, use default (100), otherwise use the max zOffset
-        characterZPosition = hasZOffset ? maxZOffset : 100
         
-        // Render layers using natural order (layer index only, zOffset is ignored for layers)
+        // Set character z-position: if a layer has the property, place character between that layer and the next
+        // Otherwise default to 100 (which will be above most layers)
+        if let charLayerIndex = characterLayerIndex {
+            // Place character between this layer and the next (e.g., if layer 3, character at 3.5)
+            characterZPosition = CGFloat(charLayerIndex) + 0.5
+            print("📍 Character z-position set to \(characterZPosition) (after layer \(charLayerIndex))")
+        } else {
+            // Default: character appears above all layers (z-position 100)
+            characterZPosition = 100
+            print("📍 No characterLayer property found - character z-position defaulting to 100")
+        }
+        
+        // Render layers using natural order (layer index) to maintain proper layer ordering
+        // Layers maintain their relative order, character appears at characterZPosition
         for (layerIndex, layer) in tiledMap.layers.enumerated() {
             // Z-Position hierarchy:
             // - Background: -100000 (far behind)
-            // - Tiles: 0 to ~60 (based on layer index only - layers follow natural order)
-            // - Characters: based on max zOffset from layers (allows layers to go behind/in front)
+            // - Tiles: 0 to ~60 (based on layer index - maintains natural layer order)
+            // - Characters: based on "characterZPosition" property (default 100)
+            //   - Layers with index < characterZPosition appear behind character
+            //   - Layers with index >= characterZPosition appear in front of character
             // - UI: 200+ (above everything)
-            // Layers use their natural index order, zOffset only affects characters
             let tileZPosition = CGFloat(layerIndex)
             renderTiledLayer(layer, tileSize: tileSize, zPosition: tileZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
         }
@@ -522,9 +653,8 @@ class GameScene: SKScene {
             print("Map size: \(mapWidth) x \(mapHeight)")
             print("Map center: (\(mapCenterX), \(mapCenterY))")
             
-            // CRITICAL: Set scene background color to green grass (removes gray areas)
-            // Use the same color as the grass tiles in your map
-            self.backgroundColor = SKColor(red: 0.4, green: 0.7, blue: 0.4, alpha: 1.0)  // Bright green grass color
+            // CRITICAL: Set scene background color to dark grey (removes gray areas when no tiles are present)
+            self.backgroundColor = SKColor(red: 0x30/255.0, green: 0x29/255.0, blue: 0x29/255.0, alpha: 1.0)  // #302929
             
             // Remove any existing background sprites first
             self.enumerateChildNodes(withName: "mapBackground") { node, _ in
@@ -642,8 +772,14 @@ class GameScene: SKScene {
         } else if let data = layer.data {
             // Render regular (non-infinite) map
             var index = 0
+            let expectedDataCount = layer.width * layer.height
             for y in 0..<layer.height {
                 for x in 0..<layer.width {
+                    guard index < data.count else {
+                        // Data exhausted, skip remaining tiles
+                        break
+                    }
+                    
                     let gid = data[index]
                     index += 1
                     
@@ -658,10 +794,16 @@ class GameScene: SKScene {
                         // Regular layers use different Y positioning than chunks
                         // Position: worldY = (layer.height - y - 1) * tileHeight
                         // This means y=0 (top row) is at highest worldY
-                        sprite.position = CGPoint(
-                            x: CGFloat(x) * tileSize.width,
-                            y: CGFloat(layer.height - y - 1) * tileSize.height
-                        )
+                        let worldX = CGFloat(x) * tileSize.width
+                        let worldY = CGFloat(layer.height - y - 1) * tileSize.height
+                        
+                        // CRITICAL FIX: Snap positions to pixel boundaries to prevent sub-pixel rendering gaps
+                        // Round to nearest 0.5 pixel (half-pixel precision) to avoid floating-point precision errors
+                        // This eliminates seams between tiles caused by sub-pixel rendering
+                        let snappedX = round(worldX * 2.0) / 2.0
+                        let snappedY = round(worldY * 2.0) / 2.0
+                        
+                        sprite.position = CGPoint(x: snappedX, y: snappedY)
                         sprite.anchorPoint = CGPoint(x: 0, y: 0)
                         sprite.zPosition = zPosition
                         
@@ -713,7 +855,13 @@ class GameScene: SKScene {
                     let tiledY = CGFloat(chunk.y + y) * tileSize.height
                     let worldY = yFlipOffset - tiledY
                     
-                    sprite.position = CGPoint(x: worldX, y: worldY)
+                    // CRITICAL FIX: Snap positions to pixel boundaries to prevent sub-pixel rendering gaps
+                    // Round to nearest 0.5 pixel (half-pixel precision) to avoid floating-point precision errors
+                    // This eliminates seams between tiles caused by sub-pixel rendering
+                    let snappedX = round(worldX * 2.0) / 2.0
+                    let snappedY = round(worldY * 2.0) / 2.0
+                    
+                    sprite.position = CGPoint(x: snappedX, y: snappedY)
                     sprite.anchorPoint = CGPoint(x: 0, y: 0)  // Bottom-left corner
                     sprite.zPosition = zPosition
                     
@@ -1111,7 +1259,14 @@ class GameScene: SKScene {
     func spawnInitialAnimals() {
         guard let world = gameState?.world else { return }
         
-        // Spawn a few animals randomly
+        // Get all available animal prefabs
+        let allAnimalPrefabs = PrefabFactory.shared.getAllAnimalPrefabs()
+        guard !allAnimalPrefabs.isEmpty else {
+            print("⚠️ No animal prefabs loaded, skipping animal spawning")
+            return
+        }
+        
+        // Spawn a few animals randomly using prefabs
         for _ in 0..<10 {
             let x = Int.random(in: 0..<world.width)
             let y = Int.random(in: 0..<world.height)
@@ -1122,26 +1277,38 @@ class GameScene: SKScene {
             let distance = sqrt(pow(position.x - playerStart.x, 2) + pow(position.y - playerStart.y, 2))
             if distance < 200 { continue } // Skip if too close to player
             
-            let animalTypes = AnimalType.allCases
-            if let randomType = animalTypes.randomElement() {
-                let animal = Animal(type: randomType)
+            // Pick random animal prefab
+            let prefabArray = Array(allAnimalPrefabs.values)
+            if let randomPrefab = prefabArray.randomElement() {
+                // Create Animal instance from prefab
+                let animal = createAnimalFromPrefab(randomPrefab)
                 animal.position = position
                 _ = world.spawnAnimal(animal, at: position)
                 
-                // Create visual representation
-                let sprite = SKSpriteNode(color: .red, size: CGSize(width: 16, height: 16))
-                sprite.position = position
-                // Animals use characterZPosition (based on max zOffset from layers)
-                sprite.zPosition = characterZPosition
-                sprite.name = "animal"
-                addChild(sprite)
-                
-                // Store reference to animal
-                animalSprites[sprite] = animal
+                // Create visual representation using prefab's tileGrid
+                let sprites = PrefabFactory.shared.createAnimalSprites(randomPrefab, position: position)
+                for sprite in sprites {
+                    sprite.zPosition = randomPrefab.zPosition
+                    sprite.name = "animal"
+                    addChild(sprite)
+                    
+                    // Store reference to animal (use first sprite as primary)
+                    if animalSprites[sprite] == nil {
+                        animalSprites[sprite] = animal
+                    }
+                }
             }
         }
         
-        // Spawn some enemies too
+        // Spawn some enemies too using prefabs
+        let allEnemyPrefabs = PrefabFactory.shared.getAllEnemyPrefabs()
+        guard !allEnemyPrefabs.isEmpty else {
+            print("⚠️ No enemy prefabs loaded, skipping enemy spawning")
+            return
+        }
+        
+        guard let player = gameState?.player else { return }
+        
         for _ in 0..<5 {
             let x = Int.random(in: 0..<world.width)
             let y = Int.random(in: 0..<world.height)
@@ -1152,20 +1319,100 @@ class GameScene: SKScene {
             let distance = sqrt(pow(position.x - playerStart.x, 2) + pow(position.y - playerStart.y, 2))
             if distance < 200 { continue } // Skip if too close to player
             
-            guard let player = gameState?.player else { continue }
-            let enemy = EncounterSystem.generateRandomEnemy(level: player.level)
-            
-            // Create visual representation for enemy
-            let sprite = SKSpriteNode(color: .purple, size: CGSize(width: 18, height: 18))
-            sprite.position = position
-            // Enemies use characterZPosition (based on max zOffset from layers)
-            sprite.zPosition = characterZPosition
-            sprite.name = "enemy"
-            addChild(sprite)
-            
-            // Store reference to enemy
-            enemySprites[sprite] = enemy
+            // Pick random enemy prefab (filter by level if needed)
+            let prefabArray = Array(allEnemyPrefabs.values)
+            if let randomPrefab = prefabArray.randomElement() {
+                // Create Enemy instance from prefab
+                let enemy = createEnemyFromPrefab(randomPrefab, level: player.level)
+                
+                // Create visual representation using prefab's tileGrid
+                let sprites = PrefabFactory.shared.createEnemySprites(randomPrefab, position: position)
+                for sprite in sprites {
+                    sprite.zPosition = randomPrefab.zPosition
+                    sprite.name = "enemy"
+                    addChild(sprite)
+                    
+                    // Store reference to enemy (use first sprite as primary)
+                    if enemySprites[sprite] == nil {
+                        enemySprites[sprite] = enemy
+                    }
+                }
+            }
         }
+    }
+    
+    /// Create an Animal instance from an AnimalPrefab
+    private func createAnimalFromPrefab(_ prefab: AnimalPrefab) -> Animal {
+        // Map prefab ID to AnimalType (for backwards compatibility)
+        // Try to match by name first
+        let animalType: AnimalType
+        switch prefab.name.lowercased() {
+        case "wolf": animalType = .wolf
+        case "bear": animalType = .bear
+        case "eagle": animalType = .eagle
+        case "deer": animalType = .deer
+        case "rabbit": animalType = .rabbit
+        case "fox": animalType = .fox
+        case "owl": animalType = .owl
+        case "boar": animalType = .boar
+        case "hawk": animalType = .hawk
+        case "stag": animalType = .stag
+        default: animalType = .wolf // Fallback
+        }
+        
+        let animal = Animal(type: animalType, name: prefab.name)
+        
+        // Override stats from prefab
+        animal.hitPoints = prefab.hitPoints
+        animal.maxHitPoints = prefab.hitPoints
+        animal.armorClass = prefab.defensePoints
+        animal.attackBonus = prefab.attackPoints
+        animal.level = prefab.level ?? 1
+        animal.speed = prefab.speed ?? 30
+        animal.friendshipLevel = prefab.friendPoints
+        
+        // Convert skillIds to AnimalMove enum (for backwards compatibility)
+        if let skillIds = prefab.skillIds {
+            animal.moves = skillIds.compactMap { skillId -> AnimalMove? in
+                switch skillId.lowercased() {
+                case "bite": return .bite
+                case "claw": return .claw
+                case "charge": return .charge
+                case "pounce": return .pounce
+                case "howl": return .howl
+                case "roar": return .roar
+                case "dive": return .dive
+                case "tackle": return .tackle
+                default: return nil
+                }
+            }
+        } else if let moves = prefab.moves {
+            // Legacy support
+            animal.moves = moves.compactMap { moveName -> AnimalMove? in
+                AnimalMove(rawValue: moveName.capitalized)
+            }
+        }
+        
+        return animal
+    }
+    
+    /// Create an Enemy instance from an EnemyPrefab
+    private func createEnemyFromPrefab(_ prefab: EnemyPrefab, level: Int) -> Enemy {
+        // Scale stats by level if prefab level is different
+        let prefabLevel = prefab.level ?? 1
+        let levelMultiplier = level > prefabLevel ? Double(level) / Double(prefabLevel) : 1.0
+        
+        let enemy = Enemy(
+            name: prefab.name,
+            hitPoints: Int(Double(prefab.hitPoints) * levelMultiplier),
+            armorClass: Int(Double(prefab.defensePoints) * levelMultiplier),
+            attackBonus: Int(Double(prefab.attackPoints) * levelMultiplier),
+            damageDie: 6, // Default damage die (could be added to prefab later)
+            experienceReward: prefab.experienceReward ?? (10 * level),
+            goldReward: prefab.goldReward ?? (5 * level)
+        )
+        
+        return enemy
     }
     
     override func didMove(to view: SKView) {
@@ -1234,16 +1481,20 @@ class GameScene: SKScene {
         )
         
         // Check movement: if using Tiled map, use collision map
-        // Otherwise use the WorldMap collision system
+        // Otherwise use the WorldMap collision system or chunk collision
         let canMove: Bool
         if useTiledMap {
             // Check collision map for Tiled maps
             canMove = canMoveToTiledMap(position: newPosition)
             if !canMove {
                 print("🛑 Movement blocked at position (\(Int(newPosition.x)), \(Int(newPosition.y)))")
+                // Check if this is a door collision or procedural world trigger
+                checkDoorCollision(at: newPosition)
             }
         } else {
-            canMove = gameState?.world.canMoveTo(position: newPosition) ?? false
+            // Procedural world: check chunk collision (simplified for now)
+            // TODO: Implement proper collision checking with chunk entities
+            canMove = true  // Allow movement for now, collision will be added later
         }
         
         if canMove {
@@ -1448,6 +1699,113 @@ class GameScene: SKScene {
         joystickVisual = nil
     }
     
+    /// Check if the player is colliding with a door tile (from a collision layer with interior property)
+    func checkDoorCollision(at position: CGPoint) {
+        guard !collisionMap.isEmpty else { return }
+        
+        // Get player's collision frame
+        let playerFrame = getPlayerCollisionFrame(at: position)
+        
+        // Convert player position to tile coordinates
+        let tileWidth = mapTileSize.width
+        let tileHeight = mapTileSize.height
+        let yFlipOffset = mapYFlipOffset
+        
+        // Check tiles that the player's collision box overlaps
+        let playerLeft = playerFrame.minX
+        let playerRight = playerFrame.maxX
+        let playerBottom = playerFrame.minY
+        let playerTop = playerFrame.maxY
+        
+        // Convert to tile coordinates
+        let minTileX = Int(floor(playerLeft / tileWidth))
+        let maxTileX = Int(floor(playerRight / tileWidth))
+        
+        let (minTileY, maxTileY): (Int, Int)
+        if hasInfiniteLayers {
+            let playerTiledYTop = (yFlipOffset - playerTop) / tileHeight
+            let playerTiledYBottom = (yFlipOffset - playerBottom) / tileHeight
+            let rawMinTileY = Int(floor(min(playerTiledYTop, playerTiledYBottom))) + 1
+            let rawMaxTileY = Int(floor(max(playerTiledYTop, playerTiledYBottom))) + 1
+            minTileY = rawMinTileY
+            maxTileY = rawMaxTileY
+        } else {
+            let height = regularLayerHeight
+            if height > 0 {
+                let regularYTop = height - 1 - Int(floor(playerTop / tileHeight))
+                let regularYBottom = height - 1 - Int(floor(playerBottom / tileHeight))
+                minTileY = min(regularYTop, regularYBottom)
+                maxTileY = max(regularYTop, regularYBottom)
+            } else {
+                return
+            }
+        }
+        
+        // Check all tiles the player overlaps
+        // Use precise rectangle intersection for door detection too
+        for tileX in minTileX...maxTileX {
+            for tileY in minTileY...maxTileY {
+                let key = "\(tileX),\(tileY)"
+                
+                // If this is a collision tile, check if it's from a door layer
+                if collisionMap.contains(key), let layerName = collisionLayerMap[key] {
+                    // Calculate the door tile's world rectangle for precise intersection
+                    let tileWorldX = CGFloat(tileX) * tileWidth
+                    let tileWorldY: CGFloat
+                    if hasInfiniteLayers {
+                        let tileTiledY = CGFloat(tileY) * tileHeight
+                        tileWorldY = yFlipOffset - tileTiledY
+                    } else {
+                        let height = regularLayerHeight
+                        if height > 0 {
+                            tileWorldY = CGFloat(height - 1 - tileY) * tileHeight
+                        } else {
+                            let tileTiledY = CGFloat(tileY) * tileHeight
+                            tileWorldY = yFlipOffset - tileTiledY
+                        }
+                    }
+                    let tileRect = CGRect(x: tileWorldX, y: tileWorldY, width: tileWidth, height: tileHeight)
+                    
+                    // Only trigger door if the player's collision box actually intersects the door tile
+                    if playerFrame.intersects(tileRect) {
+                        // Check if this layer has an interior property
+                        if let layerProps = layerProperties[layerName],
+                           let interiorMap = layerProps["interior"] {
+                            let doorId = layerProps["doorId"] ?? layerProps["door_id"] ?? layerName
+                            print("🚪 Door tile collision detected: layer '\(layerName)', interior=\(interiorMap), doorId=\(doorId)")
+                            enterBuilding(interiorMapName: interiorMap, doorPosition: position, doorLayerName: layerName, doorId: doorId)
+                            return
+                        }
+                        
+                        // Check if this layer has an exit property
+                        if let layerProps = layerProperties[layerName] {
+                            let exitValue = layerProps["exit"]?.lowercased()
+                            if exitValue == "true" || exitValue == "1" {
+                                let doorId = layerProps["doorId"] ?? layerProps["door_id"] ?? layerName
+                                print("🚪 Exit door tile collision detected: layer '\(layerName)', doorId=\(doorId)")
+                                exitBuilding(exitDoorPosition: position, exitDoorLayerName: layerName, exitDoorId: doorId)
+                                return
+                            }
+                        }
+                        
+                        // Check if this layer triggers transition to procedural world
+                        if let layerProps = layerProperties[layerName] {
+                            let triggerValue = layerProps["proceduralWorldTrigger"]?.lowercased()
+                            if triggerValue == "true" || triggerValue == "1" {
+                                // Get optional prefabs file name from layer properties
+                                // Default to "prefabs_grassland" if not specified (since "prefabs.json" no longer exists)
+                                let prefabsFile = layerProps["prefabsFile"] ?? "prefabs_grassland"
+                                print("🌍 Procedural world trigger tile detected: layer '\(layerName)', using prefabs file: \(prefabsFile).json")
+                                transitionToProceduralWorld(from: position, prefabsFile: prefabsFile)
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     func checkObjectCollisions(at position: CGPoint) {
         guard let player = gameState?.player else { return }
         
@@ -1470,6 +1828,7 @@ class GameScene: SKScene {
             
             // Check if player collides with object
             if playerFrame.intersects(objectFrame) {
+                
                 // Check if object is collectable
                 // Objects are collectable if:
                 // Only mark as collectible if the property is explicitly set to true
@@ -1509,6 +1868,454 @@ class GameScene: SKScene {
             objectSprites.removeValue(forKey: sprite)
             objectGroupNames.removeValue(forKey: sprite)
         }
+    }
+    
+    /// Enter a building by switching to the interior map
+    /// - Parameters:
+    ///   - interiorMapName: Name of the interior map file (without .tmx extension)
+    ///   - doorPosition: Position of the door object (used to find spawn point in interior)
+    ///   - doorLayerName: Name of the door layer (for door linking)
+    ///   - doorId: ID of the door for matching with exit doors
+    func enterBuilding(interiorMapName: String, doorPosition: CGPoint, doorLayerName: String, doorId: String) {
+        guard let player = gameState?.player else {
+            print("❌ Cannot enter building: no player in gameState")
+            return
+        }
+        
+        // Store current map, position, and door info for linking
+        previousMapFileName = tiledMapFileName
+        previousPlayerPosition = player.position
+        entryDoorPosition = doorPosition
+        entryDoorLayerName = doorLayerName
+        entryDoorId = doorId
+        
+        print("🏠 Entering building: \(interiorMapName)")
+        print("   Previous map: \(previousMapFileName ?? "none")")
+        print("   Entry door: layer '\(doorLayerName)' at (\(Int(doorPosition.x)), \(Int(doorPosition.y))), doorId=\(doorId)")
+        
+        // Switch to interior map
+        tiledMapFileName = interiorMapName
+        
+        // Update GameState with new map information
+        if let gameState = gameState {
+            gameState.currentMapFileName = tiledMapFileName
+            gameState.useProceduralWorld = !useTiledMap
+        }
+        
+        // Reload the map
+        reloadCurrentMap()
+        
+        // Find exit door position in interior map (matching door ID)
+        var spawnPosition: CGPoint
+        if let exitDoorPos = findExitDoorPosition(matchingDoorId: doorId) {
+            // Spawn above the exit door (inside the building, above the door tile)
+            // Offset: +110px north (higher Y in SpriteKit)
+            spawnPosition = CGPoint(x: exitDoorPos.x, y: exitDoorPos.y + 110)
+            print("   Found exit door (doorId=\(doorId)) at (\(Int(exitDoorPos.x)), \(Int(exitDoorPos.y))), spawning above: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
+        } else {
+            // No matching exit door found, use map center
+            let centerX = mapBounds.midX
+            let centerY = mapBounds.midY
+            if let safePosition = findSafeSpawnPoint(near: CGPoint(x: centerX, y: centerY)) {
+                spawnPosition = safePosition
+                print("   No matching exit door found (doorId=\(doorId)), using safe position near map center: (\(Int(safePosition.x)), \(Int(safePosition.y)))")
+            } else {
+                spawnPosition = CGPoint(x: centerX, y: centerY)
+                print("   No matching exit door found (doorId=\(doorId)), using map center: (\(Int(centerX)), \(Int(centerY)))")
+            }
+        }
+        
+        // Update player position
+        player.position = spawnPosition
+        playerSprite?.position = spawnPosition
+        
+        // Center camera on the interior map
+        // Use the background sprite's position which is already centered on the map
+        var mapCenterX = mapBounds.midX
+        var mapCenterY = mapBounds.midY
+        
+        if let backgroundSprite = childNode(withName: "mapBackground") as? SKSpriteNode {
+            mapCenterX = backgroundSprite.position.x
+            mapCenterY = backgroundSprite.position.y
+        }
+        
+        cameraNode?.position = CGPoint(x: mapCenterX, y: mapCenterY)
+        
+        print("✅ Entered building. Player at: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y))), Camera centered at: (\(Int(mapCenterX)), \(Int(mapCenterY)))")
+    }
+    
+    /// Find the position of the exit door in the current map matching the given door ID
+    /// - Parameter doorId: The door ID to match
+    private func findExitDoorPosition(matchingDoorId: String) -> CGPoint? {
+        // Look for a layer with exit property and matching door ID
+        for (layerName, props) in layerProperties {
+            if let exitValue = props["exit"]?.lowercased(),
+               exitValue == "true" || exitValue == "1" {
+                // Check if door ID matches
+                let exitDoorId = props["doorId"] ?? props["door_id"] ?? layerName
+                if exitDoorId == matchingDoorId {
+                    // Find a collision tile from this layer to get its position
+                    for (tileKey, layer) in collisionLayerMap where layer == layerName {
+                        // Parse tile coordinates
+                        let components = tileKey.components(separatedBy: ",")
+                        guard components.count == 2,
+                              let tileX = Int(components[0]),
+                              let tileY = Int(components[1]) else { continue }
+                        
+                        // Convert tile coordinates to world position
+                        let tileWidth = mapTileSize.width
+                        let tileHeight = mapTileSize.height
+                        let yFlipOffset = mapYFlipOffset
+                        
+                        let worldX = CGFloat(tileX) * tileWidth + tileWidth / 2
+                        let worldY: CGFloat
+                        if hasInfiniteLayers {
+                            let tiledY = CGFloat(tileY) * tileHeight
+                            worldY = yFlipOffset - tiledY - tileHeight / 2
+                        } else {
+                            let height = regularLayerHeight
+                            let tiledY = CGFloat(height - 1 - tileY) * tileHeight
+                            worldY = tiledY + tileHeight / 2
+                        }
+                        
+                        print("   Found exit door (doorId=\(exitDoorId)) at tile (\(tileX), \(tileY)) -> world (\(Int(worldX)), \(Int(worldY)))")
+                        return CGPoint(x: worldX, y: worldY)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+    
+    /// Exit the current building and return to the previous map
+    /// - Parameters:
+    ///   - exitDoorPosition: Position of the exit door (for door linking)
+    ///   - exitDoorLayerName: Name of the exit door layer
+    ///   - exitDoorId: ID of the exit door for matching with entry door
+    func exitBuilding(exitDoorPosition: CGPoint, exitDoorLayerName: String, exitDoorId: String) {
+        guard let player = gameState?.player else {
+            print("❌ Cannot exit building: no player in gameState")
+            return
+        }
+        
+        guard let previousMap = previousMapFileName else {
+            print("⚠️ Cannot exit building: no previous map stored")
+            return
+        }
+        
+        print("🚪 Exiting building, returning to: \(previousMap)")
+        print("   Exit door: layer '\(exitDoorLayerName)' at (\(Int(exitDoorPosition.x)), \(Int(exitDoorPosition.y))), doorId=\(exitDoorId)")
+        
+        // Store exit door ID for matching
+        let matchingDoorId = exitDoorId
+        
+        // Restore previous map
+        tiledMapFileName = previousMap
+        
+        // Update GameState with restored map information
+        if let gameState = gameState {
+            gameState.currentMapFileName = tiledMapFileName
+            gameState.useProceduralWorld = !useTiledMap
+        }
+        
+        // Reload the map
+        reloadCurrentMap()
+        
+        // Find entry door position in previous map (matching door ID)
+        var spawnPosition: CGPoint
+        if let entryDoorPos = findEntryDoorPosition(matchingDoorId: matchingDoorId) {
+            // Spawn right in front of the entry door (outside the building, close to door)
+            // Offset: +20px north (higher Y) and -5px west (lower X)
+            spawnPosition = CGPoint(x: entryDoorPos.x + 0.25, y: entryDoorPos.y + 30)
+            print("   Found entry door (doorId=\(matchingDoorId)) at (\(Int(entryDoorPos.x)), \(Int(entryDoorPos.y))), spawning in front: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
+        } else if let entryDoorPos = entryDoorPosition {
+            // Fallback: use stored entry door position, offset in front
+            spawnPosition = CGPoint(x: entryDoorPos.x + 0.25, y: entryDoorPos.y + 30)
+            print("   Using stored entry door position, spawning in front: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
+        } else if let previousPosition = previousPlayerPosition {
+            // Fallback to previous position
+            if canMoveToTiledMap(position: previousPosition) {
+                spawnPosition = previousPosition
+            } else if let safePosition = findSafeSpawnPoint(near: previousPosition) {
+                spawnPosition = safePosition
+            } else {
+                spawnPosition = previousPosition
+            }
+            print("   Using previous position: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
+        } else {
+            // Last resort: use map center
+            let centerX = mapBounds.midX
+            let centerY = mapBounds.midY
+            spawnPosition = CGPoint(x: centerX, y: centerY)
+            print("   No entry door or previous position, using map center: (\(Int(centerX)), \(Int(centerY)))")
+        }
+        
+        // Update player position
+        player.position = spawnPosition
+        playerSprite?.position = spawnPosition
+        cameraNode?.position = spawnPosition
+        
+        // Clear stored previous map info (we're back outside)
+        previousMapFileName = nil
+        previousPlayerPosition = nil
+        entryDoorPosition = nil
+        entryDoorLayerName = nil
+        entryDoorId = nil
+        
+        print("✅ Exited building. Player at: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
+    }
+    
+    /// Transition from TMX map to procedural world
+    func transitionToProceduralWorld(from position: CGPoint, prefabsFile: String = "prefabs_grassland") {
+        guard let player = gameState?.player else {
+            print("❌ Cannot transition to procedural world: no player")
+            return
+        }
+        
+        // Cooldown check to prevent immediate re-triggering
+        let currentTime = CACurrentMediaTime()
+        if currentTime - lastTransitionTime < transitionCooldown {
+            print("⏱️ Transition on cooldown, ignoring trigger")
+            return
+        }
+        lastTransitionTime = currentTime
+        
+        print("🌍 Transitioning to procedural world from TMX map (using prefabs: \(prefabsFile).json)")
+        
+        // Load prefabs from the specified JSON file (if different from current)
+        PrefabFactory.shared.loadPrefabsFromFile(prefabsFile)
+        
+        // Get updated world config and apply to world generator
+        if let worldConfig = PrefabFactory.shared.getWorldConfig() {
+            // Update world seed from config if specified
+            if let world = gameState?.world, worldConfig.seed != world.seed {
+                gameState?.world.seed = worldConfig.seed
+                print("🌍 World seed updated from config: \(worldConfig.seed)")
+            }
+            // Update world generator config
+            worldGenerator?.setConfig(worldConfig)
+            print("🌍 World config loaded: '\(worldConfig.name)' - seed: \(worldConfig.seed)")
+        }
+        
+        // Store the entry position in TMX map for returning
+        tmxMapEntryPosition = position
+        
+        // Clear TMX map rendering
+        worldTiles.forEach { $0.removeFromParent() }
+        worldTiles.removeAll()
+        
+        // Clear object sprites
+        for (sprite, _) in objectSprites {
+            sprite.removeFromParent()
+        }
+        objectSprites.removeAll()
+        objectGroupNames.removeAll()
+        
+        // Clear question mark indicators
+        for (_, indicator) in questionMarkIndicators {
+            indicator.removeFromParent()
+        }
+        questionMarkIndicators.removeAll()
+        
+        // Switch to procedural world
+        useTiledMap = false
+        
+        // Update GameState with map information
+        if let gameState = gameState {
+            gameState.currentMapFileName = tiledMapFileName
+            gameState.useProceduralWorld = true
+        }
+        
+        // Show loading screen
+        showLoadingScreen(message: "Generating World...")
+        
+        // Setup hybrid world system if not already set up
+        if chunkManager == nil {
+            setupHybridWorldSystem()
+        }
+        
+        // Spawn player slightly forward from trigger position to avoid immediate re-trigger
+        // Move player 2 tiles north (positive Y) from the trigger
+        let tileSize: CGFloat = 32.0  // Matches TMX maps: 16x16 base tiles * 2.0 scale factor
+        let spawnOffset = CGPoint(x: 0, y: tileSize * 2)  // 2 tiles forward
+        let spawnPosition = CGPoint(x: position.x + spawnOffset.x, y: position.y + spawnOffset.y)
+        
+        player.position = spawnPosition
+        playerSprite?.position = spawnPosition
+        cameraNode?.position = spawnPosition
+        
+        // Load initial chunks around player asynchronously
+        if let chunkManager = chunkManager {
+            chunkManager.updateChunksAsync(around: spawnPosition) { [weak self] in
+                // Hide loading screen when chunks are loaded
+                DispatchQueue.main.async {
+                    self?.hideLoadingScreen()
+                    print("✅ Transitioned to procedural world. Player at: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y))), entry point was: (\(Int(position.x)), \(Int(position.y)))")
+                }
+            }
+            lastPlayerChunk = ChunkKey.fromWorldPosition(
+                spawnPosition,
+                chunkSize: ChunkManager.defaultChunkSize,
+                tileSize: tileSize
+            )
+        } else {
+            // Fallback if chunkManager is nil
+            hideLoadingScreen()
+        }
+    }
+    
+    /// Transition from procedural world back to TMX map
+    func transitionToTiledMap() {
+        guard let player = gameState?.player, let entryPosition = tmxMapEntryPosition else {
+            print("❌ Cannot transition to TMX map: no entry position stored")
+            return
+        }
+        
+        print("🏠 Transitioning back to TMX map from procedural world")
+        
+        // Store exit position in procedural world (for returning later if needed)
+        proceduralWorldExitPosition = player.position
+        
+        // Clear procedural world chunks
+        if let chunkManager = chunkManager {
+            chunkManager.unloadAllChunks()
+        }
+        
+        // Also remove any remaining chunk nodes from the scene
+        enumerateChildNodes(withName: "chunk_") { node, _ in
+            node.removeFromParent()
+        }
+        
+        // Switch back to TMX map
+        useTiledMap = true
+        
+        // Update GameState with map information
+        if let gameState = gameState {
+            gameState.currentMapFileName = tiledMapFileName
+            gameState.useProceduralWorld = false
+        }
+        
+        // Reload the TMX map
+        reloadCurrentMap()
+        
+        // Position player at the entry point
+        player.position = entryPosition
+        playerSprite?.position = entryPosition
+        cameraNode?.position = entryPosition
+        
+        // Clear procedural world tracking (keep tmxMapEntryPosition in case we want to go back)
+        // proceduralWorldExitPosition is kept for potential return
+        
+        print("✅ Transitioned back to TMX map. Player at: (\(Int(entryPosition.x)), \(Int(entryPosition.y)))")
+    }
+    
+    /// Find the position of the entry door in the current map matching the given door ID
+    /// - Parameter doorId: The door ID to match
+    private func findEntryDoorPosition(matchingDoorId: String) -> CGPoint? {
+        // Look for a layer with interior property and matching door ID
+        for (layerName, props) in layerProperties {
+            if let _ = props["interior"] {
+                // Check if door ID matches
+                let entryDoorId = props["doorId"] ?? props["door_id"] ?? layerName
+                if entryDoorId == matchingDoorId {
+                    // Find ALL collision tiles from this layer to calculate center
+                    var doorTilePositions: [CGPoint] = []
+                    let tileWidth = mapTileSize.width
+                    let tileHeight = mapTileSize.height
+                    let yFlipOffset = mapYFlipOffset
+                    
+                    for (tileKey, layer) in collisionLayerMap where layer == layerName {
+                        // Parse tile coordinates
+                        let components = tileKey.components(separatedBy: ",")
+                        guard components.count == 2,
+                              let tileX = Int(components[0]),
+                              let tileY = Int(components[1]) else { continue }
+                        
+                        // Convert tile coordinates to world position
+                        let worldX = CGFloat(tileX) * tileWidth + tileWidth / 2
+                        let worldY: CGFloat
+                        if hasInfiniteLayers {
+                            let tiledY = CGFloat(tileY) * tileHeight
+                            worldY = yFlipOffset - tiledY - tileHeight / 2
+                        } else {
+                            let height = regularLayerHeight
+                            let tiledY = CGFloat(height - 1 - tileY) * tileHeight
+                            worldY = tiledY + tileHeight / 2
+                        }
+                        
+                        doorTilePositions.append(CGPoint(x: worldX, y: worldY))
+                    }
+                    
+                    if !doorTilePositions.isEmpty {
+                        // Calculate center point of all door tiles
+                        let avgX = doorTilePositions.map { $0.x }.reduce(0, +) / CGFloat(doorTilePositions.count)
+                        let avgY = doorTilePositions.map { $0.y }.reduce(0, +) / CGFloat(doorTilePositions.count)
+                        let centerPos = CGPoint(x: avgX, y: avgY)
+                        
+                        print("   Found entry door (doorId=\(entryDoorId)) with \(doorTilePositions.count) tiles, center at: (\(Int(centerPos.x)), \(Int(centerPos.y)))")
+                        return centerPos
+                    }
+                }
+            }
+        }
+        return nil
+    }
+    
+    /// Reload the current map (used when switching between maps)
+    private func reloadCurrentMap() {
+        guard let player = gameState?.player else { return }
+        
+        // Clear existing sprites
+        playerSprite?.removeFromParent()
+        companionSprites.values.forEach { $0.removeFromParent() }
+        companionSprites.removeAll()
+        
+        // Clear map container
+        enumerateChildNodes(withName: "tiledMapContainer") { node, _ in
+            node.removeFromParent()
+        }
+        worldTiles.removeAll()
+        
+        // Clear object sprites
+        objectSprites.forEach { $0.key.removeFromParent() }
+        objectSprites.removeAll()
+        objectGroupNames.removeAll()
+        questionMarkIndicators.values.forEach { $0.removeFromParent() }
+        questionMarkIndicators.removeAll()
+        
+        // Clear animal and enemy sprites
+        animalSprites.forEach { $0.key.removeFromParent() }
+        animalSprites.removeAll()
+        enemySprites.forEach { $0.key.removeFromParent() }
+        enemySprites.removeAll()
+        
+        // Parse and load the new map
+        let parsedTiledMap = TiledMapParser.parse(fileName: tiledMapFileName)
+        
+        // Load tilesets
+        if let tiledMap = parsedTiledMap {
+            _ = loadTilesetsFromTMX(fileName: tiledMapFileName, preParsedMap: tiledMap)
+        } else {
+            _ = loadTilesetsFromTMX(fileName: tiledMapFileName)
+        }
+        
+        // Render the new map
+        if useTiledMap {
+            loadAndRenderTiledMap(fileName: tiledMapFileName, preParsedMap: parsedTiledMap)
+        } else {
+            renderWorld()
+        }
+        
+        // Recreate player sprite
+        createPlayerSprite()
+        
+        // Recreate companion sprites
+        for companion in player.companions {
+            createCompanionSprite(companion: companion)
+        }
+        
+        // Update camera
+        cameraNode?.position = player.position
     }
     
     func checkForProximityEncounter() {
@@ -1773,6 +2580,57 @@ class GameScene: SKScene {
         // Update question mark indicators for dialogue objects
         updateQuestionMarkIndicators()
         
+        // Update chunk loading/unloading for hybrid world system
+        if !useTiledMap, let chunkManager = chunkManager, let player = gameState?.player {
+            // Use TMX tile size to match TMX maps
+            let tileSize: CGFloat = 32.0  // Matches TMX maps: 16x16 base tiles * 2.0 scale factor
+            
+            let currentChunk = ChunkKey.fromWorldPosition(
+                player.position,
+                chunkSize: ChunkManager.defaultChunkSize,
+                tileSize: tileSize
+            )
+            
+            // Check if player moved to a new chunk
+            if lastPlayerChunk != currentChunk {
+                // Use async chunk loading to prevent freezes
+                chunkManager.updateChunks(around: player.position)
+                lastPlayerChunk = currentChunk
+                
+                // Pre-load chunks ahead of player movement direction to prevent future freezes
+                // Calculate movement direction from last position
+                if let lastChunk = lastPlayerChunk {
+                    let dx = currentChunk.x - lastChunk.x
+                    let dy = currentChunk.y - lastChunk.y
+                    
+                    // Pre-load chunks in the direction of movement
+                    if dx != 0 || dy != 0 {
+                        let preloadChunk = ChunkKey(x: currentChunk.x + dx, y: currentChunk.y + dy)
+                        // Check if chunk needs loading (not already loaded)
+                        if !chunkManager.isChunkLoaded(preloadChunk) {
+                            chunkManager.loadChunkAsync(preloadChunk)
+                        }
+                    }
+                }
+            }
+            
+            // Check for transition back to TMX map
+            // If player walks back near the entry position, transition back to TMX
+            // This allows seamless travel between TMX and procedural worlds
+            // Only check if cooldown has passed
+            let currentTime = CACurrentMediaTime()
+            if currentTime - lastTransitionTime >= transitionCooldown,
+               let entryPos = tmxMapEntryPosition {
+                let distance = sqrt(pow(player.position.x - entryPos.x, 2) + pow(player.position.y - entryPos.y, 2))
+                // If player walks back to the entry position (within 32 pixels = 1 tile), transition back
+                if distance < 32.0 {
+                    print("🌍 Player walked back to procedural world entry point, transitioning back to TMX map")
+                    transitionToTiledMap()
+                    return
+                }
+            }
+        }
+        
         // Continuous movement if direction is set
         if currentMovementDirection != CGPoint.zero {
             movePlayer(direction: currentMovementDirection)
@@ -1850,6 +2708,11 @@ class GameScene: SKScene {
         animalSprites.removeAll()
         enemySprites.forEach { $0.key.removeFromParent() }
         enemySprites.removeAll()
+        
+        // CRITICAL: Restore map information from saved game state
+        tiledMapFileName = gameState.currentMapFileName
+        useTiledMap = !gameState.useProceduralWorld
+        print("🗺️ Restoring map from save: fileName='\(tiledMapFileName)', useProceduralWorld=\(gameState.useProceduralWorld), useTiledMap=\(useTiledMap)")
         
         // OPTIMIZATION: Parse TMX file once and reuse for both tileset loading and map rendering
         // This avoids double-parsing which was causing slow save loading
@@ -1938,7 +2801,26 @@ class GameScene: SKScene {
             return
         }
         
-        for object in objectGroup.objects {
+            for object in objectGroup.objects {
+            // Check if this object should spawn an enemy, animal, or NPC from a prefab
+            if let enemyId = object.stringProperty("enemyId"),
+               let enemyPrefab = PrefabFactory.shared.getEnemyPrefab(enemyId) {
+                spawnEnemyFromPrefab(enemyPrefab, at: object, tileSize: tileSize, yFlipOffset: yFlipOffset, container: parentNode)
+                continue  // Skip normal object rendering for prefab entities
+            }
+            
+            if let animalId = object.stringProperty("animalId"),
+               let animalPrefab = PrefabFactory.shared.getAnimalPrefab(animalId) {
+                spawnAnimalFromPrefab(animalPrefab, at: object, tileSize: tileSize, yFlipOffset: yFlipOffset, container: parentNode)
+                continue  // Skip normal object rendering for prefab entities
+            }
+            
+            if let npcId = object.stringProperty("npcId"),
+               let npcPrefab = PrefabFactory.shared.getNPCPrefab(npcId) {
+                spawnNPCFromPrefab(npcPrefab, at: object, tileSize: tileSize, yFlipOffset: yFlipOffset, container: parentNode)
+                continue  // Skip normal object rendering for prefab entities
+            }
+            
             // Calculate world position
             // Tiled uses top-left origin (Y increases downward)
             // Object coordinates in Tiled are in BASE tile pixel coordinates (e.g., 16x16)
@@ -2191,6 +3073,7 @@ class GameScene: SKScene {
     func parseCollisionFromTiledMap(_ tiledMap: TiledMap, tileSize: CGSize, yFlipOffset: CGFloat) {
         collisionMap.removeAll()
         collisionLayerMap.removeAll()
+        layerProperties.removeAll()
         
         var foundLayers: [String] = []
         var allLayerNames: [String] = []
@@ -2209,6 +3092,9 @@ class GameScene: SKScene {
         }
         
         for layer in tiledMap.layers {
+            // Store layer properties for door detection
+            layerProperties[layer.name] = layer.properties
+            
             // Check if this layer has a collision property
             let hasCollisionProperty = layer.properties.keys.contains("collision")
             
@@ -2313,22 +3199,20 @@ class GameScene: SKScene {
     }
     
     /// Get the player's collision bounding box from the sprite's actual size
-    /// Uses a slightly smaller collision box than the sprite for better gameplay feel
+    /// Uses a collision box that matches the character width and is about knee height
     /// This allows the player to get closer to walls and multi-tile objects
     /// Assumes center anchor point (SpriteKit default: 0.5, 0.5)
     private func getPlayerCollisionFrame(at position: CGPoint) -> CGRect {
-        // Use a smaller collision box than the sprite (18x18 instead of 24x24)
-        // This creates a 3px buffer on all sides, allowing closer approach to walls
-        // The sprite is 24x24, so 18x18 gives 6px total reduction (3px per side)
-        let collisionSize = CGSize(width: 10, height: 10)
+        // Collision box is as wide as the character (sprite is 96x96, use ~24px wide for reasonable collision)
+        // and about knee height (10px tall)
+        let collisionSize = CGSize(width: 8, height: 12)
         let halfWidth = collisionSize.width / 2
         let halfHeight = collisionSize.height / 2
-        // Offset collision box downward to position it around the feet
-        // Sprite is 96x96 (32px * 3 scale), centered at position
+        // Offset collision box downward to position it around the feet/knees
+        // Sprite is 96x96, centered at position
         // Feet are at approximately position.y - 48
-        // To position 10x10 collision box near feet (center around position.y - 40):
-        // offset = 40 - halfHeight = 40 - 5 = 35
-        let collisionYOffset: CGFloat = 35.0  // Move collision box down to position around feet
+        // To position collision box near feet (center around position.y - 42):
+        let collisionYOffset: CGFloat = 42.0  // Move collision box down to position around feet
         return CGRect(origin: CGPoint(x: position.x - halfWidth, y: position.y - halfHeight - collisionYOffset), size: collisionSize)
     }
     
@@ -2432,6 +3316,9 @@ class GameScene: SKScene {
         }
         
         // Check all tiles that the player's bounding box overlaps
+        // Use precise rectangle intersection instead of just tile membership
+        // This allows the player to fit through narrow gaps even if the collision box
+        // is in a tile that contains a collision tile, as long as it doesn't actually overlap
         var hasCollision = false
         var collisionKey: String? = nil
         var collisionLayer: String? = nil
@@ -2440,16 +3327,41 @@ class GameScene: SKScene {
             for tileY in minTileY...maxTileY {
                 let key = "\(tileX),\(tileY)"
                 if collisionMap.contains(key) {
+                    // Calculate the collision tile's world rectangle
+                    // Tiles are positioned based on their bottom-left corner
+                    let tileWorldX = CGFloat(tileX) * tileWidth
+                    let tileWorldY: CGFloat
+                    if hasInfiniteLayers {
+                        // Infinite layers: tile at tileY has bottom at worldY = yFlipOffset - (tileY * tileHeight)
+                        let tileTiledY = CGFloat(tileY) * tileHeight
+                        tileWorldY = yFlipOffset - tileTiledY
+                    } else {
+                        // Regular layers: tile at tileY (0 = top row) is at worldY = (height - 1 - tileY) * tileHeight
+                        let height = regularLayerHeight
+                        if height > 0 {
+                            tileWorldY = CGFloat(height - 1 - tileY) * tileHeight
+                        } else {
+                            // Fallback
+                            let tileTiledY = CGFloat(tileY) * tileHeight
+                            tileWorldY = yFlipOffset - tileTiledY
+                        }
+                    }
+                    let tileRect = CGRect(x: tileWorldX, y: tileWorldY, width: tileWidth, height: tileHeight)
+                    
+                    // Check if the player's collision box intersects the collision tile
+                    // This is a standard rectangle intersection check
+                    if playerFrame.intersects(tileRect) {
                     hasCollision = true
                     collisionKey = key
                     collisionLayer = collisionLayerMap[key]
-                    // Calculate where this tile should be in world coordinates for debugging
-                    let tileTiledY = CGFloat(tileY) * tileHeight
-                    let tileWorldY = yFlipOffset - tileTiledY
-                    let tileWorldX = CGFloat(tileX) * tileWidth
                     // Always log collisions with debug info
-                    print("🚫 COLLISION! Player at world=(\(Int(position.x)), \(Int(position.y))), checking tile=(\(tileX), \(tileY)) which should be at world=(\(Int(tileWorldX)), \(Int(tileWorldY))), playerFrame=(\(Int(playerLeft)),\(Int(playerBottom))-\(Int(playerRight)),\(Int(playerTop))), layer=\(collisionLayer ?? "unknown")")
+                        print("🚫 COLLISION! Player at world=(\(Int(position.x)), \(Int(position.y)))")
+                        print("   Player collision box: (\(String(format: "%.1f", playerLeft)),\(String(format: "%.1f", playerBottom)))-\(String(format: "%.1f", playerRight)),\(String(format: "%.1f", playerTop))) size=\(String(format: "%.1f", playerFrame.width))x\(String(format: "%.1f", playerFrame.height))")
+                        print("   Collision tile=(\(tileX), \(tileY)) at world=(\(String(format: "%.1f", tileWorldX)),\(String(format: "%.1f", tileWorldY))) size=\(String(format: "%.1f", tileWidth))x\(String(format: "%.1f", tileHeight))")
+                        print("   Tile rect: (\(String(format: "%.1f", tileRect.minX)),\(String(format: "%.1f", tileRect.minY)))-\(String(format: "%.1f", tileRect.maxX)),\(String(format: "%.1f", tileRect.maxY)))")
+                        print("   Layer=\(collisionLayer ?? "unknown")")
                     break
+                    }
                 }
             }
             if hasCollision { break }
@@ -2557,6 +3469,11 @@ extension GameScene {
         // Pause the game
         isGamePaused = true
         
+        // Reset drag state
+        draggedItemIndex = nil
+        draggedItemNode = nil
+        closeInventoryContextMenu()
+        
         // Create inventory UI (relative to camera)
         guard let camera = cameraNode, let player = gameState?.player else { return }
         
@@ -2567,29 +3484,31 @@ extension GameScene {
         let panelWidth = min(size.width * 0.9, isLandscape ? 800 : 600)
         let panelHeight = min(size.height * 0.8, isLandscape ? 600 : 700)
         
-        let panel = SKShapeNode(rectOf: CGSize(width: panelWidth, height: panelHeight), cornerRadius: 12)
-        panel.fillColor = SKColor(white: 0.15, alpha: 0.98)
-        panel.strokeColor = SKColor(white: 0.9, alpha: 1.0)
-        panel.lineWidth = 3
+        // Modern panel with gradient-like effect
+        let panel = SKShapeNode(rectOf: CGSize(width: panelWidth, height: panelHeight), cornerRadius: 16)
+        panel.fillColor = SKColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 0.98)
+        panel.strokeColor = SKColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0)
+        panel.lineWidth = 4
         panel.position = CGPoint(x: 0, y: 0) // Center relative to camera
         panel.zPosition = 200
         panel.name = "inventoryPanel"
         camera.addChild(panel)
         
-        // Title background
-        let titleBg = SKShapeNode(rectOf: CGSize(width: panelWidth * 0.9, height: 50), cornerRadius: 8)
-        titleBg.fillColor = SKColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.95)
-        titleBg.strokeColor = .cyan
-        titleBg.lineWidth = 2
-        titleBg.position = CGPoint(x: 0, y: panelHeight / 2 - 40)
+        // Title background with better styling
+        let titleBg = SKShapeNode(rectOf: CGSize(width: panelWidth * 0.95, height: 55), cornerRadius: 10)
+        titleBg.fillColor = SKColor(red: 0.25, green: 0.45, blue: 0.7, alpha: 0.95)
+        titleBg.strokeColor = SKColor(red: 0.5, green: 0.7, blue: 1.0, alpha: 1.0)
+        titleBg.lineWidth = 3
+        titleBg.position = CGPoint(x: 0, y: panelHeight / 2 - 35)
         panel.addChild(titleBg)
         
         let title = SKLabelNode(fontNamed: "Arial-BoldMT")
         title.text = "Inventory"
-        title.fontSize = 28
+        title.fontSize = 32
         title.fontColor = .white
         title.position = CGPoint(x: 0, y: 0)
         title.verticalAlignmentMode = .center
+        title.zPosition = 1
         titleBg.addChild(title)
         
         // Inventory slots configuration
@@ -2598,16 +3517,16 @@ extension GameScene {
         let totalSlots = slotsPerRow * numRows
         
         let slotSize: CGFloat = isLandscape ? 60 : 50
-        let slotSpacing: CGFloat = 8
+        let slotSpacing: CGFloat = 10
         let slotsAreaWidth = CGFloat(slotsPerRow) * slotSize + CGFloat(slotsPerRow - 1) * slotSpacing
         let slotsAreaHeight = CGFloat(numRows) * slotSize + CGFloat(numRows - 1) * slotSpacing
         
-        // Slots container background
-        let slotsBg = SKShapeNode(rectOf: CGSize(width: slotsAreaWidth + 20, height: slotsAreaHeight + 20), cornerRadius: 8)
-        slotsBg.fillColor = SKColor(white: 0.1, alpha: 0.95)
-        slotsBg.strokeColor = .white
+        // Slots container background with better styling
+        let slotsBg = SKShapeNode(rectOf: CGSize(width: slotsAreaWidth + 30, height: slotsAreaHeight + 30), cornerRadius: 10)
+        slotsBg.fillColor = SKColor(white: 0.08, alpha: 0.95)
+        slotsBg.strokeColor = SKColor(white: 0.4, alpha: 0.8)
         slotsBg.lineWidth = 2
-        slotsBg.position = CGPoint(x: 0, y: 0)
+        slotsBg.position = CGPoint(x: 0, y: -10)
         panel.addChild(slotsBg)
         
         // Create inventory slots
@@ -2622,34 +3541,42 @@ extension GameScene {
                 let x = startX + CGFloat(col) * (slotSize + slotSpacing)
                 let y = startY - CGFloat(row) * (slotSize + slotSpacing)
                 
-                // Create slot background
-                let slotBg = SKShapeNode(rectOf: CGSize(width: slotSize, height: slotSize), cornerRadius: 4)
-                slotBg.fillColor = SKColor(white: 0.2, alpha: 0.8)
-                slotBg.strokeColor = SKColor(white: 0.5, alpha: 0.6)
-                slotBg.lineWidth = 1
+                // Create slot background with better styling
+                let slotBg = SKShapeNode(rectOf: CGSize(width: slotSize, height: slotSize), cornerRadius: 6)
+                slotBg.fillColor = SKColor(white: 0.25, alpha: 0.9)
+                slotBg.strokeColor = SKColor(white: 0.6, alpha: 0.8)
+                slotBg.lineWidth = 2
                 slotBg.position = CGPoint(x: x, y: y)
                 slotBg.name = "inventorySlot_\(slotIndex)"
+                slotBg.zPosition = 1
                 slotsBg.addChild(slotBg)
                 
                 // If we have an item for this slot, display it
                 if slotIndex < player.inventory.count {
                     let item = player.inventory[slotIndex]
                     
+                    // Create item container node for drag support
+                    let itemContainer = SKNode()
+                    itemContainer.name = "itemContainer_\(slotIndex)"
+                    itemContainer.position = CGPoint(x: 0, y: 0)
+                    itemContainer.zPosition = 2
+                    slotBg.addChild(itemContainer)
+                    
                     // Create item sprite from GID if available
                     if let gid = item.gid {
-                        let itemSize = CGSize(width: slotSize * 0.85, height: slotSize * 0.85)
+                        let itemSize = CGSize(width: slotSize * 0.8, height: slotSize * 0.8)
                         if let itemSprite = TileManager.shared.createSprite(for: gid, size: itemSize) {
                             itemSprite.position = CGPoint(x: 0, y: 0)
                             itemSprite.zPosition = 1
                             itemSprite.name = "itemSprite_\(slotIndex)"
-                            slotBg.addChild(itemSprite)
+                            itemContainer.addChild(itemSprite)
                         }
                     } else {
                         // Fallback: create a colored square with item name
                         let fallbackSprite = SKSpriteNode(color: SKColor(red: 0.3, green: 0.3, blue: 0.7, alpha: 0.8), size: CGSize(width: slotSize * 0.7, height: slotSize * 0.7))
                         fallbackSprite.position = CGPoint(x: 0, y: 0)
                         fallbackSprite.zPosition = 1
-                        slotBg.addChild(fallbackSprite)
+                        itemContainer.addChild(fallbackSprite)
                         
                         // Add item name label (small)
                         let nameLabel = SKLabelNode(fontNamed: "Arial")
@@ -2659,49 +3586,338 @@ extension GameScene {
                         nameLabel.position = CGPoint(x: 0, y: 0)
                         nameLabel.verticalAlignmentMode = .center
                         nameLabel.zPosition = 2
-                        slotBg.addChild(nameLabel)
+                        itemContainer.addChild(nameLabel)
                     }
                     
-                    // Show quantity if > 1 or if stackable
+                    // Show quantity if > 1 or if stackable - improved positioning
                     if item.quantity > 1 || item.stackable {
+                        // Quantity background - positioned better to avoid border overlap
+                        let quantityBg = SKShapeNode(rectOf: CGSize(width: 24, height: 18), cornerRadius: 4)
+                        quantityBg.fillColor = SKColor(red: 0, green: 0, blue: 0, alpha: 0.85)
+                        quantityBg.strokeColor = SKColor(white: 0.9, alpha: 1.0)
+                        quantityBg.lineWidth = 1.5
+                        // Position in bottom-right corner, inset from edge
+                        quantityBg.position = CGPoint(x: slotSize / 2 - 14, y: -slotSize / 2 + 12)
+                        quantityBg.zPosition = 4
+                        itemContainer.addChild(quantityBg)
+                        
+                        // Quantity label
                         let quantityLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
                         quantityLabel.text = "\(item.quantity)"
-                        quantityLabel.fontSize = 12
+                        quantityLabel.fontSize = 13
                         quantityLabel.fontColor = .white
-                        quantityLabel.position = CGPoint(x: slotSize / 2 - 8, y: -slotSize / 2 + 8)
-                        quantityLabel.horizontalAlignmentMode = .right
-                        quantityLabel.verticalAlignmentMode = .bottom
-                        quantityLabel.zPosition = 3
-                        
-                        // Add background for quantity label
-                        let quantityBg = SKShapeNode(rectOf: CGSize(width: 20, height: 16), cornerRadius: 3)
-                        quantityBg.fillColor = SKColor(red: 0, green: 0, blue: 0, alpha: 0.7)
-                        quantityBg.strokeColor = .white
-                        quantityBg.lineWidth = 1
-                        quantityBg.position = CGPoint(x: slotSize / 2 - 10, y: -slotSize / 2 + 10)
-                        quantityBg.zPosition = 2
-                        slotBg.addChild(quantityBg)
-                        slotBg.addChild(quantityLabel)
+                        quantityLabel.position = CGPoint(x: slotSize / 2 - 14, y: -slotSize / 2 + 12)
+                        quantityLabel.horizontalAlignmentMode = .center
+                        quantityLabel.verticalAlignmentMode = .center
+                        quantityLabel.zPosition = 5
+                        itemContainer.addChild(quantityLabel)
                     }
                 }
             }
         }
         
-        // Close button
-        let closeButton = SKShapeNode(rectOf: CGSize(width: 120, height: 50), cornerRadius: 8)
-        closeButton.fillColor = SKColor(red: 0.7, green: 0.1, blue: 0.1, alpha: 1.0)
-        closeButton.strokeColor = .white
-        closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: 0, y: -panelHeight / 2 + 40)
+        // Close button with better styling
+        let closeButton = SKShapeNode(rectOf: CGSize(width: 140, height: 55), cornerRadius: 10)
+        closeButton.fillColor = SKColor(red: 0.7, green: 0.15, blue: 0.15, alpha: 1.0)
+        closeButton.strokeColor = SKColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1.0)
+        closeButton.lineWidth = 3
+        closeButton.position = CGPoint(x: 0, y: -panelHeight / 2 + 35)
         closeButton.name = "closeInventory"
+        closeButton.zPosition = 10
         
         let closeLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
         closeLabel.text = "Close"
-        closeLabel.fontSize = 20
+        closeLabel.fontSize = 22
+        closeLabel.fontColor = .white
+        closeLabel.verticalAlignmentMode = .center
+        closeLabel.zPosition = 1
+        closeButton.addChild(closeLabel)
+        panel.addChild(closeButton)
+    }
+    
+    // MARK: - Inventory Context Menu
+    
+    func showInventoryContextMenu(at position: CGPoint, itemIndex: Int) {
+        guard let camera = cameraNode, let player = gameState?.player,
+              itemIndex < player.inventory.count else { return }
+        
+        // Close any existing context menu
+        closeInventoryContextMenu()
+        
+        contextMenuItemIndex = itemIndex
+        let item = player.inventory[itemIndex]
+        
+        // Create context menu panel with better spacing
+        let menuWidth: CGFloat = 200
+        let menuHeight: CGFloat = 180
+        let menu = SKShapeNode(rectOf: CGSize(width: menuWidth, height: menuHeight), cornerRadius: 10)
+        menu.fillColor = SKColor(white: 0.2, alpha: 0.98)
+        menu.strokeColor = SKColor(white: 0.7, alpha: 1.0)
+        menu.lineWidth = 3
+        menu.position = position
+        menu.zPosition = 300
+        menu.name = "inventoryContextMenu"
+        camera.addChild(menu)
+        inventoryContextMenu = menu
+        
+        // Item name label with better spacing
+        let nameLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+        nameLabel.text = item.name
+        nameLabel.fontSize = 18
+        nameLabel.fontColor = .white
+        nameLabel.position = CGPoint(x: 0, y: menuHeight / 2 - 25)
+        nameLabel.verticalAlignmentMode = .center
+        menu.addChild(nameLabel)
+        
+        // Inspect button
+        let inspectButton = createContextMenuButton(text: "Inspect", color: SKColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 1.0), yOffset: 35)
+        inspectButton.name = "contextMenuInspect"
+        menu.addChild(inspectButton)
+        
+        // Drop button
+        let dropButton = createContextMenuButton(text: "Drop", color: SKColor(red: 0.8, green: 0.6, blue: 0.2, alpha: 1.0), yOffset: -15)
+        dropButton.name = "contextMenuDrop"
+        menu.addChild(dropButton)
+        
+        // Destroy button
+        let destroyButton = createContextMenuButton(text: "Destroy", color: SKColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1.0), yOffset: -65)
+        destroyButton.name = "contextMenuDestroy"
+        menu.addChild(destroyButton)
+    }
+    
+    func createContextMenuButton(text: String, color: SKColor, yOffset: CGFloat) -> SKShapeNode {
+        let button = SKShapeNode(rectOf: CGSize(width: 180, height: 40), cornerRadius: 8)
+        button.fillColor = color
+        button.strokeColor = .white
+        button.lineWidth = 2.5
+        button.position = CGPoint(x: 0, y: yOffset)
+        button.zPosition = 1
+        
+        let label = SKLabelNode(fontNamed: "Arial-BoldMT")
+        label.text = text
+        label.fontSize = 18
+        label.fontColor = .white
+        label.verticalAlignmentMode = .center
+        label.zPosition = 2
+        button.addChild(label)
+        
+        return button
+    }
+    
+    func closeInventoryContextMenu() {
+        inventoryContextMenu?.removeFromParent()
+        inventoryContextMenu = nil
+        contextMenuItemIndex = nil
+    }
+    
+    func handleInventoryContextMenuAction(action: String) {
+        guard let itemIndex = contextMenuItemIndex,
+              let player = gameState?.player,
+              itemIndex < player.inventory.count else { return }
+        
+        let item = player.inventory[itemIndex]
+        closeInventoryContextMenu()
+        
+        switch action {
+        case "inspect":
+            showItemInspect(item: item)
+        case "drop":
+            dropItem(itemIndex: itemIndex, item: item)
+        case "destroy":
+            destroyItem(itemIndex: itemIndex, item: item)
+        default:
+            break
+        }
+    }
+    
+    func showItemInspect(item: Item) {
+        guard let camera = cameraNode else { return }
+        
+        // Create inspect panel
+        let panelWidth: CGFloat = 400
+        let panelHeight: CGFloat = 300
+        let panel = SKShapeNode(rectOf: CGSize(width: panelWidth, height: panelHeight), cornerRadius: 12)
+        panel.fillColor = SKColor(white: 0.15, alpha: 0.98)
+        panel.strokeColor = SKColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0)
+        panel.lineWidth = 3
+        panel.position = CGPoint(x: 0, y: 0)
+        panel.zPosition = 400
+        panel.name = "itemInspectPanel"
+        camera.addChild(panel)
+        
+        // Title
+        let title = SKLabelNode(fontNamed: "Arial-BoldMT")
+        title.text = item.name
+        title.fontSize = 28
+        title.fontColor = .white
+        title.position = CGPoint(x: 0, y: panelHeight / 2 - 40)
+        title.verticalAlignmentMode = .center
+        panel.addChild(title)
+        
+        // Description
+        let description = SKLabelNode(fontNamed: "Arial")
+        description.text = item.itemDescription.isEmpty ? "No description available." : item.itemDescription
+        description.fontSize = 18
+        description.fontColor = .white
+        description.position = CGPoint(x: 0, y: 20)
+        description.verticalAlignmentMode = .center
+        description.horizontalAlignmentMode = .center
+        description.preferredMaxLayoutWidth = panelWidth - 40
+        description.numberOfLines = 0
+        panel.addChild(description)
+        
+        // Quantity
+        if item.quantity > 1 {
+            let quantityLabel = SKLabelNode(fontNamed: "Arial")
+            quantityLabel.text = "Quantity: \(item.quantity)"
+            quantityLabel.fontSize = 16
+            quantityLabel.fontColor = .lightGray
+            quantityLabel.position = CGPoint(x: 0, y: -60)
+            quantityLabel.verticalAlignmentMode = .center
+            panel.addChild(quantityLabel)
+        }
+        
+        // Close button
+        let closeButton = SKShapeNode(rectOf: CGSize(width: 120, height: 45), cornerRadius: 8)
+        closeButton.fillColor = SKColor(red: 0.7, green: 0.15, blue: 0.15, alpha: 1.0)
+        closeButton.strokeColor = .white
+        closeButton.lineWidth = 2
+        closeButton.position = CGPoint(x: 0, y: -panelHeight / 2 + 35)
+        closeButton.name = "closeInspect"
+        
+        let closeLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+        closeLabel.text = "Close"
+        closeLabel.fontSize = 18
         closeLabel.fontColor = .white
         closeLabel.verticalAlignmentMode = .center
         closeButton.addChild(closeLabel)
         panel.addChild(closeButton)
+    }
+    
+    func dropItem(itemIndex: Int, item: Item) {
+        guard let player = gameState?.player, let playerSprite = playerSprite else { return }
+        
+        // Create a dropped item object at player position
+        let dropPosition = player.position
+        
+        // Remove item from inventory
+        if item.quantity > 1 {
+            player.inventory[itemIndex].quantity -= 1
+        } else {
+            player.inventory.remove(at: itemIndex)
+        }
+        
+        // Create a TiledObject-like representation for the dropped item
+        // We'll need to create a visual representation on the map
+        // For now, just show a message and refresh inventory
+        showMessage("Dropped: \(item.name) x1")
+        
+        // TODO: Actually create a pickupable object on the ground at dropPosition
+        // This would require creating a TiledObject and rendering it in the world
+        
+        // Refresh inventory display
+        if let panel = cameraNode?.childNode(withName: "inventoryPanel") {
+            panel.removeFromParent()
+            showInventory()
+        }
+    }
+    
+    func destroyItem(itemIndex: Int, item: Item) {
+        guard let player = gameState?.player else { return }
+        
+        let itemName = item.name
+        let quantity = item.quantity
+        
+        // Remove item from inventory
+        player.inventory.remove(at: itemIndex)
+        
+        showMessage("Destroyed: \(itemName) x\(quantity)")
+        
+        // Refresh inventory display
+        if let panel = cameraNode?.childNode(withName: "inventoryPanel") {
+            panel.removeFromParent()
+            showInventory()
+        }
+    }
+    
+    func swapInventoryItems(from sourceIndex: Int, to targetIndex: Int) {
+        guard let player = gameState?.player,
+              sourceIndex < player.inventory.count,
+              targetIndex >= 0 else {
+            print("⚠️ Cannot swap items: sourceIndex=\(sourceIndex), targetIndex=\(targetIndex), inventory.count=\(gameState?.player.inventory.count ?? 0)")
+            return
+        }
+        
+        let originalCount = player.inventory.count
+        print("🔄 Moving item from slot \(sourceIndex) to slot \(targetIndex), current inventory count: \(originalCount)")
+        
+        // If moving to the same slot, do nothing
+        if sourceIndex == targetIndex {
+            print("   ℹ️ Item already in target slot, no change needed")
+            return
+        }
+        
+        // If target is within bounds, use swapAt for proper swapping
+        if targetIndex < originalCount {
+            // Both slots have items - swap them
+            player.inventory.swapAt(sourceIndex, targetIndex)
+            print("   ✅ Swapped items: slot \(sourceIndex) <-> slot \(targetIndex)")
+        } else {
+            // Target slot is empty (beyond current array)
+            // Remove from source and append to end
+            let item = player.inventory.remove(at: sourceIndex)
+            player.inventory.append(item)
+            print("   ⚠️ Moved item to end: removed from index \(sourceIndex), appended (target was \(targetIndex), but can't have gaps in array)")
+            print("   💡 Tip: To move items to specific slots, swap with existing items first")
+        }
+        
+        // Refresh inventory display
+        if let panel = cameraNode?.childNode(withName: "inventoryPanel") {
+            panel.removeFromParent()
+            showInventory()
+            print("   ✅ Inventory refreshed, new count: \(player.inventory.count)")
+        }
+    }
+    
+    // Helper function to find slot index by position (fallback for drag and drop)
+    func findSlotIndexAtPosition(_ position: CGPoint, in panel: SKNode) -> Int? {
+        // Find the slots container by searching for any slot node
+        var slotsBg: SKNode? = nil
+        panel.enumerateChildNodes(withName: "//inventorySlot_*") { node, _ in
+            slotsBg = node.parent
+            return
+        }
+        guard let slotsContainer = slotsBg else { return nil }
+        
+        // Get slot configuration from panel
+        let viewSize = getViewSize()
+        let isLandscape = viewSize.width > viewSize.height
+        let slotsPerRow = isLandscape ? 8 : 6
+        let numRows = isLandscape ? 6 : 8
+        let slotSize: CGFloat = isLandscape ? 60 : 50
+        let slotSpacing: CGFloat = 10
+        let slotsAreaWidth = CGFloat(slotsPerRow) * slotSize + CGFloat(slotsPerRow - 1) * slotSpacing
+        let slotsAreaHeight = CGFloat(numRows) * slotSize + CGFloat(numRows - 1) * slotSpacing
+        
+        // Convert position to slots container coordinates
+        let slotsLocalPoint = slotsContainer.convert(position, from: panel)
+        let startX = -slotsAreaWidth / 2 + slotSize / 2
+        let startY = slotsAreaHeight / 2 - slotSize / 2
+        
+        // Calculate which slot this position is in
+        let relativeX = slotsLocalPoint.x - startX
+        let relativeY = startY - slotsLocalPoint.y
+        
+        let col = Int(round(relativeX / (slotSize + slotSpacing)))
+        let row = Int(round(relativeY / (slotSize + slotSpacing)))
+        
+        if col >= 0 && col < slotsPerRow && row >= 0 && row < numRows {
+            let slotIndex = row * slotsPerRow + col
+            print("   📍 Position-based slot detection: col=\(col), row=\(row), index=\(slotIndex)")
+            return slotIndex
+        }
+        
+        return nil
     }
     
     // Helper function to get view size (for inventory UI)
@@ -2936,66 +4152,299 @@ extension GameScene {
     private func collectObject(_ object: TiledObject, sprite: SKSpriteNode) {
         guard let player = gameState?.player else { return }
         
-        // Create an item from the object
-        let itemName = object.name.isEmpty ? "Item" : object.name
-        let itemType: ItemType
-        
-        // Try to get item type from object properties
-        if let typeString = object.stringProperty("itemType"),
-           let parsedType = ItemType(rawValue: typeString) {
-            itemType = parsedType
+        // First, try to load item from prefab if itemId is specified
+        if let itemId = object.stringProperty("itemId"),
+           let itemPrefab = PrefabFactory.shared.getItemPrefab(itemId) {
+            // Create item from prefab
+            let item = createItemFromPrefab(itemPrefab, quantity: Int(object.floatProperty("quantity", default: 1)), gid: object.gid)
+            player.inventory.append(item)
+            print("✅ Collected item from prefab: \(itemPrefab.name) (id: \(itemId))")
+            showMessage("Collected: \(itemPrefab.name) x\(item.quantity)")
         } else {
-            // Default to food if not specified
-            itemType = .food
-        }
-        
-        // Get quantity from properties (default 1)
-        let quantity = Int(object.floatProperty("quantity", default: 1))
-        
-        // Get stackable property from Tiled object (default false)
-        let stackable = object.boolProperty("stackable", default: false)
-        
-        // Get GID from object (for displaying tile image)
-        let gid = object.gid
-        
-        // Create the item
-        let item = Item(
-            name: itemName,
-            type: itemType,
-            quantity: quantity,
-            description: object.stringProperty("description") ?? "",
-            value: Int(object.floatProperty("value", default: 0)),
-            gid: gid,
-            stackable: stackable
-        )
-        
-        // If stackable, try to merge with existing item of same type and GID
-        if stackable {
-            // Find existing item with same type and GID
-            if let existingIndex = player.inventory.firstIndex(where: { existingItem in
-                existingItem.type == itemType && existingItem.gid == gid && existingItem.stackable
-            }) {
-                // Merge quantities
-                player.inventory[existingIndex].quantity += quantity
-                print("✅ Stacked item: \(itemName) (type: \(itemType), total quantity: \(player.inventory[existingIndex].quantity))")
-                showMessage("Collected: \(itemName) x\(quantity) (Total: \(player.inventory[existingIndex].quantity))")
+            // Fall back to creating item from object properties (backwards compatible)
+            let itemName = object.name.isEmpty ? "Item" : object.name
+            let itemType: ItemType
+            
+            // Try to get item type from object properties
+            if let typeString = object.stringProperty("itemType"),
+               let parsedType = ItemType(rawValue: typeString) {
+                itemType = parsedType
             } else {
-                // No existing stackable item found, add as new item
-        player.inventory.append(item)
-                print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: true)")
+                // Default to food if not specified
+                itemType = .food
+            }
+            
+            // Get quantity from properties (default 1)
+            let quantity = Int(object.floatProperty("quantity", default: 1))
+            
+            // Get stackable property from Tiled object (default false)
+            let stackable = object.boolProperty("stackable", default: false)
+            
+            // Get GID from object (for displaying tile image)
+            let gid = object.gid
+            
+            // Create the item
+            let item = Item(
+                name: itemName,
+                type: itemType,
+                quantity: quantity,
+                description: object.stringProperty("description") ?? "",
+                value: Int(object.floatProperty("value", default: 0)),
+                gid: gid,
+                stackable: stackable
+            )
+            
+            // If stackable, try to merge with existing item of same type and GID
+            if stackable {
+                // Find existing item with same type and GID
+                if let existingIndex = player.inventory.firstIndex(where: { existingItem in
+                    existingItem.type == itemType && existingItem.gid == gid && existingItem.stackable
+                }) {
+                    // Merge quantities
+                    player.inventory[existingIndex].quantity += quantity
+                    print("✅ Stacked item: \(itemName) (type: \(itemType), total quantity: \(player.inventory[existingIndex].quantity))")
+                    showMessage("Collected: \(itemName) x\(quantity) (Total: \(player.inventory[existingIndex].quantity))")
+                } else {
+                    // No existing stackable item found, add as new item
+                    player.inventory.append(item)
+                    print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: true)")
+                    showMessage("Collected: \(itemName) x\(quantity)")
+                }
+            } else {
+                // Not stackable, always add as new item
+                player.inventory.append(item)
+                print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: false)")
                 showMessage("Collected: \(itemName) x\(quantity)")
             }
-        } else {
-            // Not stackable, always add as new item
-            player.inventory.append(item)
-            print("✅ Collected item: \(itemName) (type: \(itemType), quantity: \(quantity), stackable: false)")
-            showMessage("Collected: \(itemName) x\(quantity)")
         }
         
         // Remove object from scene
         sprite.removeFromParent()
         objectSprites.removeValue(forKey: sprite)
         objectGroupNames.removeValue(forKey: sprite)
+    }
+    
+    /// Create an Item instance from an ItemPrefab
+    private func createItemFromPrefab(_ prefab: ItemPrefab, quantity: Int = 1, gid: Int? = nil) -> Item {
+        // Parse GID from prefab if not provided
+        // Priority: 1) provided gid parameter, 2) first tile from parts array, 3) legacy gid property
+        let finalGID: Int?
+        if let gid = gid {
+            finalGID = gid
+        } else if let firstPart = prefab.parts.first,
+                  let firstRow = firstPart.tileGrid.first,
+                  let firstTile = firstRow.first,
+                  let gidString = firstTile {
+            // Try to parse from first tile in parts array
+            if let directGID = Int(gidString) {
+                finalGID = directGID
+            } else if let parsedGID = PrefabFactory.shared.parseGIDSpec(gidString) {
+                finalGID = parsedGID
+            } else {
+                finalGID = nil
+            }
+        } else if let gidString = prefab.gid {
+            // Fallback to legacy gid property
+            if let directGID = Int(gidString) {
+                finalGID = directGID
+            } else if let parsedGID = PrefabFactory.shared.parseGIDSpec(gidString) {
+                finalGID = parsedGID
+            } else {
+                finalGID = nil
+            }
+        } else {
+            finalGID = nil
+        }
+        
+        // Create item based on type
+        switch prefab.type {
+        case .weapon:
+            guard let weaponData = prefab.weaponData,
+                  let weaponType = WeaponType(rawValue: weaponData.weaponType.capitalized) else {
+                // Fallback to basic item
+                return Item(
+                    name: prefab.name,
+                    type: .weapon,
+                    quantity: quantity,
+                    description: prefab.description,
+                    value: prefab.value,
+                    gid: finalGID,
+                    stackable: prefab.stackable
+                )
+            }
+            let weapon = Weapon(
+                name: prefab.name,
+                weaponType: weaponType,
+                isMagical: weaponData.isMagical ?? false,
+                value: prefab.value
+            )
+            weapon.damageDie = weaponData.damageDie
+            weapon.range = weaponData.range
+            weapon.gid = finalGID
+            weapon.quantity = quantity
+            weapon.itemDescription = prefab.description
+            weapon.stackable = prefab.stackable
+            return weapon
+            
+        case .armor:
+            guard let armorData = prefab.armorData,
+                  let armorType = ArmorType(rawValue: armorData.armorType.capitalized + " Armor") else {
+                return Item(
+                    name: prefab.name,
+                    type: .armor,
+                    quantity: quantity,
+                    description: prefab.description,
+                    value: prefab.value,
+                    gid: finalGID,
+                    stackable: prefab.stackable
+                )
+            }
+            let armor = Armor(name: prefab.name, armorType: armorType, value: prefab.value)
+            armor.gid = finalGID
+            armor.quantity = quantity
+            armor.itemDescription = prefab.description
+            armor.stackable = prefab.stackable
+            return armor
+            
+        case .consumable:
+            guard let consumableData = prefab.consumableData else {
+                return Item(
+                    name: prefab.name,
+                    type: .healthPotion,
+                    quantity: quantity,
+                    description: prefab.description,
+                    value: prefab.value,
+                    gid: finalGID,
+                    stackable: prefab.stackable
+                )
+            }
+            let effectType = consumableData.effectType.lowercased()
+            let effect: ConsumableEffect
+            if effectType.contains("mana") {
+                effect = .restoreMana(consumableData.effectValue)
+            } else {
+                effect = .heal(consumableData.effectValue)
+            }
+            let consumable = Consumable(
+                name: prefab.name,
+                type: .healthPotion,
+                effect: effect,
+                quantity: quantity,
+                value: prefab.value
+            )
+            consumable.gid = finalGID
+            consumable.itemDescription = prefab.description
+            consumable.stackable = prefab.stackable
+            return consumable
+            
+        case .material:
+            guard let materialData = prefab.materialData,
+                  let materialType = MaterialType(rawValue: materialData.materialType) else {
+                return Item(
+                    name: prefab.name,
+                    type: .wood,
+                    quantity: quantity,
+                    description: prefab.description,
+                    value: prefab.value,
+                    gid: finalGID,
+                    stackable: prefab.stackable
+                )
+            }
+            let material = Material(materialType: materialType, quantity: quantity)
+            material.gid = finalGID
+            material.itemDescription = prefab.description
+            return material
+            
+        case .befriending:
+            // Treat as consumable for now
+            let consumableData = prefab.consumableData ?? ConsumableData(effectType: "heal", effectValue: 2, duration: nil)
+            let effect: ConsumableEffect = .heal(consumableData.effectValue)
+            let consumable = Consumable(
+                name: prefab.name,
+                type: ItemType(rawValue: prefab.name) ?? .food,
+                effect: effect,
+                quantity: quantity,
+                value: prefab.value
+            )
+            consumable.gid = finalGID
+            consumable.itemDescription = prefab.description
+            consumable.stackable = prefab.stackable
+            return consumable
+            
+        default:
+            return Item(
+                name: prefab.name,
+                type: .food,
+                quantity: quantity,
+                description: prefab.description,
+                value: prefab.value,
+                gid: finalGID,
+                stackable: prefab.stackable
+            )
+        }
+    }
+    
+    /// Spawn an enemy from a prefab at a TMX object position
+    private func spawnEnemyFromPrefab(_ prefab: EnemyPrefab, at object: TiledObject, tileSize: CGSize, yFlipOffset: CGFloat, container: SKNode) {
+        let baseTileWidth: CGFloat = 16.0
+        let scaleFactor = tileSize.width / baseTileWidth
+        let scaledX = object.x * scaleFactor
+        let scaledY = object.y * scaleFactor
+        let worldX = scaledX
+        let worldY = yFlipOffset - scaledY
+        let position = CGPoint(x: worldX, y: worldY)
+        
+        // Create sprites from prefab
+        let sprites = PrefabFactory.shared.createEnemySprites(prefab, position: position)
+        for sprite in sprites {
+            sprite.zPosition = prefab.zPosition
+            container.addChild(sprite)
+        }
+        
+        // TODO: Create Enemy instance and add to game state
+        print("✅ Spawned enemy from prefab: \(prefab.name) (id: \(prefab.id)) at (\(Int(position.x)), \(Int(position.y)))")
+    }
+    
+    /// Spawn an animal from a prefab at a TMX object position
+    private func spawnAnimalFromPrefab(_ prefab: AnimalPrefab, at object: TiledObject, tileSize: CGSize, yFlipOffset: CGFloat, container: SKNode) {
+        let baseTileWidth: CGFloat = 16.0
+        let scaleFactor = tileSize.width / baseTileWidth
+        let scaledX = object.x * scaleFactor
+        let scaledY = object.y * scaleFactor
+        let worldX = scaledX
+        let worldY = yFlipOffset - scaledY
+        let position = CGPoint(x: worldX, y: worldY)
+        
+        // Create sprites from prefab
+        let sprites = PrefabFactory.shared.createAnimalSprites(prefab, position: position)
+        for sprite in sprites {
+            sprite.zPosition = prefab.zPosition
+            container.addChild(sprite)
+        }
+        
+        // TODO: Create Animal instance and add to game state
+        print("✅ Spawned animal from prefab: \(prefab.name) (id: \(prefab.id)) at (\(Int(position.x)), \(Int(position.y)))")
+    }
+    
+    /// Spawn an NPC from a prefab at a TMX object position
+    private func spawnNPCFromPrefab(_ prefab: NPCPrefab, at object: TiledObject, tileSize: CGSize, yFlipOffset: CGFloat, container: SKNode) {
+        let baseTileWidth: CGFloat = 16.0
+        let scaleFactor = tileSize.width / baseTileWidth
+        let scaledX = object.x * scaleFactor
+        let scaledY = object.y * scaleFactor
+        let worldX = scaledX
+        let worldY = yFlipOffset - scaledY
+        let position = CGPoint(x: worldX, y: worldY)
+        
+        // Create sprites from prefab
+        let sprites = PrefabFactory.shared.createNPCSprites(prefab, position: position)
+        for sprite in sprites {
+            sprite.zPosition = prefab.zPosition
+            container.addChild(sprite)
+        }
+        
+        // TODO: Create NPC instance and add to game state
+        print("✅ Spawned NPC from prefab: \(prefab.name) (id: \(prefab.id)) at (\(Int(position.x)), \(Int(position.y)))")
     }
     
     /// Start dialogue with an object
@@ -3226,6 +4675,93 @@ extension GameScene {
         // Add to scene
         addChild(questionMark)
         questionMarkIndicators[object.id] = questionMark
+    }
+    
+    // MARK: - Loading Screen
+    
+    /// Show loading screen overlay (camera-relative, centered on view)
+    func showLoadingScreen(message: String = "Loading...") {
+        // Remove existing loading screen if any
+        hideLoadingScreen()
+        
+        guard let camera = cameraNode else {
+            print("⚠️ Cannot show loading screen: no camera node")
+            return
+        }
+        
+        // Get view size (what's actually visible on screen)
+        let viewSize: CGSize
+        if let view = self.view {
+            viewSize = view.bounds.size
+        } else {
+            viewSize = size  // Fallback to scene size
+        }
+        
+        // Create loading screen overlay (add to camera so it stays centered)
+        let overlay = SKNode()
+        overlay.name = "loadingScreen"
+        // Position relative to camera (camera is at (0,0) in its own coordinate space)
+        overlay.position = CGPoint(x: 0, y: 0)
+        overlay.zPosition = 10000  // Above everything
+        
+        // Semi-transparent dark background covering entire view
+        let background = SKSpriteNode(color: SKColor(white: 0.1, alpha: 0.9), size: viewSize)
+        background.position = CGPoint(x: 0, y: 0)
+        background.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        overlay.addChild(background)
+        
+        // Create a nicer container for text and spinner
+        let contentContainer = SKNode()
+        contentContainer.position = CGPoint(x: 0, y: 0)
+        overlay.addChild(contentContainer)
+        
+        // Loading text with shadow
+        let loadingLabelShadow = SKLabelNode(fontNamed: "Arial-BoldMT")
+        loadingLabelShadow.text = message
+        loadingLabelShadow.fontSize = 36
+        loadingLabelShadow.fontColor = SKColor(white: 0, alpha: 0.5)
+        loadingLabelShadow.position = CGPoint(x: 2, y: -2)
+        contentContainer.addChild(loadingLabelShadow)
+        
+        let loadingLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
+        loadingLabel.text = message
+        loadingLabel.fontSize = 36
+        loadingLabel.fontColor = .white
+        loadingLabel.position = CGPoint(x: 0, y: 50)
+        contentContainer.addChild(loadingLabel)
+        
+        // Better spinning indicator (circle with segments)
+        let spinnerRadius: CGFloat = 25
+        let spinner = SKNode()
+        spinner.position = CGPoint(x: 0, y: -20)
+        
+        // Create 8 segments for a nice spinner
+        for i in 0..<8 {
+            let segment = SKShapeNode(circleOfRadius: spinnerRadius / 3)
+            let angle = CGFloat(i) * .pi * 2 / 8
+            let x = cos(angle) * spinnerRadius
+            let y = sin(angle) * spinnerRadius
+            segment.position = CGPoint(x: x, y: y)
+            segment.fillColor = SKColor(white: 1.0, alpha: 0.3 + CGFloat(i) * 0.7 / 8)
+            segment.strokeColor = .clear
+            spinner.addChild(segment)
+        }
+        
+        contentContainer.addChild(spinner)
+        
+        // Smooth rotation animation
+        let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 1.5)
+        spinner.run(SKAction.repeatForever(rotate))
+        
+        // Add overlay to camera so it follows camera position
+        camera.addChild(overlay)
+        loadingScreen = overlay
+    }
+    
+    /// Hide loading screen overlay
+    func hideLoadingScreen() {
+        loadingScreen?.removeFromParent()
+        loadingScreen = nil
     }
 }
 

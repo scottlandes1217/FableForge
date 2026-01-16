@@ -1,0 +1,152 @@
+{
+  "npcs": [
+    {
+      "id": "merchant_01",
+      "name": "Traveling Merchant",
+      "description": "A friendly merchant who travels between towns. Sells various goods and buys items from adventurers.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1400"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": null,
+      "attackPoints": null,
+      "defensePoints": null,
+      "energyPoints": null,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 80,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": null,
+      "speed": 20,
+      "dialogueId": "merchant_greeting",
+      "faction": "neutral",
+      "quests": null,
+      "shopItems": ["health_potion", "mana_potion", "rope", "torch", "basic_sword"]
+    },
+    {
+      "id": "guard_01",
+      "name": "Town Guard",
+      "description": "A town guard keeping watch. Friendly to citizens, suspicious of strangers.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1450"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 20,
+      "attackPoints": 6,
+      "defensePoints": 16,
+      "energyPoints": 15,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 60,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 3,
+      "speed": 25,
+      "dialogueId": "guard_patrol",
+      "faction": "town",
+      "quests": ["clear_bandits", "investigate_missing"],
+      "shopItems": null
+    },
+    {
+      "id": "blacksmith_01",
+      "name": "Village Blacksmith",
+      "description": "The local blacksmith. Can repair weapons and armor, and sometimes sells equipment.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1500"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 15,
+      "attackPoints": 4,
+      "defensePoints": 14,
+      "energyPoints": 20,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 70,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 2,
+      "speed": 20,
+      "dialogueId": "blacksmith_work",
+      "faction": "town",
+      "quests": ["gather_ore", "deliver_weapon"],
+      "shopItems": ["iron_sword", "steel_armor", "repair_kit"]
+    },
+    {
+      "id": "hermit_01",
+      "name": "Forest Hermit",
+      "description": "A mysterious hermit living in the woods. Knows many secrets about the wilderness.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1550"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 10,
+      "attackPoints": 2,
+      "defensePoints": 10,
+      "energyPoints": 10,
+      "manaPoints": 20,
+      "ragePoints": null,
+      "friendPoints": 50,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "speed": 20,
+      "dialogueId": "hermit_wisdom",
+      "faction": "neutral",
+      "quests": ["find_ancient_tree", "learn_herb_lore"],
+      "shopItems": ["healing_herb", "antidote", "magic_scroll"]
+    }
+  ]
+}

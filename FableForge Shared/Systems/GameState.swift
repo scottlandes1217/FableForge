@@ -12,6 +12,9 @@ class GameState: NSObject, Codable {
     var world: WorldMap
     var structures: [Structure] = []
     var npcs: [NPC] = []
+    // Map information - tracks which map the player is currently on
+    var currentMapFileName: String = "Exterior"  // Default map name (TMX file without .tmx extension)
+    var useProceduralWorld: Bool = false  // Whether using procedural world or TMX map
     // Note: currentCombat and currentDialogue are not saved as they're runtime-only
     var currentCombat: Combat? {
         didSet { /* Runtime only, not saved */ }
@@ -21,7 +24,7 @@ class GameState: NSObject, Codable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case player, world, structures, npcs
+        case player, world, structures, npcs, currentMapFileName, useProceduralWorld
         // Exclude currentCombat and currentDialogue from encoding
     }
     
@@ -37,6 +40,9 @@ class GameState: NSObject, Codable {
         world = try container.decode(WorldMap.self, forKey: .world)
         structures = try container.decode([Structure].self, forKey: .structures)
         npcs = try container.decode([NPC].self, forKey: .npcs)
+        // Load map info with defaults for backward compatibility
+        currentMapFileName = try container.decodeIfPresent(String.self, forKey: .currentMapFileName) ?? "Exterior"
+        useProceduralWorld = try container.decodeIfPresent(Bool.self, forKey: .useProceduralWorld) ?? false
         super.init()
     }
     
@@ -46,6 +52,8 @@ class GameState: NSObject, Codable {
         try container.encode(world, forKey: .world)
         try container.encode(structures, forKey: .structures)
         try container.encode(npcs, forKey: .npcs)
+        try container.encode(currentMapFileName, forKey: .currentMapFileName)
+        try container.encode(useProceduralWorld, forKey: .useProceduralWorld)
     }
     
     func save() -> Data? {

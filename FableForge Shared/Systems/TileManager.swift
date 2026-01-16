@@ -49,6 +49,11 @@ class TileManager {
     private var extractedTextureCache: [String: SKTexture] = [:]  // Cache extracted tile textures by "tilesetName_row_col"
     private var tilesetDimensionsCache: [String: (tilesPerRow: Int, tilesPerCol: Int)] = [:]  // Cache tileset dimensions to avoid calling cgImage() repeatedly
     
+    // Sprite atlas support (for generated atlases like grasslands_atlas)
+    private var spriteAtlasTextures: [String: SKTexture] = [:]  // Cache atlas textures by atlas name
+    private var spriteAtlasCache: [String: SKTexture] = [:]  // Cache extracted tiles by "atlasName-frameNumber"
+    private var spriteAtlasDimensionsCache: [String: (tilesPerRow: Int, tilesPerCol: Int, tileSize: Int)] = [:]  // Cache atlas dimensions
+    
     // Mapping of tile types to positions in tileset (row, column)
     // If nil, will try individual images first, then fall back to colors
     // Update these coordinates to match your tileset layout
@@ -321,12 +326,12 @@ class TileManager {
     
     /// Extract flip flags from a GID
     /// Returns (actualGID, flipH, flipV, flipD)
-    static func extractFlipFlags(from gid: Int) -> (gid: Int, flipH: Bool, flipV: Bool, flipD: Bool) {
+    static func extractFlipFlags(from gid: Int) -> (actualGID: Int, flipH: Bool, flipV: Bool, flipD: Bool) {
         let flipH = (gid & 0x80000000) != 0
         let flipV = (gid & 0x40000000) != 0
         let flipD = (gid & 0x20000000) != 0
         let actualGID = gid & 0x1FFFFFFF  // Mask out flip flags
-        return (actualGID, flipH, flipV, flipD)
+        return (actualGID: actualGID, flipH: flipH, flipV: flipV, flipD: flipD)
     }
     
     /// Get a texture for a GID (Global Tile ID) from a Tiled map
@@ -375,18 +380,125 @@ class TileManager {
     // Track GID sprite creation attempts
     private var gidAttempts: Set<Int> = []
     
-    /// Create a sprite for a GID with flip transforms applied
-    func createSprite(for gid: Int, size: CGSize) -> SKSpriteNode? {
-        guard let texture = getTexture(for: gid) else {
+    /// Create a sprite from a sprite atlas (e.g., "grasslands_atlas-1")
+    /// Returns nil if atlas or frame not found
+    func createSpriteFromAtlas(atlasName: String, frameNumber: Int, size: CGSize) -> SKSpriteNode? {
+        // Check cache first
+        let cacheKey = "\(atlasName)-\(frameNumber)"
+        if let cached = spriteAtlasCache[cacheKey] {
+            let sprite = SKSpriteNode(texture: cached, size: size)
+            return sprite
+        }
+        
+        // Load atlas texture if not cached
+        if spriteAtlasTextures[atlasName] == nil {
+            print("🖼️ TileManager: Loading sprite atlas '\(atlasName)'")
+            let texture = SKTexture(imageNamed: atlasName)
+            let textureSize = texture.size()
+            if textureSize.width > 0 && textureSize.height > 0 {
+                texture.filteringMode = .nearest
+                spriteAtlasTextures[atlasName] = texture
+                print("✅ TileManager: Loaded sprite atlas '\(atlasName)' - size: \(textureSize.width)x\(textureSize.height)")
+            } else {
+                print("⚠️ TileManager: Could not load sprite atlas '\(atlasName)' - texture size is 0")
+                return nil
+            }
+        }
+        
+        guard let atlasTexture = spriteAtlasTextures[atlasName] else {
             return nil
         }
         
-        // Extract flip flags from the original GID
-        let (_, flipH, flipV, flipD) = TileManager.extractFlipFlags(from: gid)
+        // Get or calculate atlas dimensions
+        let (tilesPerRow, tilesPerCol, tileSize): (Int, Int, Int)
+        if let cached = spriteAtlasDimensionsCache[atlasName] {
+            tilesPerRow = cached.tilesPerRow
+            tilesPerCol = cached.tilesPerCol
+            tileSize = cached.tileSize
+        } else {
+            // Calculate dimensions from texture size
+            // Default to 16x16 tiles (can be overridden by metadata if available)
+            let defaultTileSize = 16
+            let atlasWidth = Int(atlasTexture.size().width)
+            let atlasHeight = Int(atlasTexture.size().height)
+            tilesPerRow = atlasWidth / defaultTileSize
+            tilesPerCol = atlasHeight / defaultTileSize
+            tileSize = defaultTileSize
+            
+            spriteAtlasDimensionsCache[atlasName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol, tileSize: tileSize)
+        }
+        
+        // Convert 1-indexed frame number to 0-indexed row/col
+        let frameIndex = frameNumber - 1
+        let row = frameIndex / tilesPerRow
+        let col = frameIndex % tilesPerRow
+        
+        guard row < tilesPerCol && col < tilesPerRow else {
+            print("⚠️ TileManager: Frame \(frameNumber) out of bounds for atlas '\(atlasName)' (max: \(tilesPerRow * tilesPerCol))")
+            return nil
+        }
+        
+        // Extract tile from atlas using normalized coordinates
+        let baseWidth = atlasTexture.size().width
+        let baseHeight = atlasTexture.size().height
+        let tileWidthPoints = baseWidth / CGFloat(tilesPerRow)
+        let tileHeightPoints = baseHeight / CGFloat(tilesPerCol)
+        
+        let normalizedX = (CGFloat(col) * tileWidthPoints) / baseWidth
+        let normalizedY = 1.0 - ((CGFloat(row) + 1) * tileHeightPoints) / baseHeight  // Flip Y for SpriteKit
+        let normalizedWidth = tileWidthPoints / baseWidth
+        let normalizedHeight = tileHeightPoints / baseHeight
+        
+        let tileRect = CGRect(x: normalizedX, y: normalizedY, width: normalizedWidth, height: normalizedHeight)
+        let tileTexture = SKTexture(rect: tileRect, in: atlasTexture)
+        tileTexture.filteringMode = .nearest  // Ensure pixel-perfect rendering to prevent gaps
+        tileTexture.filteringMode = .nearest
+        
+        // Cache the extracted texture
+        spriteAtlasCache[cacheKey] = tileTexture
+        
+        let sprite = SKSpriteNode(texture: tileTexture, size: size)
+        return sprite
+    }
+    
+    /// Create a sprite for a GID with flip transforms applied
+    func createSprite(for gid: Int, size: CGSize) -> SKSpriteNode? {
+        // Extract flip flags and actual GID
+        let (actualGID, flipH, flipV, flipD) = TileManager.extractFlipFlags(from: gid)
+        
+        // Find the tileset that contains this GID
+        guard let tileset = TiledMapParser.findTileset(for: actualGID, in: tiledTilesets) else {
+            print("⚠️ TileManager: GID \(gid) (actual: \(actualGID)) not found in any loaded tileset")
+            return nil
+        }
+        
+        // Get row and column for this GID
+        guard let (row, col) = tileset.getRowCol(for: actualGID) else {
+            print("⚠️ TileManager: Could not get row/col for GID \(gid) (actual: \(actualGID)) in tileset '\(tileset.name)'")
+            return nil
+        }
+        
+        // Get the texture for this tileset
+        guard let tilesetTexture = tiledTextures[tileset.imageName] else {
+            print("⚠️ TileManager: Tileset texture '\(tileset.imageName)' not loaded")
+            return nil
+        }
+        
+        // Extract the tile from the tileset
+        guard let texture = extractTileFromTiledTileset(
+            tilesetTexture: tilesetTexture,
+            tileset: tileset,
+            row: row,
+            col: col
+        ) else {
+            print("⚠️ TileManager: Failed to extract tile for GID \(gid) (actual: \(actualGID)) from '\(tileset.name)' at row \(row), col \(col)")
+            return nil
+        }
         
         // Verify texture is valid
         let textureSize = texture.size()
         guard textureSize.width > 0 && textureSize.height > 0 else {
+            print("⚠️ TileManager: Extracted texture for GID \(gid) has invalid size: \(textureSize)")
             return nil
         }
         
@@ -399,7 +511,26 @@ class TileManager {
         texture.preload { }
         
         // Create sprite with explicit size
+        // IMPORTANT: The size parameter is the desired display size, not the texture size
+        // The texture will be scaled to fit this size
         let sprite = SKSpriteNode(texture: texture, size: size)
+        
+        // Verify sprite was created correctly
+        if sprite.size.width <= 0 || sprite.size.height <= 0 {
+            print("⚠️ TileManager: Sprite created with invalid size: \(sprite.size)")
+            sprite.size = size  // Force the size
+        }
+        
+        // Debug: Log first few sprites to verify correct extraction
+        if actualGID <= 10 || (actualGID >= 257 && actualGID <= 260) || actualGID == 308 || actualGID == 359 || actualGID == 537 {
+            print("✅ TileManager: Created sprite for GID \(gid) (actual: \(actualGID))")
+            print("   Tileset: '\(tileset.name)' (firstGID: \(tileset.firstGID), tileCount: \(tileset.tileCount), columns: \(tileset.columns))")
+            print("   Local tile ID: \(tileset.localTileID(for: actualGID))")
+            print("   Position in tileset: row \(row), col \(col)")
+            print("   Texture size: \(textureSize.width)x\(textureSize.height) points")
+            print("   Sprite size: \(size.width)x\(size.height) points (actual sprite size: \(sprite.size.width)x\(sprite.size.height))")
+            print("   Tile dimensions: \(tileset.tileWidth)x\(tileset.tileHeight) pixels")
+        }
         
         // CRITICAL: Apply flip transforms
         // Horizontal flip: negate x scale
@@ -452,7 +583,7 @@ class TileManager {
         
         // CRITICAL: Add animation support for animated tilesets using ACTUAL animation data from TMX
         // Each tile in an animated tileset has specific animation frames defined in the TMX
-        let (actualGID, _, _, _) = TileManager.extractFlipFlags(from: gid)
+        // Note: actualGID is already extracted above at the start of this function
         if let tileset = TiledMapParser.findTileset(for: actualGID, in: tiledTilesets) {
             // Get the local tile ID within this tileset
             let localTileID = actualGID - tileset.firstGID

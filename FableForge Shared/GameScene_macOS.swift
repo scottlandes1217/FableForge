@@ -76,6 +76,75 @@ extension GameScene {
         // Check for panel buttons first (they're on top)
         guard let camera = cameraNode else { return }
         
+        // Check for context menu clicks
+        if didClick(nodeNamed: "contextMenuInspect") {
+            handleInventoryContextMenuAction(action: "inspect")
+            return
+        }
+        if didClick(nodeNamed: "contextMenuDrop") {
+            handleInventoryContextMenuAction(action: "drop")
+            return
+        }
+        if didClick(nodeNamed: "contextMenuDestroy") {
+            handleInventoryContextMenuAction(action: "destroy")
+            return
+        }
+        
+        // Check for inspect panel close
+        if didClick(nodeNamed: "closeInspect") {
+            if let panel = camera.childNode(withName: "itemInspectPanel") {
+                panel.removeFromParent()
+            }
+            return
+        }
+        
+        // Check for inventory slot/item clicks (show context menu or start drag)
+        if let inventoryPanel = camera.childNode(withName: "inventoryPanel") {
+            let cameraLocation = convert(location, to: camera)
+            let localPoint = inventoryPanel.convert(cameraLocation, from: camera)
+            let clickedNodes = inventoryPanel.nodes(at: localPoint)
+            
+            for node in clickedNodes {
+                var slotIndex: Int? = nil
+                if let nodeName = node.name {
+                    if nodeName.hasPrefix("inventorySlot_") {
+                        slotIndex = Int(String(nodeName.dropFirst("inventorySlot_".count)))
+                    } else if nodeName.hasPrefix("itemContainer_") {
+                        slotIndex = Int(String(nodeName.dropFirst("itemContainer_".count)))
+                    } else if nodeName.hasPrefix("itemSprite_") {
+                        slotIndex = Int(String(nodeName.dropFirst("itemSprite_".count)))
+                    }
+                }
+                // Check parent chain
+                if slotIndex == nil {
+                    var currentNode: SKNode? = node
+                    while let current = currentNode, slotIndex == nil {
+                        if let nodeName = current.name {
+                            if nodeName.hasPrefix("inventorySlot_") {
+                                slotIndex = Int(String(nodeName.dropFirst("inventorySlot_".count)))
+                            } else if nodeName.hasPrefix("itemContainer_") {
+                                slotIndex = Int(String(nodeName.dropFirst("itemContainer_".count)))
+                            }
+                        }
+                        currentNode = current.parent
+                    }
+                }
+                
+                if let index = slotIndex, let player = gameState?.player, index < player.inventory.count {
+                    // Store potential drag start (will start drag if moved in mouseDragged)
+                    draggedItemIndex = index
+                    touchStartLocation = cameraLocation
+                    // Don't show context menu yet - wait to see if it's a drag or click
+                    return
+                }
+            }
+        }
+        
+        // Close context menu if clicking outside
+        if camera.childNode(withName: "inventoryContextMenu") != nil {
+            closeInventoryContextMenu()
+        }
+        
         if didClick(nodeNamed: "closeInventory") {
             print("[GameScene] Close inventory button clicked")
             if let panel = camera.childNode(withName: "inventoryPanel") {
@@ -215,6 +284,116 @@ extension GameScene {
         } else {
             // Check for dialogue button clicks
             handleDialogueInteraction(at: location)
+        }
+    }
+    
+    override func mouseDragged(with event: NSEvent) {
+        guard let camera = cameraNode else { return }
+        let location = event.location(in: self)
+        let cameraLocation = convert(location, to: camera)
+        
+        // Handle drag and drop if already dragging
+        if let draggedIndex = draggedItemIndex, let draggedNode = draggedItemNode {
+            draggedNode.position = cameraLocation
+            return
+        }
+        
+        // Check if we should start a drag (if touching inventory item and moved enough)
+        if let startLocation = touchStartLocation, let draggedIndex = draggedItemIndex,
+           let inventoryPanel = camera.childNode(withName: "inventoryPanel") {
+            let delta = CGPoint(
+                x: cameraLocation.x - startLocation.x,
+                y: cameraLocation.y - startLocation.y
+            )
+            let distance = sqrt(delta.x * delta.x + delta.y * delta.y)
+            
+            // If moved more than 10 points, start drag
+            if distance > 10.0 {
+                if let itemContainer = inventoryPanel.childNode(withName: "//itemContainer_\(draggedIndex)") {
+                    draggedItemNode = itemContainer.copy() as? SKNode
+                    draggedItemNode?.alpha = 0.7
+                    draggedItemNode?.zPosition = 500
+                    draggedItemNode?.position = cameraLocation
+                    camera.addChild(draggedItemNode!)
+                }
+                return
+            }
+        }
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        guard let camera = cameraNode else { return }
+        let location = event.location(in: self)
+        let cameraLocation = convert(location, to: camera)
+        
+        // Handle drag and drop end
+        if let draggedIndex = draggedItemIndex, let draggedNode = draggedItemNode {
+            // Clean up drag first (remove visual before checking drop target)
+            draggedNode.removeFromParent()
+            let savedDraggedIndex = draggedIndex
+            
+            // Check if dropped on an inventory slot
+            if let inventoryPanel = camera.childNode(withName: "inventoryPanel") {
+                let localPoint = inventoryPanel.convert(cameraLocation, from: camera)
+                let clickedNodes = inventoryPanel.nodes(at: localPoint)
+                
+                var targetSlotIndex: Int? = nil
+                for node in clickedNodes {
+                    if let nodeName = node.name, nodeName.hasPrefix("inventorySlot_") {
+                        targetSlotIndex = Int(String(nodeName.dropFirst("inventorySlot_".count)))
+                        print("🎯 Found target slot: \(targetSlotIndex ?? -1) from node name")
+                        break
+                    }
+                    // Check parent chain
+                    var currentNode: SKNode? = node
+                    while let current = currentNode, targetSlotIndex == nil {
+                        if let nodeName = current.name, nodeName.hasPrefix("inventorySlot_") {
+                            targetSlotIndex = Int(String(nodeName.dropFirst("inventorySlot_".count)))
+                            print("🎯 Found target slot: \(targetSlotIndex ?? -1) from parent chain")
+                            break
+                        }
+                        currentNode = current.parent
+                    }
+                    if targetSlotIndex != nil { break }
+                }
+                
+                // Swap items if dropped on a valid slot
+                if let targetIndex = targetSlotIndex {
+                    print("🎯 Dropping item from slot \(savedDraggedIndex) to slot \(targetIndex)")
+                    swapInventoryItems(from: savedDraggedIndex, to: targetIndex)
+                } else {
+                    // Fallback: try to find slot by position
+                    if let targetIndex = findSlotIndexAtPosition(localPoint, in: inventoryPanel) {
+                        print("🎯 Found target slot by position: \(targetIndex)")
+                        swapInventoryItems(from: savedDraggedIndex, to: targetIndex)
+                    } else {
+                        print("⚠️ No target slot found at drop location: \(localPoint)")
+                    }
+                }
+            }
+            
+            // Clean up drag state
+            draggedItemIndex = nil
+            draggedItemNode = nil
+            touchStartLocation = nil
+            return
+        }
+        
+        // If we had a potential drag but didn't drag, show context menu
+        if let draggedIndex = draggedItemIndex, let startLocation = touchStartLocation {
+            let delta = CGPoint(
+                x: cameraLocation.x - startLocation.x,
+                y: cameraLocation.y - startLocation.y
+            )
+            let distance = sqrt(delta.x * delta.x + delta.y * delta.y)
+            
+            // If didn't move much, it was a click - show context menu
+            if distance <= 10.0 {
+                showInventoryContextMenu(at: cameraLocation, itemIndex: draggedIndex)
+            }
+            
+            draggedItemIndex = nil
+            touchStartLocation = nil
         }
     }
     

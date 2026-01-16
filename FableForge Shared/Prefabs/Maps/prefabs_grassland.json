@@ -1,0 +1,270 @@
+{
+  "worldConfig": {
+    "name": "Default World",
+    "description": "A temperate grassland world with forests and rivers",
+    "seed": 12345,
+    "terrain": {
+      "waterThreshold": 0.15,
+      "grassThreshold": 0.9,
+      "dirtThreshold": 0.95,
+      "groundTiles": {
+        "water": [
+          "exterior-257"
+        ],
+        "grass": [
+          "exterior-257"
+        ],
+        "dirt": [
+          "exterior-357"
+        ],
+        "stone": [
+          "exterior-852",
+          "exterior-853",
+          "exterior-839"
+        ]
+      }
+    },
+    "entities": {
+      "treeDensity": 0.002,
+      "rockDensity": 0.005,
+      "treePrefabs": [
+        "tree_oak_01"
+      ],
+      "rockPrefabs": [
+        "rock_stone_01"
+      ],
+      "chests": [
+        {
+          "chestId": "chest_wooden_01",
+          "count": 5
+        },
+        {
+          "chestId": "chest_treasure_01",
+          "count": 2
+        }
+      ]
+    },
+    "enemies": {
+      "spawnRate": 0.001,
+      "types": [
+        "Goblin",
+        "Orc",
+        "Bandit",
+        "Wild Beast"
+      ],
+      "minLevel": 1,
+      "maxLevel": 5
+    },
+    "animals": {
+      "spawnRate": 0.002,
+      "types": [
+        "deer",
+        "rabbit",
+        "fox",
+        "owl"
+      ],
+      "friendlyChance": 0.7
+    },
+    "waterFeatures": {
+      "type": "rivers",
+      "density": "medium"
+    }
+  },
+  "prefabs": [
+    {
+      "id": "tree_oak_01",
+      "type": "tree",
+      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            [
+              "grasslands_atlas-1",
+              "grasslands_atlas-2",
+              "grasslands_atlas-3",
+              "grasslands_atlas-4"
+            ],
+            [
+              "grasslands_atlas-5",
+              "grasslands_atlas-6",
+              "grasslands_atlas-7",
+              "grasslands_atlas-8",
+              "grasslands_atlas-9",
+              "grasslands_atlas-10"
+            ]
+          ],
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 96,
+            "height": 32
+          },
+          "zOffset": 0,
+          "tileSize": 16,
+          "tileMap": "4,6,6,6,6,6,2"
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            [
+              "grasslands_atlas-11",
+              "grasslands_atlas-12",
+              "grasslands_atlas-13",
+              "grasslands_atlas-14",
+              "grasslands_atlas-15",
+              "grasslands_atlas-16"
+            ],
+            [
+              "grasslands_atlas-17",
+              "grasslands_atlas-18",
+              "grasslands_atlas-19",
+              "grasslands_atlas-20",
+              "grasslands_atlas-21",
+              "grasslands_atlas-22"
+            ],
+            [
+              "grasslands_atlas-23",
+              "grasslands_atlas-24",
+              "grasslands_atlas-25",
+              "grasslands_atlas-26",
+              "grasslands_atlas-27",
+              "grasslands_atlas-28"
+            ],
+            [
+              "grasslands_atlas-29",
+              "grasslands_atlas-30",
+              "grasslands_atlas-31",
+              "grasslands_atlas-32",
+              "grasslands_atlas-33",
+              "grasslands_atlas-34"
+            ],
+            [
+              "grasslands_atlas-35",
+              "grasslands_atlas-36"
+            ]
+          ],
+          "offset": {
+            "x": 0,
+            "y": -32
+          },
+          "size": {
+            "width": 96,
+            "height": 80
+          },
+          "zOffset": 20,
+          "tileSize": 16
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 16,
+          "height": 16
+        }
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "rock_stone_01",
+      "type": "rock",
+      "description": "A medium stone rock. Can be mined for stone materials. Found scattered in the wilderness.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            [
+              "exterior-800"
+            ]
+          ],
+          "assetName": null,
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 32,
+            "height": 32
+          },
+          "zOffset": 0,
+          "tileSize": 0
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 22.4,
+          "height": 16
+        }
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "cabin_small_01",
+      "type": "building",
+      "description": "A small wooden cabin with a thatched roof. Can house basic crafting stations. Buildable by players.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            [
+              "exterior-1730",
+              "exterior-1731"
+            ],
+            [
+              "exterior-1732",
+              "exterior-1733"
+            ]
+          ],
+          "assetName": null,
+          "offset": {
+            "x": -32,
+            "y": 0
+          },
+          "size": {
+            "width": 64,
+            "height": 64
+          },
+          "zOffset": 0,
+          "tileSize": 32
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            [
+              "exterior-1800",
+              "exterior-1801",
+              "exterior-1802"
+            ],
+            [
+              null,
+              "exterior-1803",
+              null
+            ]
+          ],
+          "assetName": null,
+          "offset": {
+            "x": -48,
+            "y": 64
+          },
+          "size": {
+            "width": 96,
+            "height": 64
+          },
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 64,
+          "height": 64
+        }
+      },
+      "zPosition": 0
+    }
+  ]
+}
