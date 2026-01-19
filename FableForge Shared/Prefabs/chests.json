@@ -9,8 +9,8 @@
         {
           "layer": "low",
           "tileGrid": [
-            ["exterior-2500", "exterior-2501"],
-            ["exterior-2502", "exterior-2503"]
+            ["generate", "generate"],
+            ["generate", "generate"]
           ],
           "offset": {"x": -16, "y": -16},
           "size": {"width": 64, "height": 64},
@@ -64,9 +64,9 @@
         {
           "layer": "low",
           "tileGrid": [
-            ["exterior-2600", "exterior-2601", "exterior-2602"],
-            ["exterior-2603", "exterior-2604", "exterior-2605"],
-            ["exterior-2606", "exterior-2607", "exterior-2608"]
+            ["generate", "generate", "generate"],
+            ["generate", "generate", "generate"],
+            ["generate", "generate", "generate"]
           ],
           "offset": {"x": -32, "y": -32},
           "size": {"width": 96, "height": 96},

@@ -21,6 +21,8 @@ class GameScene: SKScene {
     var questionMarkIndicators: [Int: SKNode] = [:]  // Map of object ID to question mark indicator node
     var gameUI: GameUI?
     var combatUI: CombatUI?
+    var characterUI: CharacterUI?
+    var buildUI: BuildUI?
     var cameraNode: SKCameraNode?
     
     // Inventory drag and drop state
@@ -60,6 +62,12 @@ class GameScene: SKScene {
     private var tmxMapEntryPosition: CGPoint?  // Position in TMX map where player entered procedural world
     private var lastTransitionTime: TimeInterval = 0  // Time of last transition (to prevent immediate re-trigger)
     private let transitionCooldown: TimeInterval = 1.0  // 1 second cooldown between transitions
+    private var exitTilePositions: Set<String> = []  // Set of exit tile positions (as "x,y" strings) in procedural world
+    private var exitTileSprites: [SKSpriteNode] = []  // Visual sprites for exit tiles
+    private var exitTileData: [String: ExitDefinition] = [:]  // Map exit positions (as "x,y" strings) to their definitions
+    private var hasMovedAwayFromTrigger: Bool = false  // Track if player has moved away from trigger tile
+    private var triggerTilePosition: CGPoint?  // Position of the trigger tile in TMX map
+    private var currentProceduralWorldPrefab: String?  // Track which prefab file is currently loaded
     
     // Loading screen overlay
     private var loadingScreen: SKNode?
@@ -103,6 +111,16 @@ class GameScene: SKScene {
     var isGamePaused: Bool = false
     var movementSpeed: CGFloat = 2.0
     let encounterDistance: CGFloat = 40.0 // Distance to trigger encounter
+    
+    // Build placement mode
+    var isBuildPlacementMode: Bool = false
+    var selectedStructureType: StructureType?
+    var selectedStructureData: StructureData? // JSON-based structure data
+    var placementPreview: SKShapeNode?  // Preview sprite for placement
+    var originalCameraScale: CGFloat = 1.0  // Store original camera scale before zooming out
+    
+    // Prevent infinite loop when updating scene size
+    private var isUpdatingUISize: Bool = false
     
     // Character zPosition based on max zOffset from layers
     // This allows specific layers to go behind or in front of characters
@@ -591,28 +609,68 @@ class GameScene: SKScene {
         
         // Set character z-position: if a layer has the property, place character between that layer and the next
         // Otherwise default to 100 (which will be above most layers)
+        // IMPORTANT: When calculating characterZPosition, we need to ensure it's higher than ALL layers
+        // that come BEFORE the characterLayer in layer order, even if those layers have zOffset values.
+        // This ensures layers with low zOffset (but coming before characterLayer) stay behind the character.
         if let charLayerIndex = characterLayerIndex {
-            // Place character between this layer and the next (e.g., if layer 3, character at 3.5)
-            characterZPosition = CGFloat(charLayerIndex) + 0.5
-            print("📍 Character z-position set to \(characterZPosition) (after layer \(charLayerIndex))")
+            // Find the maximum zPosition of all layers that come before (or at) the characterLayer
+            var maxZPositionBeforeCharacter: CGFloat = 0
+            for layerIndex in 0...charLayerIndex {
+                let layer = tiledMap.layers[layerIndex]
+                let zOffset = CGFloat(layer.floatProperty("zOffset", default: 0))
+                let layerZPosition = CGFloat(layerIndex) + zOffset
+                if layerZPosition > maxZPositionBeforeCharacter {
+                    maxZPositionBeforeCharacter = layerZPosition
+                }
+            }
+            // Place character slightly above the highest zPosition before/at the characterLayer
+            characterZPosition = maxZPositionBeforeCharacter + 0.5
+            print("📍 Character z-position set to \(characterZPosition) (after layer \(charLayerIndex), max zPosition before character: \(maxZPositionBeforeCharacter))")
         } else {
             // Default: character appears above all layers (z-position 100)
-            characterZPosition = 100
-            print("📍 No characterLayer property found - character z-position defaulting to 100")
+            // But we should check if any layer has a zOffset that would push it above 100
+            var maxLayerZPosition: CGFloat = 100
+            for (layerIndex, layer) in tiledMap.layers.enumerated() {
+                let zOffset = CGFloat(layer.floatProperty("zOffset", default: 0))
+                let layerZPosition = CGFloat(layerIndex) + zOffset
+                if layerZPosition > maxLayerZPosition {
+                    maxLayerZPosition = layerZPosition
+                }
+            }
+            // Place character slightly above the highest layer zPosition
+            characterZPosition = max(100, maxLayerZPosition + 0.5)
+            print("📍 No characterLayer property found - character z-position set to \(characterZPosition) (based on max layer zPosition \(maxLayerZPosition))")
         }
         
         // Render layers using natural order (layer index) to maintain proper layer ordering
         // Layers maintain their relative order, character appears at characterZPosition
+        // Layers can have a "zOffset" property to adjust their zPosition relative to the layer index
         for (layerIndex, layer) in tiledMap.layers.enumerated() {
             // Z-Position hierarchy:
             // - Background: -100000 (far behind)
-            // - Tiles: 0 to ~60 (based on layer index - maintains natural layer order)
+            // - Tiles: base layer index + zOffset (if specified) - maintains natural layer order with offset
             // - Characters: based on "characterZPosition" property (default 100)
-            //   - Layers with index < characterZPosition appear behind character
-            //   - Layers with index >= characterZPosition appear in front of character
+            //   - Layers with zPosition < characterZPosition appear behind character
+            //   - Layers with zPosition >= characterZPosition appear in front of character
             // - UI: 200+ (above everything)
-            let tileZPosition = CGFloat(layerIndex)
+            let baseZPosition = CGFloat(layerIndex)
+            let zOffset = CGFloat(layer.floatProperty("zOffset", default: 0))
+            let tileZPosition = baseZPosition + zOffset
+            if zOffset != 0 {
+                print("📍 Layer '\(layer.name)' (index \(layerIndex)) has zOffset \(zOffset) → zPosition \(tileZPosition)")
+            }
             renderTiledLayer(layer, tileSize: tileSize, zPosition: tileZPosition, yFlipOffset: yFlipOffset, container: mapContainer)
+        }
+        
+        // Update player and companion sprites' zPosition based on calculated characterZPosition
+        // This ensures correct layering when switching maps
+        if let playerSprite = playerSprite {
+            playerSprite.zPosition = characterZPosition
+            print("📍 Updated player sprite zPosition to \(characterZPosition)")
+        }
+        // Update companion sprites' zPosition (slightly below player)
+        for (_, companionSprite) in companionSprites {
+            companionSprite.zPosition = characterZPosition - 1
         }
         
         // Third pass: Render object groups (object layers)
@@ -755,9 +813,16 @@ class GameScene: SKScene {
                 
                 player.position = targetPosition
                 playerSprite?.position = player.position
-                cameraNode?.position = player.position
+                // Snap camera position to pixel boundaries to prevent tile seams
+                let snappedCameraX = round(targetPosition.x * 2.0) / 2.0
+                let snappedCameraY = round(targetPosition.y * 2.0) / 2.0
+                cameraNode?.position = CGPoint(x: snappedCameraX, y: snappedCameraY)
             }
         }
+        
+        // CRITICAL: Snap all tile positions to pixel boundaries after map is fully loaded
+        // This prevents seams between tiles on initial load
+        reSnapTilePositions()
     }
     
     /// Render a single layer from a Tiled map
@@ -1090,7 +1155,7 @@ class GameScene: SKScene {
                 lastAnimationDirection = direction
                 lastAnimationIsMoving = true
                 
-                print("🔄 Animation direction changed to: \(direction)")
+                // Animation direction changed (debug log removed for performance)
             } else {
                 // When idle, use the idle frame for the last facing direction
                 let idleDirection = lastFacingDirection.isEmpty ? "south" : lastFacingDirection
@@ -1127,7 +1192,7 @@ class GameScene: SKScene {
                 let currentTextureAddr = sprite.texture != nil ? String(format: "%p", sprite.texture!) : "nil"
                 let newTextureAddr = String(format: "%p", textureToUse)
                 if currentTextureAddr != newTextureAddr {
-                    print("🔄 Updating texture: direction=\(textureDirection), frame=\(currentAnimationFrame), isWalk=\(isWalkFrame), texture changed: \(currentTextureAddr) -> \(newTextureAddr)")
+                    // Updating texture (debug log removed for performance)
                 }
                 
                 // Always update texture directly (no SKAction for per-frame updates)
@@ -1449,18 +1514,56 @@ class GameScene: SKScene {
             
             // Create fresh UI with correct view size
             gameUI = GameUI(scene: self, camera: camera)
+            characterUI = CharacterUI(scene: self, camera: camera)
+            buildUI = BuildUI(scene: self, camera: camera)
             gameUI?.updatePlayerStats(player: player)
             gameUI?.updateCompanionStats(companion: player.companions.first)
         }
+        
+        // Note: Tile snapping is now handled in loadAndRenderTiledMap() after map loads
+        // This ensures tiles are snapped immediately after rendering, preventing seams on first load
     }
     
     override func didChangeSize(_ oldSize: CGSize) {
+        // Prevent infinite loop - if we're already updating, don't call again
+        guard !isUpdatingUISize else { return }
+        
         // Update UI layout when view size changes (orientation change)
         updateUIForSizeChange()
     }
     
     func updateUIForSizeChange() {
-        print("GameScene: updateUIForSizeChange called - Scene size: \(size), View size: \(view?.bounds.size ?? .zero)")
+        // Prevent infinite loop
+        guard !isUpdatingUISize else {
+            print("GameScene: updateUIForSizeChange called while already updating - skipping to prevent infinite loop")
+            return
+        }
+        
+        isUpdatingUISize = true
+        defer { isUpdatingUISize = false }
+        
+        let currentViewSize = view?.bounds.size ?? .zero
+        print("GameScene: updateUIForSizeChange called - Scene size: \(size), View size: \(currentViewSize)")
+        
+        // CRITICAL FIX: Update scene size to match view size
+        // In SpriteKit, the camera's coordinate system is based on scene.size, not view.bounds.size
+        // When UI is attached to the camera, it uses scene.size for its coordinate system
+        // So we must update scene.size to match view.bounds.size for UI to work correctly in fullscreen
+        // BUT: We need to be careful not to trigger didChangeSize again, so we only update if different
+        if currentViewSize.width > 0 && currentViewSize.height > 0 {
+            let oldSize = size
+            // Only update if significantly different (more than 1 point) to avoid triggering didChangeSize unnecessarily
+            if abs(oldSize.width - currentViewSize.width) > 1 || abs(oldSize.height - currentViewSize.height) > 1 {
+                // Temporarily disable the guard to allow the size change
+                // But didChangeSize will check the guard and return early
+                size = currentViewSize
+                print("GameScene: Updated scene size from \(oldSize) to \(size) to match view size")
+            }
+        }
+        
+        // CRITICAL: Re-snap all tile positions to pixel boundaries when scene size changes
+        // This prevents seams between tiles when switching between windowed and fullscreen
+        reSnapTilePositions()
         
         // Update UI layout when view size changes (orientation change)
         gameUI?.updateLayout()
@@ -1471,6 +1574,34 @@ class GameScene: SKScene {
             gameUI?.updateCompanionStats(companion: player.companions.first)
         }
     }
+    
+    /// Re-snap all tile positions to pixel boundaries to prevent seams when scene size changes
+    private func reSnapTilePositions() {
+        // Re-snap all world tiles
+        for tileSprite in worldTiles {
+            let currentPos = tileSprite.position
+            // Snap to nearest 0.5 pixel (half-pixel precision) to avoid sub-pixel rendering gaps
+            let snappedX = round(currentPos.x * 2.0) / 2.0
+            let snappedY = round(currentPos.y * 2.0) / 2.0
+            tileSprite.position = CGPoint(x: snappedX, y: snappedY)
+        }
+        
+        // Re-snap all object sprites
+        for objectSprite in objectSprites.keys {
+            let currentPos = objectSprite.position
+            let snappedX = round(currentPos.x * 2.0) / 2.0
+            let snappedY = round(currentPos.y * 2.0) / 2.0
+            objectSprite.position = CGPoint(x: snappedX, y: snappedY)
+        }
+        
+        // Also ensure camera position is snapped (if it affects rendering)
+        if let camera = cameraNode {
+            let cameraPos = camera.position
+            let snappedCameraX = round(cameraPos.x * 2.0) / 2.0
+            let snappedCameraY = round(cameraPos.y * 2.0) / 2.0
+            camera.position = CGPoint(x: snappedCameraX, y: snappedCameraY)
+        }
+    }
 
     func movePlayer(direction: CGPoint) {
         guard let player = gameState?.player, !isInCombat, !isInDialogue else { return }
@@ -1479,6 +1610,16 @@ class GameScene: SKScene {
             x: player.position.x + direction.x * movementSpeed,
             y: player.position.y + direction.y * movementSpeed
         )
+        
+        // Track if player has moved away from trigger tile (for TMX maps)
+        if useTiledMap, let triggerPos = triggerTilePosition, !hasMovedAwayFromTrigger {
+            let distance = sqrt(pow(newPosition.x - triggerPos.x, 2) + pow(newPosition.y - triggerPos.y, 2))
+            // If player moves more than 1.5 tiles away from trigger, mark as moved away
+            if distance > 48.0 {  // 1.5 tiles = 48 pixels
+                hasMovedAwayFromTrigger = true
+                print("✅ Player has moved away from trigger tile (distance: \(Int(distance)))")
+            }
+        }
         
         // Check movement: if using Tiled map, use collision map
         // Otherwise use the WorldMap collision system or chunk collision
@@ -1492,9 +1633,11 @@ class GameScene: SKScene {
                 checkDoorCollision(at: newPosition)
             }
         } else {
-            // Procedural world: check chunk collision (simplified for now)
-            // TODO: Implement proper collision checking with chunk entities
-            canMove = true  // Allow movement for now, collision will be added later
+            // Procedural world: check physics body collisions
+            canMove = canMoveToProceduralWorld(position: newPosition)
+            if !canMove {
+                print("🛑 Movement blocked by entity collision at position (\(Int(newPosition.x)), \(Int(newPosition.y)))")
+            }
         }
         
         if canMove {
@@ -1792,6 +1935,13 @@ class GameScene: SKScene {
                         if let layerProps = layerProperties[layerName] {
                             let triggerValue = layerProps["proceduralWorldTrigger"]?.lowercased()
                             if triggerValue == "true" || triggerValue == "1" {
+                                // Check if player has moved away from trigger tile first (prevents immediate re-trigger)
+                                // If triggerTilePosition is nil, this is the first time, so allow trigger
+                                if let _ = triggerTilePosition, !hasMovedAwayFromTrigger {
+                                    print("⏱️ Player on trigger tile but hasn't moved away yet, ignoring trigger")
+                                    return
+                                }
+                                
                                 // Get optional prefabs file name from layer properties
                                 // Default to "prefabs_grassland" if not specified (since "prefabs.json" no longer exists)
                                 let prefabsFile = layerProps["prefabsFile"] ?? "prefabs_grassland"
@@ -1947,14 +2097,32 @@ class GameScene: SKScene {
     /// Find the position of the exit door in the current map matching the given door ID
     /// - Parameter doorId: The door ID to match
     private func findExitDoorPosition(matchingDoorId: String) -> CGPoint? {
-        // Look for a layer with exit property and matching door ID
+        // Debug: list all available door layers
+        print("🔍 Searching for door with doorId='\(matchingDoorId)'")
+        var foundDoors: [String] = []
         for (layerName, props) in layerProperties {
-            if let exitValue = props["exit"]?.lowercased(),
-               exitValue == "true" || exitValue == "1" {
-                // Check if door ID matches
-                let exitDoorId = props["doorId"] ?? props["door_id"] ?? layerName
-                if exitDoorId == matchingDoorId {
+            let doorId = props["doorId"] ?? props["door_id"] ?? layerName
+            if props["collision"]?.lowercased() == "true" || props["collision"]?.lowercased() == "1" {
+                foundDoors.append("\(layerName) (doorId=\(doorId))")
+            }
+        }
+        if !foundDoors.isEmpty {
+            print("   Available door layers: \(foundDoors.joined(separator: ", "))")
+        }
+        
+        // Look for any layer with matching door ID (not just exit doors)
+        for (layerName, props) in layerProperties {
+            // Check if door ID matches (try both with and without exit property)
+            let doorId = props["doorId"] ?? props["door_id"] ?? layerName
+            if doorId == matchingDoorId {
+                // Check if this layer has exit property, or just match by doorId
+                let hasExit = props["exit"]?.lowercased() == "true" || props["exit"]?.lowercased() == "1"
+                // If no exit property, we'll still match by doorId (for backwards compatibility)
+                
                     // Find a collision tile from this layer to get its position
+                    // If there are multiple door tiles, return the first one found
+                    // (In the future, we could find the closest one to the entry point)
+                    var foundDoorPosition: CGPoint?
                     for (tileKey, layer) in collisionLayerMap where layer == layerName {
                         // Parse tile coordinates
                         let components = tileKey.components(separatedBy: ",")
@@ -1978,12 +2146,22 @@ class GameScene: SKScene {
                             worldY = tiledY + tileHeight / 2
                         }
                         
-                        print("   Found exit door (doorId=\(exitDoorId)) at tile (\(tileX), \(tileY)) -> world (\(Int(worldX)), \(Int(worldY)))")
-                        return CGPoint(x: worldX, y: worldY)
+                        let doorPos = CGPoint(x: worldX, y: worldY)
+                        print("   Found door tile (doorId=\(doorId)) at tile (\(tileX), \(tileY)) -> world (\(Int(worldX)), \(Int(worldY)))")
+                        
+                        // Return the first door tile found
+                        // TODO: If multiple door tiles exist, find the closest one to entry point
+                        foundDoorPosition = doorPos
+                        break  // Use first door tile found
+                    }
+                    
+                    if let doorPos = foundDoorPosition {
+                        print("   ✅ Using door (doorId=\(doorId), hasExit=\(hasExit)) at world (\(Int(doorPos.x)), \(Int(doorPos.y)))")
+                        return doorPos
                     }
                 }
             }
-        }
+        print("   ❌ No door found with doorId='\(matchingDoorId)'")
         return nil
     }
     
@@ -2065,8 +2243,12 @@ class GameScene: SKScene {
         print("✅ Exited building. Player at: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y)))")
     }
     
-    /// Transition from TMX map to procedural world
-    func transitionToProceduralWorld(from position: CGPoint, prefabsFile: String = "prefabs_grassland") {
+    /// Transition to a procedural world (from TMX map or another procedural world)
+    /// - Parameters:
+    ///   - position: Current position (entry point in current world)
+    ///   - prefabsFile: Prefab file to load for the target world
+    ///   - entryOffset: Optional offset from entry point where player should spawn in target world
+    func transitionToProceduralWorld(from position: CGPoint, prefabsFile: String = "prefabs_grassland", entryOffset: ExitOffset? = nil) {
         guard let player = gameState?.player else {
             print("❌ Cannot transition to procedural world: no player")
             return
@@ -2080,7 +2262,8 @@ class GameScene: SKScene {
         }
         lastTransitionTime = currentTime
         
-        print("🌍 Transitioning to procedural world from TMX map (using prefabs: \(prefabsFile).json)")
+        let sourceWorld = useTiledMap ? "TMX map" : "procedural world"
+        print("🌍 Transitioning to procedural world from \(sourceWorld) (using prefabs: \(prefabsFile).json)")
         
         // Load prefabs from the specified JSON file (if different from current)
         PrefabFactory.shared.loadPrefabsFromFile(prefabsFile)
@@ -2097,10 +2280,54 @@ class GameScene: SKScene {
             print("🌍 World config loaded: '\(worldConfig.name)' - seed: \(worldConfig.seed)")
         }
         
-        // Store the entry position in TMX map for returning
+        // Store the entry position for returning
+        // If we're coming from TMX map, store it; otherwise store current procedural world position
+        if useTiledMap {
         tmxMapEntryPosition = position
+            triggerTilePosition = position
+        } else {
+            // Coming from another procedural world - store current position for potential return
+            proceduralWorldExitPosition = position
+            // Keep tmxMapEntryPosition if it exists (for ultimate return to TMX)
+        }
+        hasMovedAwayFromTrigger = false  // Reset trigger state
         
-        // Clear TMX map rendering
+        // Clear exit tiles from previous transition
+        exitTileSprites.forEach { $0.removeFromParent() }
+        exitTileSprites.removeAll()
+        exitTilePositions.removeAll()
+        exitTileData.removeAll()
+        
+        // If transitioning from another procedural world, clear its chunks and exit tiles
+        if !useTiledMap, let chunkManager = chunkManager {
+            chunkManager.unloadAllChunks()
+            // Also remove any remaining chunk nodes from the scene
+            enumerateChildNodes(withName: "chunk_") { node, _ in
+                node.removeFromParent()
+            }
+            // Clear exit tiles from previous procedural world
+            exitTileSprites.forEach { $0.removeFromParent() }
+            exitTileSprites.removeAll()
+            exitTilePositions.removeAll()
+            exitTileData.removeAll()
+            // Also remove any exit tile nodes that might still be in the scene
+            enumerateChildNodes(withName: "exitTile") { node, _ in
+                node.removeFromParent()
+            }
+        }
+        
+        // Store which prefab file we're loading
+        currentProceduralWorldPrefab = prefabsFile
+        
+        // Create exit tiles if configured
+        if let worldConfig = PrefabFactory.shared.getWorldConfig(),
+           let exitConfig = worldConfig.exitConfig,
+           exitConfig.hasExit {
+            createExitTiles(entryPosition: position, exitConfig: exitConfig)
+        }
+        
+        // Clear TMX map rendering (only if we were using TMX)
+        if useTiledMap {
         worldTiles.forEach { $0.removeFromParent() }
         worldTiles.removeAll()
         
@@ -2116,6 +2343,7 @@ class GameScene: SKScene {
             indicator.removeFromParent()
         }
         questionMarkIndicators.removeAll()
+        }
         
         // Switch to procedural world
         useTiledMap = false
@@ -2134,23 +2362,83 @@ class GameScene: SKScene {
             setupHybridWorldSystem()
         }
         
-        // Spawn player slightly forward from trigger position to avoid immediate re-trigger
-        // Move player 2 tiles north (positive Y) from the trigger
+        // Calculate spawn position
+        // If entryOffset is provided, use it; otherwise spawn slightly forward to avoid immediate re-trigger
         let tileSize: CGFloat = 32.0  // Matches TMX maps: 16x16 base tiles * 2.0 scale factor
+        let spawnPosition: CGPoint
+        if let offset = entryOffset {
+            // Use specified offset from entry point
+            spawnPosition = CGPoint(
+                x: position.x + CGFloat(offset.x) * tileSize,
+                y: position.y + CGFloat(offset.y) * tileSize
+            )
+        } else {
+            // Default: spawn 2 tiles north (positive Y) from entry to avoid immediate re-trigger
         let spawnOffset = CGPoint(x: 0, y: tileSize * 2)  // 2 tiles forward
-        let spawnPosition = CGPoint(x: position.x + spawnOffset.x, y: position.y + spawnOffset.y)
+            spawnPosition = CGPoint(x: position.x + spawnOffset.x, y: position.y + spawnOffset.y)
+        }
         
-        player.position = spawnPosition
-        playerSprite?.position = spawnPosition
-        cameraNode?.position = spawnPosition
+        // Set character zPosition to 100 for procedural world (between entitiesBelow at 40 and entitiesAbove at 110)
+        characterZPosition = 100
+        playerSprite?.zPosition = characterZPosition
         
-        // Load initial chunks around player asynchronously
+        // Load initial chunks around player asynchronously, then verify spawn position is safe
         if let chunkManager = chunkManager {
             chunkManager.updateChunksAsync(around: spawnPosition) { [weak self] in
+                // After chunks are loaded, check if spawn position is walkable
+                guard let self = self else { return }
+                
+                // Check if spawn position is safe, if not find a nearby safe position
+                let finalSpawnPosition: CGPoint
+                if self.canMoveToProceduralWorld(position: spawnPosition) {
+                    finalSpawnPosition = spawnPosition
+                } else {
+                    // Try nearby positions in a spiral pattern
+                    let tileSize: CGFloat = 32.0
+                    var foundSafe = false
+                    var safePos = spawnPosition
+                    
+                    // Search in expanding spiral pattern
+                    for radius in 1...5 {
+                        for dx in -radius...radius {
+                            for dy in -radius...radius {
+                                if abs(dx) == radius || abs(dy) == radius {
+                                    let testPos = CGPoint(
+                                        x: spawnPosition.x + CGFloat(dx) * tileSize,
+                                        y: spawnPosition.y + CGFloat(dy) * tileSize
+                                    )
+                                    if self.canMoveToProceduralWorld(position: testPos) {
+                                        safePos = testPos
+                                        foundSafe = true
+                                        break
+                                    }
+                                }
+                            }
+                            if foundSafe { break }
+                        }
+                        if foundSafe { break }
+                    }
+                    
+                    if foundSafe {
+                        print("⚠️ Spawn position at (\(Int(spawnPosition.x)), \(Int(spawnPosition.y))) was blocked, using safe position: (\(Int(safePos.x)), \(Int(safePos.y)))")
+                        finalSpawnPosition = safePos
+                    } else {
+                        print("⚠️ Could not find safe spawn position near (\(Int(spawnPosition.x)), \(Int(spawnPosition.y))), using original position")
+                        finalSpawnPosition = spawnPosition
+                    }
+                }
+                
+                // Update player position to safe spawn position
+                if let player = self.gameState?.player {
+                    player.position = finalSpawnPosition
+                    self.playerSprite?.position = finalSpawnPosition
+                    self.cameraNode?.position = finalSpawnPosition
+                }
+                
                 // Hide loading screen when chunks are loaded
                 DispatchQueue.main.async {
-                    self?.hideLoadingScreen()
-                    print("✅ Transitioned to procedural world. Player at: (\(Int(spawnPosition.x)), \(Int(spawnPosition.y))), entry point was: (\(Int(position.x)), \(Int(position.y)))")
+                    self.hideLoadingScreen()
+                    print("✅ Transitioned to procedural world. Player at: (\(Int(finalSpawnPosition.x)), \(Int(finalSpawnPosition.y))), entry point was: (\(Int(position.x)), \(Int(position.y)))")
                 }
             }
             lastPlayerChunk = ChunkKey.fromWorldPosition(
@@ -2165,16 +2453,26 @@ class GameScene: SKScene {
     }
     
     /// Transition from procedural world back to TMX map
-    func transitionToTiledMap() {
-        guard let player = gameState?.player, let entryPosition = tmxMapEntryPosition else {
-            print("❌ Cannot transition to TMX map: no entry position stored")
+    /// - Parameters:
+    ///   - tmxFileName: Optional TMX file name to load. If nil, uses the stored tmxMapEntryPosition's file
+    ///   - doorId: Optional door/exit ID to use for spawning. If nil, uses the stored entry position
+    func transitionToTiledMap(tmxFileName: String? = nil, doorId: String? = nil) {
+        guard let player = gameState?.player else {
+            print("❌ Cannot transition to TMX map: no player")
             return
         }
         
-        print("🏠 Transitioning back to TMX map from procedural world")
+        // Determine which TMX file to load
+        let targetTmxFile = tmxFileName ?? tiledMapFileName
         
         // Store exit position in procedural world (for returning later if needed)
         proceduralWorldExitPosition = player.position
+        
+        // Clear exit tiles from procedural world
+        exitTileSprites.forEach { $0.removeFromParent() }
+        exitTileSprites.removeAll()
+        exitTilePositions.removeAll()
+        exitTileData.removeAll()
         
         // Clear procedural world chunks
         if let chunkManager = chunkManager {
@@ -2186,8 +2484,18 @@ class GameScene: SKScene {
             node.removeFromParent()
         }
         
+        // Also remove any exit tile nodes that might still be in the scene
+        enumerateChildNodes(withName: "exitTile") { node, _ in
+            node.removeFromParent()
+        }
+        
         // Switch back to TMX map
         useTiledMap = true
+        
+        // Update TMX file name if different
+        if targetTmxFile != tiledMapFileName {
+            tiledMapFileName = targetTmxFile
+        }
         
         // Update GameState with map information
         if let gameState = gameState {
@@ -2195,18 +2503,287 @@ class GameScene: SKScene {
             gameState.useProceduralWorld = false
         }
         
-        // Reload the TMX map
+        // Reload the TMX map (this loads layerProperties and collisionLayerMap)
         reloadCurrentMap()
         
-        // Position player at the entry point
-        player.position = entryPosition
-        playerSprite?.position = entryPosition
-        cameraNode?.position = entryPosition
+        // Now that the map is loaded, find the exit door position if doorId was specified
+        var doorPosition: CGPoint?  // The actual door tile position (for search reference)
+        var spawnPosition: CGPoint?  // Where we want to spawn (may be offset from door)
+        
+        if let doorId = doorId {
+            // Find the exit door position using the loaded map data
+            doorPosition = findExitDoorPosition(matchingDoorId: doorId)
+            if let doorPos = doorPosition {
+                print("🚪 Found exit door (doorId=\(doorId)) at (\(Int(doorPos.x)), \(Int(doorPos.y)))")
+                // Spawn 1 full tile north of the door in TILE coordinates, then convert to world
+                // This ensures we're in the correct tile, not just offset by world coordinates
+                let tileWidth = mapTileSize.width
+                let tileHeight = mapTileSize.height
+                let yFlipOffset = mapYFlipOffset
+                
+                // Convert door world position back to tile coordinates
+                let doorTileX = Int(floor(doorPos.x / tileWidth))
+                let doorTileY: Int
+                if hasInfiniteLayers {
+                    doorTileY = Int(floor((yFlipOffset - doorPos.y) / tileHeight))
+                } else {
+                    let height = regularLayerHeight
+                    if height > 0 {
+                        doorTileY = height - 1 - Int(floor(doorPos.y / tileHeight))
+                    } else {
+                        doorTileY = Int(floor((yFlipOffset - doorPos.y) / tileHeight))
+                    }
+                }
+                
+                print("   Door at tile (\(doorTileX), \(doorTileY)) -> world (\(Int(doorPos.x)), \(Int(doorPos.y)))")
+                
+                // Spawn 2 tiles north of door to avoid collision box overlap with door tile
+                // (lower tileY = north in Tiled coordinates)
+                let spawnTileX = doorTileX
+                let spawnTileY = doorTileY - 2  // North = lower tileY (spawn 2 tiles north for safety)
+                
+                // Convert spawn tile coordinates back to world position
+                let spawnWorldX = CGFloat(spawnTileX) * tileWidth + tileWidth / 2
+                let spawnWorldY: CGFloat
+                if hasInfiniteLayers {
+                    let tiledY = CGFloat(spawnTileY) * tileHeight
+                    spawnWorldY = yFlipOffset - tiledY - tileHeight / 2
+                } else {
+                    let height = regularLayerHeight
+                    if height > 0 {
+                        let tiledY = CGFloat(height - 1 - spawnTileY) * tileHeight
+                        spawnWorldY = tiledY + tileHeight / 2
+                    } else {
+                        let tiledY = CGFloat(spawnTileY) * tileHeight
+                        spawnWorldY = yFlipOffset - tiledY - tileHeight / 2
+                    }
+                }
+                
+                spawnPosition = CGPoint(x: spawnWorldX, y: spawnWorldY)
+                print("   Spawn at tile (\(spawnTileX), \(spawnTileY)) -> world (\(Int(spawnWorldX)), \(Int(spawnWorldY)))")
+            } else {
+                print("⚠️ Could not find exit door with doorId=\(doorId), falling back to entry position")
+            }
+        }
+        
+        // Fallback to stored entry position if door not found or not specified
+        let baseSpawnPosition = spawnPosition ?? tmxMapEntryPosition
+        
+        guard let finalSpawnPosition = baseSpawnPosition else {
+            print("❌ Cannot transition to TMX map: no entry position or door found")
+            return
+        }
+        
+        print("🏠 Transitioning back to TMX map: '\(targetTmxFile)' at (\(Int(finalSpawnPosition.x)), \(Int(finalSpawnPosition.y)))")
+        
+        // Ensure spawn position is walkable (not on a collision tile)
+        // Search from the offset spawn position (where we want to be), not from the door
+        // This ensures we prioritize positions near the intended spawn point
+        let safeSpawnPosition: CGPoint
+        if canMoveToTiledMap(position: finalSpawnPosition) {
+            safeSpawnPosition = finalSpawnPosition
+            print("✅ Spawn position at (\(Int(finalSpawnPosition.x)), \(Int(finalSpawnPosition.y))) is walkable")
+        } else {
+            // The offset spawn position is blocked, search from there (not from door)
+            // This will prioritize positions near where we want to spawn (north of door)
+            print("🔍 Spawn position at (\(Int(finalSpawnPosition.x)), \(Int(finalSpawnPosition.y))) is blocked, searching for safe position nearby...")
+            if let safePosition = findSafeSpawnPoint(near: finalSpawnPosition) {
+                safeSpawnPosition = safePosition
+                print("✅ Found safe spawn position near intended spawn: (\(Int(safePosition.x)), \(Int(safePosition.y)))")
+            } else {
+                // Last resort: search from door position
+                if let doorPos = doorPosition, let safePosition = findSafeSpawnPoint(near: doorPos) {
+                    safeSpawnPosition = safePosition
+                    print("⚠️ Could not find safe position near spawn, using position near door: (\(Int(safePosition.x)), \(Int(safePosition.y)))")
+                } else {
+                    print("⚠️ Could not find safe spawn position, using original position")
+                    safeSpawnPosition = finalSpawnPosition
+                }
+            }
+        }
+        
+        // Position player at the safe spawn position
+        player.position = safeSpawnPosition
+        playerSprite?.position = safeSpawnPosition
+        cameraNode?.position = safeSpawnPosition
+        
+        // Update stored entry position for future returns
+        tmxMapEntryPosition = safeSpawnPosition
         
         // Clear procedural world tracking (keep tmxMapEntryPosition in case we want to go back)
         // proceduralWorldExitPosition is kept for potential return
         
-        print("✅ Transitioned back to TMX map. Player at: (\(Int(entryPosition.x)), \(Int(entryPosition.y)))")
+        // Debug: verify player position was set correctly
+        print("✅ Transitioned back to TMX map. Player position set to: (\(Int(safeSpawnPosition.x)), \(Int(safeSpawnPosition.y)))")
+        print("   Door was at: (\(Int(doorPosition?.x ?? 0)), \(Int(doorPosition?.y ?? 0)))")
+        print("   Distance from door: \(Int(safeSpawnPosition.y - (doorPosition?.y ?? 0)))px (positive = north, negative = south)")
+        
+        // Reset trigger state - player must move away before re-triggering
+        hasMovedAwayFromTrigger = false
+    }
+    
+    /// Find exit door position in a TMX map by door ID
+    private func findExitDoorPositionInMap(tiledMap: TiledMap, matchingDoorId: String) -> CGPoint? {
+        // Look for a layer with exit property and matching door ID
+        for layer in tiledMap.layers {
+            // Check layer properties
+            if let exitValue = layer.properties["exit"]?.lowercased(),
+               exitValue == "true" || exitValue == "1" {
+                // Check if door ID matches
+                let exitDoorId = layer.properties["doorId"] ?? layer.properties["door_id"] ?? layer.name
+                if exitDoorId == matchingDoorId {
+                    // Find a tile from this layer to get its position
+                    // For infinite layers, check chunks
+                    if layer.isInfinite, let chunks = layer.chunks {
+                        for chunk in chunks {
+                            // Find first non-zero tile in chunk
+                            for (index, gid) in chunk.data.enumerated() where gid > 0 {
+                                let x = index % chunk.width
+                                let y = index / chunk.width
+                                let tileWidth = CGFloat(tiledMap.tileWidth)
+                                let tileHeight = CGFloat(tiledMap.tileHeight)
+                                let worldX = CGFloat(chunk.x + x) * tileWidth + tileWidth / 2
+                                let worldY = CGFloat(chunk.y + y) * tileHeight + tileHeight / 2
+                                return CGPoint(x: worldX, y: worldY)
+                            }
+                        }
+                    } else if let data = layer.data {
+                        // Regular layer
+                        let tileWidth = CGFloat(tiledMap.tileWidth)
+                        let tileHeight = CGFloat(tiledMap.tileHeight)
+                        var index = 0
+                        for y in 0..<layer.height {
+                            for x in 0..<layer.width {
+                                if index < data.count && data[index] > 0 {
+                                    let worldX = CGFloat(x) * tileWidth + tileWidth / 2
+                                    let worldY = CGFloat(layer.height - 1 - y) * tileHeight + tileHeight / 2
+                                    return CGPoint(x: worldX, y: worldY)
+                                }
+                                index += 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return nil
+    }
+    
+    /// Create exit tiles in the procedural world based on exit configuration
+    private func createExitTiles(entryPosition: CGPoint, exitConfig: ExitConfig) {
+        let tileSize: CGFloat = 32.0  // Matches TMX maps: 16x16 base tiles * 2.0 scale factor
+        
+        // Determine exit tile positions and definitions
+        var exitDefinitions: [ExitDefinition] = []
+        
+        if let exits = exitConfig.exits, !exits.isEmpty {
+            // Use new exits array format
+            exitDefinitions = exits
+        } else if let exitTiles = exitConfig.exitTiles, !exitTiles.isEmpty {
+            // Legacy format: convert ExitTileConfig to ExitDefinition
+            for exitTile in exitTiles {
+                exitDefinitions.append(ExitDefinition(
+                    x: exitTile.x,
+                    y: exitTile.y,
+                    tileGID: exitTile.tileGID,
+                    targetPrefabFile: nil,  // Legacy exits return to TMX
+                    targetEntryOffset: nil,
+                    targetTmxFile: nil,  // Use current TMX file
+                    targetDoorId: nil  // Use entry position
+                ))
+            }
+        } else if let defaultOffset = exitConfig.defaultExitOffset {
+            // Legacy default offset
+            exitDefinitions.append(ExitDefinition(
+                x: defaultOffset.x,
+                y: defaultOffset.y,
+                tileGID: nil,
+                targetPrefabFile: nil,  // Legacy exits return to TMX
+                targetEntryOffset: nil,
+                targetTmxFile: nil,  // Use current TMX file
+                targetDoorId: nil  // Use entry position
+            ))
+        } else {
+            // Default: place exit 2 tiles south of entry, returns to TMX
+            exitDefinitions.append(ExitDefinition(
+                x: 0,
+                y: -2,
+                tileGID: nil,
+                targetPrefabFile: nil,  // Returns to TMX
+                targetEntryOffset: nil,
+                targetTmxFile: nil,  // Use current TMX file
+                targetDoorId: nil  // Use entry position
+            ))
+        }
+        
+        // Create visual sprites for exit tiles
+        for exitDef in exitDefinitions {
+            let exitX = entryPosition.x + CGFloat(exitDef.x) * tileSize
+            let exitY = entryPosition.y + CGFloat(exitDef.y) * tileSize
+            let exitPos = CGPoint(x: exitX, y: exitY)
+            
+            // Try to create a tile sprite if a GID is specified
+            var sprite: SKSpriteNode? = nil
+            
+            if let gidString = exitDef.tileGID {
+                // Try to parse GID string (format: "tilesetName-tileNumber" or just a number)
+                if let gidInt = Int(gidString) {
+                    sprite = TileManager.shared.createSprite(for: gidInt, size: CGSize(width: tileSize, height: tileSize))
+                } else {
+                    // Try to parse format like "exterior-257" - extract the number part
+                    let components = gidString.components(separatedBy: "-")
+                    if components.count > 1, let lastComponent = components.last, let gidInt = Int(lastComponent) {
+                        sprite = TileManager.shared.createSprite(for: gidInt, size: CGSize(width: tileSize, height: tileSize))
+                    }
+                }
+            }
+            
+            // If tile creation failed or no GID specified, use a black oval
+            if sprite == nil {
+                // Create a black oval using SKShapeNode with an ellipse path
+                // Make it slightly smaller than the tile for better visibility
+                let ovalWidth = tileSize * 0.8
+                let ovalHeight = tileSize * 0.5
+                // Create the oval path centered at origin (SKShapeNode uses center-based coordinates)
+                let ovalRect = CGRect(
+                    x: -ovalWidth / 2,
+                    y: -ovalHeight / 2,
+                    width: ovalWidth,
+                    height: ovalHeight
+                )
+                let ovalPath = CGPath(ellipseIn: ovalRect, transform: nil)
+                let ovalShape = SKShapeNode(path: ovalPath)
+                ovalShape.fillColor = .black
+                ovalShape.strokeColor = .black
+                ovalShape.lineWidth = 1.0
+                ovalShape.alpha = 0.8
+                
+                // Position the oval lower in the tile to match collision detection
+                // Move it down by about 60% from center to align better with ground level
+                let verticalOffset = tileSize * 1.0
+                ovalShape.position = CGPoint(x: tileSize / 2, y: tileSize / 2 - verticalOffset)
+                
+                // Wrap the shape node in a container sprite for consistency
+                let spriteContainer = SKSpriteNode(color: .clear, size: CGSize(width: tileSize, height: tileSize))
+                spriteContainer.addChild(ovalShape)
+                sprite = spriteContainer
+            }
+            
+            if let exitSprite = sprite {
+                exitSprite.position = exitPos
+                exitSprite.anchorPoint = CGPoint(x: 0, y: 0)
+                exitSprite.zPosition = 1  // Slightly above ground tiles
+                exitSprite.name = "exitTile"
+                addChild(exitSprite)
+                exitTileSprites.append(exitSprite)
+                let exitKey = "\(Int(exitPos.x)),\(Int(exitPos.y))"
+                exitTilePositions.insert(exitKey)
+                exitTileData[exitKey] = exitDef  // Store exit definition for this position
+                
+                let targetDesc = exitDef.targetPrefabFile ?? "TMX map"
+                print("🚪 Created exit tile at (\(Int(exitPos.x)), \(Int(exitPos.y))) -> \(targetDesc)")
+            }
+        }
     }
     
     /// Find the position of the entry door in the current map matching the given door ID
@@ -2264,6 +2841,17 @@ class GameScene: SKScene {
     /// Reload the current map (used when switching between maps)
     private func reloadCurrentMap() {
         guard let player = gameState?.player else { return }
+        
+        // Clear exit tiles from procedural world (if any)
+        exitTileSprites.forEach { $0.removeFromParent() }
+        exitTileSprites.removeAll()
+        exitTilePositions.removeAll()
+        exitTileData.removeAll()
+        
+        // Also remove any exit tile nodes that might still be in the scene
+        enumerateChildNodes(withName: "exitTile") { node, _ in
+            node.removeFromParent()
+        }
         
         // Clear existing sprites
         playerSprite?.removeFromParent()
@@ -2614,19 +3202,55 @@ class GameScene: SKScene {
                 }
             }
             
-            // Check for transition back to TMX map
-            // If player walks back near the entry position, transition back to TMX
-            // This allows seamless travel between TMX and procedural worlds
-            // Only check if cooldown has passed
+            // Check for transition via exit tiles (can go to TMX or another procedural world)
+            // Only check if cooldown has passed and exit is configured
             let currentTime = CACurrentMediaTime()
-            if currentTime - lastTransitionTime >= transitionCooldown,
-               let entryPos = tmxMapEntryPosition {
-                let distance = sqrt(pow(player.position.x - entryPos.x, 2) + pow(player.position.y - entryPos.y, 2))
-                // If player walks back to the entry position (within 32 pixels = 1 tile), transition back
-                if distance < 32.0 {
-                    print("🌍 Player walked back to procedural world entry point, transitioning back to TMX map")
+            if currentTime - lastTransitionTime >= transitionCooldown {
+                // Check if player is standing on an exit tile
+                let playerTileX = Int(player.position.x / 32.0)
+                let playerTileY = Int(player.position.y / 32.0)
+                let playerTilePos = CGPoint(x: CGFloat(playerTileX) * 32.0, y: CGFloat(playerTileY) * 32.0)
+                
+                // Check if player is on any exit tile (within 1 tile distance)
+                for exitKey in exitTilePositions {
+                    // Parse exit position from string key (this is the bottom-left corner of the tile)
+                    let components = exitKey.components(separatedBy: ",")
+                    guard components.count == 2,
+                          let exitX = Int(components[0]),
+                          let exitY = Int(components[1]) else { continue }
+                    
+                    // Calculate the center of the exit tile (exit position is bottom-left, so add half tile size)
+                    let exitTileCenter = CGPoint(
+                        x: CGFloat(exitX) + tileSize / 2,
+                        y: CGFloat(exitY) + tileSize / 2
+                    )
+                    let distance = sqrt(pow(player.position.x - exitTileCenter.x, 2) + pow(player.position.y - exitTileCenter.y, 2))
+                    // Check if player is within half a tile of the center (more accurate for centered ovals)
+                    if distance < tileSize / 2 {
+                        // Use the original exit position (bottom-left) for transition and logging
+                        let exitPos = CGPoint(x: CGFloat(exitX), y: CGFloat(exitY))
+                        
+                        // Find the exit definition for this position
+                        if let exitDef = exitTileData[exitKey] {
+                            if let targetPrefab = exitDef.targetPrefabFile {
+                                // Transition to another procedural world
+                                print("🚪 Player stepped on exit tile at (\(Int(exitPos.x)), \(Int(exitPos.y))), transitioning to world: \(targetPrefab)")
+                                transitionToProceduralWorld(from: exitPos, prefabsFile: targetPrefab, entryOffset: exitDef.targetEntryOffset)
+                            } else {
+                                // Transition back to TMX map
+                                let targetTmx = exitDef.targetTmxFile
+                                let targetDoorId = exitDef.targetDoorId
+                                print("🚪 Player stepped on exit tile at (\(Int(exitPos.x)), \(Int(exitPos.y))), transitioning back to TMX map: '\(targetTmx ?? "current")', doorId: \(targetDoorId ?? "none")")
+                                transitionToTiledMap(tmxFileName: targetTmx, doorId: targetDoorId)
+                            }
+                            return
+                        } else {
+                            // Fallback: no exit definition found, return to TMX
+                            print("🚪 Player stepped on exit tile at (\(Int(exitPos.x)), \(Int(exitPos.y))), transitioning back to TMX map (no exit definition)")
                     transitionToTiledMap()
                     return
+                        }
+                    }
                 }
             }
         }
@@ -3205,7 +3829,7 @@ class GameScene: SKScene {
     private func getPlayerCollisionFrame(at position: CGPoint) -> CGRect {
         // Collision box is as wide as the character (sprite is 96x96, use ~24px wide for reasonable collision)
         // and about knee height (10px tall)
-        let collisionSize = CGSize(width: 8, height: 12)
+        let collisionSize = CGSize(width: 13, height: 12)
         let halfWidth = collisionSize.width / 2
         let halfHeight = collisionSize.height / 2
         // Offset collision box downward to position it around the feet/knees
@@ -3217,6 +3841,31 @@ class GameScene: SKScene {
     }
     
     /// Check if player can move to a position on Tiled map
+    /// Check if player can move to a position in the procedural world (using physics bodies)
+    func canMoveToProceduralWorld(position: CGPoint) -> Bool {
+        // Get player's collision frame at target position
+        let playerFrame = getPlayerCollisionFrame(at: position)
+        
+        // Check if any physics bodies intersect with the player's bounding box
+        // Use enumerateBodies(in:) to find all physics bodies in the player's area
+        var hasCollision = false
+        physicsWorld.enumerateBodies(in: playerFrame) { body, stop in
+            // Skip if this is the player's physics body
+            if let node = body.node, node == self.playerSprite {
+                return
+            }
+            
+            // Check if this is an entity collision body (categoryBitMask 0x1)
+            if body.categoryBitMask == 0x1 && !body.isDynamic {
+                // This is a static entity (tree, rock, etc.) - collision detected
+                hasCollision = true
+                stop.pointee = true  // Stop enumeration
+            }
+        }
+        
+        return !hasCollision
+    }
+    
     func canMoveToTiledMap(position: CGPoint) -> Bool {
         // If collision map is empty, allow movement (collision not set up)
         guard !collisionMap.isEmpty else {
@@ -3301,7 +3950,7 @@ class GameScene: SKScene {
         // Debug: Print collision check details (only first few times to avoid spam)
         collisionDebugCount += 1
         if collisionDebugCount <= 10 {
-            print("🔍 Collision check #\(collisionDebugCount): pos=(\(Int(position.x)), \(Int(position.y))), frame=(\(Int(playerLeft)),\(Int(playerBottom)))-\(Int(playerRight)),\(Int(playerTop))), tiles=X[\(minTileX)...\(maxTileX)] Y[\(minTileY)...\(maxTileY)], hasInfinite=\(hasInfiniteLayers), height=\(regularLayerHeight), yFlipOffset=\(yFlipOffset)")
+            // Collision check (debug log removed for performance)
             // Check a few sample keys and print what we're checking
             for tileX in minTileX...min(maxTileX, minTileX + 2) {
                 for tileY in minTileY...min(maxTileY, minTileY + 2) {
@@ -3384,27 +4033,29 @@ class GameScene: SKScene {
         let startTileX = Int(floor(position.x / tileWidth))
         let startTileY = Int(floor((mapYFlipOffset - position.y) / tileHeight))
         
-        // Search in expanding square pattern (faster than spiral)
-        let maxSearchRadius = 100  // Maximum tiles to search in each direction
-        var checkedTiles = Set<String>()
+        // Debug: log starting position for search
+        print("   🔍 Starting safe spawn search from world position (\(Int(position.x)), \(Int(position.y))) -> tile (\(startTileX), \(startTileY))")
         
         // Helper to check if a tile coordinate is safe (not in collision map)
+        // This checks the center tile AND adjacent tiles that the player's collision box might overlap
+        // Player collision box is 13px wide, so it can span multiple tiles
         func isSafeTile(_ tileX: Int, _ tileY: Int) -> Bool {
-            let key = "\(tileX),\(tileY)"
-            if checkedTiles.contains(key) {
-                return false  // Already checked this tile
+            // Check the center tile
+            let centerKey = "\(tileX),\(tileY)"
+            if collisionMap.contains(centerKey) {
+                return false
             }
-            checkedTiles.insert(key)
             
-            // Check if this tile and immediate neighbors are clear
-            // (Player sprite might span multiple tiles, so we need a small clear area)
-            let checkOffsets: [(Int, Int)] = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)]
-            for (dx, dy) in checkOffsets {
-                let checkKey = "\(tileX + dx),\(tileY + dy)"
-                if collisionMap.contains(checkKey) {
-                    return false
-                }
+            // Also check horizontal neighbors since player collision box is 13px wide (tiles are 32px)
+            // The collision box can overlap with adjacent tiles when positioned at tile center
+            let leftKey = "\(tileX - 1),\(tileY)"
+            let rightKey = "\(tileX + 1),\(tileY)"
+            if collisionMap.contains(leftKey) || collisionMap.contains(rightKey) {
+                // If adjacent tiles are collision, this position might not be safe
+                // But we'll let canMoveToTiledMap make the final decision since it checks the actual collision box
+                // For now, return true to allow canMoveToTiledMap to check
             }
+            
             return true
         }
         
@@ -3416,45 +4067,139 @@ class GameScene: SKScene {
             return CGPoint(x: worldX, y: worldY)
         }
         
-        // Search in expanding square pattern
-        for radius in 1..<maxSearchRadius {
-            // Check all positions at this radius distance
-            for dx in -radius...radius {
-                for dy in -radius...radius {
-                    // Only check positions on the perimeter (at exactly this radius)
-                    let dist = max(abs(dx), abs(dy))
-                    if dist == radius {
+        // Helper to check if a world position is walkable
+        func isWalkableWorldPosition(_ worldPos: CGPoint) -> Bool {
+            return canMoveToTiledMap(position: worldPos)
+        }
+        
+        // Search in expanding pattern: check cardinal directions first, then expand
+        // Priority: 1 tile north, south, east, west, then 2 tiles in each direction, etc.
+        // NOTE: In Tiled's coordinate system (with yFlipOffset), higher tileY = lower worldY (south)
+        // So north (positive world Y) = lower tileY, south (negative world Y) = higher tileY
+        let maxSearchRadius = 10  // Maximum tiles to search in each direction
+        
+        for radius in 1...maxSearchRadius {
+            // Check the 4 cardinal directions at this radius
+            // Prioritize north first (positive world Y), then south, east, west
+            // For Tiled coordinates: north = tileY - radius, south = tileY + radius
+            let directions: [(Int, Int)] = [
+                (0, -radius),  // North (positive world Y) = lower tileY - CHECK FIRST
+                (0, radius),   // South (negative world Y) = higher tileY
+                (radius, 0),   // East (positive X)
+                (-radius, 0)   // West (negative X)
+            ]
+            
+            for (dx, dy) in directions {
                         let testTileX = startTileX + dx
                         let testTileY = startTileY + dy
                         
-                        if isSafeTile(testTileX, testTileY) {
-                            let safeWorldPos = tileToWorld(testTileX, testTileY)
-                            print("   Found safe tile at radius \(radius): tile(\(testTileX), \(testTileY)) -> world(\(Int(safeWorldPos.x)), \(Int(safeWorldPos.y)))")
-                            return safeWorldPos
+                // Debug: log what we're checking
+                // Note: In Tiled coordinates, north = dy < 0 (lower tileY), south = dy > 0 (higher tileY)
+                let directionName = dx > 0 ? "east" : (dx < 0 ? "west" : (dy < 0 ? "north" : "south"))
+                
+                // First check if the center tile itself is a collision - if so, skip it entirely
+                // This must be done BEFORE converting to world coordinates to avoid checking walkability on collision tiles
+                let centerTileIsSafe = isSafeTile(testTileX, testTileY)
+                
+                if !centerTileIsSafe {
+                    if radius <= 3 {
+                        print("   ⛔ Skipping tile(\(testTileX), \(testTileY)) at radius \(radius) (\(directionName)): center tile is collision (in collision map)")
+                    }
+                    continue  // Skip this tile, it's a collision tile
+                }
+                
+                // Now convert to world position and check if player can actually move there with their collision box
+                // This accounts for the player's actual collision box size (13px wide, 12px tall, offset downward)
+                // Try multiple positions within the tile - not just the center, to account for collision box overlaps
+                let tileCenterPos = tileToWorld(testTileX, testTileY)
+                let tileWidth = mapTileSize.width
+                let tileHeight = mapTileSize.height
+                
+                // Try positions offset from center to avoid collision box overlaps with adjacent door tiles
+                // Try larger offsets (up to 45% of tile size) to push away from door tiles
+                // Also try diagonal offsets to move away from door tiles in both directions
+                let testPositions: [CGPoint] = [
+                    tileCenterPos,  // Try center first
+                    // Horizontal offsets (to avoid door tiles on sides)
+                    CGPoint(x: tileCenterPos.x + tileWidth * 0.35, y: tileCenterPos.y),  // Right
+                    CGPoint(x: tileCenterPos.x - tileWidth * 0.35, y: tileCenterPos.y),  // Left
+                    // Vertical offsets (to avoid door tiles above/below) - prioritize north (away from door below)
+                    CGPoint(x: tileCenterPos.x, y: tileCenterPos.y + tileHeight * 0.35), // North (higher priority)
+                    CGPoint(x: tileCenterPos.x, y: tileCenterPos.y - tileHeight * 0.35), // South
+                    // Diagonal offsets (to maximize distance from door tiles)
+                    CGPoint(x: tileCenterPos.x + tileWidth * 0.3, y: tileCenterPos.y + tileHeight * 0.3), // Northeast
+                    CGPoint(x: tileCenterPos.x - tileWidth * 0.3, y: tileCenterPos.y + tileHeight * 0.3), // Northwest
+                    // Even larger offsets as last resort
+                    CGPoint(x: tileCenterPos.x + tileWidth * 0.45, y: tileCenterPos.y),  // Far right
+                    CGPoint(x: tileCenterPos.x - tileWidth * 0.45, y: tileCenterPos.y),  // Far left
+                ]
+                
+                var walkablePos: CGPoint?
+                for testWorldPos in testPositions {
+                    // Now check if player can actually move there with their collision box
+                    if isWalkableWorldPosition(testWorldPos) {
+                        walkablePos = testWorldPos
+                        break
+                    }
+                }
+                
+                if let foundPos = walkablePos {
+                    // This tile is walkable - return it
+                    if radius <= 3 {
+                        print("   ✅ Found safe tile at distance \(radius) (\(directionName)): tile(\(testTileX), \(testTileY)) -> world(\(Int(foundPos.x)), \(Int(foundPos.y)))")
+                    }
+                    return foundPos
+                } else {
+                    // Tile is not walkable - player collision box overlaps nearby collision tiles
+                    // This happens because the collision box (13px wide) can overlap adjacent tiles
+                    // when positioned at the center of a tile that's next to a door/collision tile
+                    if radius <= 3 {
+                        // Debug: show which collision tiles the player's collision box overlaps
+                        let collisionFrame = getPlayerCollisionFrame(at: tileCenterPos)
+                        let minTileX = Int(floor(collisionFrame.minX / tileWidth))
+                        let maxTileX = Int(floor(collisionFrame.maxX / tileWidth))
+                        let minTileY = Int(floor((mapYFlipOffset - collisionFrame.maxY) / tileHeight))
+                        let maxTileY = Int(floor((mapYFlipOffset - collisionFrame.minY) / tileHeight))
+                        
+                        var overlappingTiles: [String] = []
+                        for tx in minTileX...maxTileX {
+                            for ty in minTileY...maxTileY {
+                                let key = "\(tx),\(ty)"
+                                if collisionMap.contains(key) {
+                                    overlappingTiles.append("(\(tx),\(ty))")
+                                }
+                            }
+                        }
+                        
+                        if !overlappingTiles.isEmpty {
+                            print("   ⚠️ Tile(\(testTileX), \(testTileY)) at radius \(radius) (\(directionName)): centerTileIsSafe=\(centerTileIsSafe), but collision box overlaps tiles: \(overlappingTiles.joined(separator: ", "))")
+                        } else {
+                            print("   ⚠️ Tile(\(testTileX), \(testTileY)) at radius \(radius) (\(directionName)): centerTileIsSafe=\(centerTileIsSafe), but not walkable (unknown reason)")
                         }
                     }
                 }
             }
         }
         
-        // Fallback: try some positions near the map bounds (might be safer areas)
-        print("⚠️ Exhaustive search failed, trying positions near map bounds...")
-        let mapCenterTileX = Int(floor((mapBounds.minX + mapBounds.maxX) / 2 / tileWidth))
-        let mapCenterTileY = Int(floor((mapYFlipOffset - (mapBounds.minY + mapBounds.maxY) / 2) / tileHeight))
-        
-        for offset in 1..<20 {
-            let testPositions: [(Int, Int)] = [
-                (mapCenterTileX + offset, mapCenterTileY),
-                (mapCenterTileX - offset, mapCenterTileY),
-                (mapCenterTileX, mapCenterTileY + offset),
-                (mapCenterTileX, mapCenterTileY - offset)
+        // If cardinal directions didn't work, try diagonal directions as fallback
+        for radius in 1...maxSearchRadius {
+            let diagonals: [(Int, Int)] = [
+                (radius, radius),    // Northeast
+                (radius, -radius),   // Southeast
+                (-radius, radius),   // Northwest
+                (-radius, -radius)   // Southwest
             ]
             
-            for (tileX, tileY) in testPositions {
-                if isSafeTile(tileX, tileY) {
-                    let safeWorldPos = tileToWorld(tileX, tileY)
-                    print("   Found safe tile near map center: tile(\(tileX), \(tileY)) -> world(\(Int(safeWorldPos.x)), \(Int(safeWorldPos.y)))")
+            for (dx, dy) in diagonals {
+                let testTileX = startTileX + dx
+                let testTileY = startTileY + dy
+                
+                if isSafeTile(testTileX, testTileY) {
+                    let safeWorldPos = tileToWorld(testTileX, testTileY)
+                    if isWalkableWorldPosition(safeWorldPos) {
+                        print("   Found safe tile at diagonal distance \(radius): tile(\(testTileX), \(testTileY)) -> world(\(Int(safeWorldPos.x)), \(Int(safeWorldPos.y)))")
                     return safeWorldPos
+                    }
                 }
             }
         }
@@ -3465,7 +4210,39 @@ class GameScene: SKScene {
 
 // Shared UI functions available on all platforms
 extension GameScene {
+    func closeAllUIPanels() {
+        guard let camera = cameraNode else { return }
+        
+        // Use recursive search with // prefix to find panels anywhere in the tree
+        let panelNames = [
+            "inventoryPanel",
+            "buildPanel",
+            "settingsPanel",
+            "saveSlotPanel",
+            "loadSlotPanel",
+            "inventoryContextMenu",
+            "itemInspectPanel"
+        ]
+        
+        for panelName in panelNames {
+            // Use // prefix for recursive search
+            if let panel = camera.childNode(withName: "//\(panelName)") {
+                panel.removeFromParent()
+            }
+            // Also try direct child search as fallback
+            if let panel = camera.childNode(withName: panelName) {
+                panel.removeFromParent()
+            }
+        }
+    }
+    
     func showInventory() {
+        // Close CharacterUI if open
+        characterUI?.hide()
+        
+        // Close other UIs
+        closeAllUIPanels()
+        
         // Pause the game
         isGamePaused = true
         
@@ -3490,7 +4267,7 @@ extension GameScene {
         panel.strokeColor = SKColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0)
         panel.lineWidth = 4
         panel.position = CGPoint(x: 0, y: 0) // Center relative to camera
-        panel.zPosition = 200
+        panel.zPosition = 2000 // Same as CharacterUI and BuildUI to ensure it appears above nameplate (1000)
         panel.name = "inventoryPanel"
         camera.addChild(panel)
         
@@ -3655,7 +4432,7 @@ extension GameScene {
         menu.strokeColor = SKColor(white: 0.7, alpha: 1.0)
         menu.lineWidth = 3
         menu.position = position
-        menu.zPosition = 300
+        menu.zPosition = 5000 // Above inventory panel (2000) and BuildUI (2001), but below messages (10000)
         menu.name = "inventoryContextMenu"
         camera.addChild(menu)
         inventoryContextMenu = menu
@@ -3741,7 +4518,7 @@ extension GameScene {
         panel.strokeColor = SKColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0)
         panel.lineWidth = 3
         panel.position = CGPoint(x: 0, y: 0)
-        panel.zPosition = 400
+        panel.zPosition = 5000 // Above inventory panel (2000) and BuildUI (2001), but below messages (10000)
         panel.name = "itemInspectPanel"
         camera.addChild(panel)
         
@@ -3929,87 +4706,17 @@ extension GameScene {
     }
     
     func showBuildMenu() {
-        // Pause the game
-        isGamePaused = true
-        
-        // Create build menu UI (relative to camera)
-        guard let camera = cameraNode else { return }
-        let panel = SKShapeNode(rectOf: CGSize(width: size.width * 0.9, height: size.height * 0.8), cornerRadius: 12)
-        panel.fillColor = SKColor(white: 0.15, alpha: 0.98)
-        panel.strokeColor = SKColor(white: 0.9, alpha: 1.0)
-        panel.lineWidth = 3
-        panel.position = CGPoint(x: 0, y: 0) // Center relative to camera
-        panel.zPosition = 200
-        panel.name = "buildPanel"
-        camera.addChild(panel)
-        
-        // Title background
-        let titleBg = SKShapeNode(rectOf: CGSize(width: panel.frame.width * 0.9, height: 50), cornerRadius: 8)
-        titleBg.fillColor = SKColor(red: 0.4, green: 0.2, blue: 0.6, alpha: 0.95)
-        titleBg.strokeColor = .magenta
-        titleBg.lineWidth = 2
-        titleBg.position = CGPoint(x: 0, y: 240)
-        panel.addChild(titleBg)
-        
-        let title = SKLabelNode(fontNamed: "Arial-BoldMT")
-        title.text = "Build Structure"
-        title.fontSize = 28
-        title.fontColor = .white
-        title.position = CGPoint(x: 0, y: 0)
-        title.verticalAlignmentMode = .center
-        titleBg.addChild(title)
-        
         guard let player = gameState?.player else { return }
-        
-        var yOffset: CGFloat = 180
-        for structureType in StructureType.allCases {
-            // Check if player has required skills
-            let requiredSkills = structureType.requiredSkills
-            var canBuild = true
-            for (skill, minLevel) in requiredSkills {
-                if (player.buildingSkills[skill] ?? 0) < minLevel {
-                    canBuild = false
-                    break
-                }
-            }
-            
-            let button = SKShapeNode(rectOf: CGSize(width: 350, height: 45), cornerRadius: 8)
-            button.fillColor = canBuild ? SKColor(red: 0.1, green: 0.6, blue: 0.1, alpha: 1.0) : SKColor(white: 0.3, alpha: 0.8)
-            button.strokeColor = canBuild ? .white : .gray
-            button.lineWidth = 2
-            button.position = CGPoint(x: 0, y: yOffset)
-            button.name = "build_\(structureType.rawValue)"
-            
-            let label = SKLabelNode(fontNamed: "Arial-BoldMT")
-            label.text = structureType.rawValue
-            label.fontSize = 18
-            label.fontColor = .white
-            label.verticalAlignmentMode = .center
-            label.isUserInteractionEnabled = false
-            button.addChild(label)
-            panel.addChild(button)
-            
-            yOffset -= 55
-        }
-        
-        let closeButton = SKShapeNode(rectOf: CGSize(width: 120, height: 50), cornerRadius: 8)
-        closeButton.fillColor = SKColor(red: 0.7, green: 0.1, blue: 0.1, alpha: 1.0)
-        closeButton.strokeColor = .white
-        closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: 0, y: -240)
-        closeButton.name = "closeBuild"
-        
-        let closeLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
-        closeLabel.text = "Close"
-        closeLabel.fontSize = 20
-        closeLabel.fontColor = .white
-        closeLabel.verticalAlignmentMode = .center
-        closeLabel.isUserInteractionEnabled = false
-        closeButton.addChild(closeLabel)
-        panel.addChild(closeButton)
+        buildUI?.toggle(player: player)
     }
     
     func showSettings() {
+        // Close CharacterUI if open
+        characterUI?.hide()
+        
+        // Close other UIs
+        closeAllUIPanels()
+        
         // Pause the game
         isGamePaused = true
         
@@ -4084,6 +4791,316 @@ extension GameScene {
             fontSize: isLandscape ? 18 : 20
         )
         panelContainer.addChild(closeButton)
+    }
+    
+    // MARK: - Build Placement Mode
+    
+    /// Enter build placement mode - shows zoomed out map and allows placing structures
+    func enterBuildPlacementMode(structureData: StructureData) {
+        guard let player = gameState?.player else { return }
+        
+        // Convert structureType string to enum for compatibility
+        guard let structureType = StructureType(rawValue: structureData.structureType) else {
+            showMessage("Unknown structure type: \(structureData.structureType)", color: .red)
+            return
+        }
+        
+        // Check if player can build this structure using JSON requirements
+        for skillReq in structureData.requirements.skills {
+            // Skip empty skill requirements
+            guard !skillReq.type.isEmpty else { continue }
+            
+            // Convert skill string to BuildingSkill enum
+            let skillName = skillReq.type.capitalized
+            guard let skill = BuildingSkill(rawValue: skillName) ?? BuildingSkill.allCases.first(where: { $0.rawValue.lowercased() == skillReq.type.lowercased() }) else {
+                print("⚠️ Unknown skill type: \(skillReq.type)")
+                continue
+            }
+            
+            let playerLevel = player.buildingSkills[skill] ?? 0
+            if playerLevel < skillReq.level {
+                showMessage("You need \(skillReq.type) level \(skillReq.level) to build \(structureData.name)", color: .red)
+                return
+            }
+        }
+        
+        // Check materials using JSON requirements
+        for materialReq in structureData.requirements.materials {
+            // Convert material string to MaterialType
+            guard let materialType = MaterialType(rawValue: materialReq.type) ?? MaterialType.allCases.first(where: { $0.rawValue.lowercased() == materialReq.type.lowercased() }) else {
+                print("⚠️ Unknown material type: \(materialReq.type)")
+                continue
+            }
+            
+            // Count materials (both Material instances and Item instances with matching type)
+            var totalQuantity = 0
+            
+            // Check Material instances
+            let materialInstances = player.inventory.compactMap { $0 as? Material }
+            let matchingMaterials = materialInstances.filter { $0.materialType == materialType }
+            totalQuantity += matchingMaterials.reduce(0) { $0 + $1.quantity }
+            
+            // Also check Item instances with matching ItemType
+            let itemType: ItemType?
+            switch materialType {
+            case .wood: itemType = .wood
+            case .stone: itemType = .stone
+            case .iron: itemType = .iron
+            case .cloth: itemType = .cloth
+            case .rope: itemType = .rope
+            case .nails: itemType = .nails
+            }
+            
+            if let itemType = itemType {
+                let matchingItems = player.inventory.filter { 
+                    $0.type == itemType && !($0 is Material)
+                }
+                totalQuantity += matchingItems.reduce(0) { $0 + $1.quantity }
+            }
+            
+            if totalQuantity < materialReq.quantity {
+                showMessage("You need \(materialReq.quantity) \(materialReq.type) to build \(structureData.name)", color: .red)
+                return
+            }
+        }
+        
+        // Set placement mode state
+        isBuildPlacementMode = true
+        selectedStructureType = structureType
+        selectedStructureData = structureData
+        isGamePaused = true
+        
+        // Store original camera scale and zoom out (0.25 = zoom out 4x for better overview)
+        guard let camera = cameraNode else { return }
+        originalCameraScale = camera.xScale
+        
+        // Zoom out significantly to show more of the map
+        camera.setScale(0.25)  // Zoom out 4x to show much more of the map
+        
+        // Center camera on player position for better overview
+        if let player = gameState?.player {
+            let playerPosition = player.position
+            // Smoothly move camera to player position
+            let moveAction = SKAction.move(to: playerPosition, duration: 0.3)
+            camera.run(moveAction)
+        }
+        
+        // Create placement preview sprite
+        createPlacementPreview(structureData: structureData)
+        
+        // Show instructions UI
+        showBuildPlacementInstructions()
+    }
+    
+    /// Exit build placement mode
+    func exitBuildPlacementMode() {
+        isBuildPlacementMode = false
+        selectedStructureType = nil
+        selectedStructureData = nil
+        
+        // Restore camera scale
+        if let camera = cameraNode {
+            camera.setScale(originalCameraScale)
+        }
+        
+        // Remove preview
+        placementPreview?.removeFromParent()
+        placementPreview = nil
+        
+        // Remove instructions
+        cameraNode?.childNode(withName: "buildPlacementInstructions")?.removeFromParent()
+        
+        // Resume game
+        if characterUI?.isVisible != true {
+            isGamePaused = false
+        }
+    }
+    
+    /// Create preview sprite for structure placement
+    func createPlacementPreview(structureData: StructureData) {
+        // Remove existing preview
+        placementPreview?.removeFromParent()
+        
+        // Use size from JSON (already in points, not tiles)
+        let previewSize = structureData.size
+        
+        // Create semi-transparent preview rectangle
+        let preview = SKShapeNode(rectOf: previewSize, cornerRadius: 4)
+        preview.fillColor = SKColor(red: 0.2, green: 0.8, blue: 0.2, alpha: 0.5)
+        preview.strokeColor = SKColor(red: 0.2, green: 1.0, blue: 0.2, alpha: 0.8)
+        preview.lineWidth = 2
+        preview.zPosition = 1000
+        preview.name = "placementPreview"
+        
+        addChild(preview)
+        placementPreview = preview
+    }
+    
+    /// Snap position to tile grid
+    func snapToTileGrid(_ position: CGPoint) -> CGPoint {
+        let tileSize: CGFloat = 32.0
+        let snappedX = round(position.x / tileSize) * tileSize
+        let snappedY = round(position.y / tileSize) * tileSize
+        return CGPoint(x: snappedX, y: snappedY)
+    }
+    
+    /// Update placement preview position
+    func updatePlacementPreview(at position: CGPoint) {
+        guard let preview = placementPreview else { return }
+        // Snap to tile grid for cleaner placement
+        let snappedPosition = snapToTileGrid(position)
+        preview.position = snappedPosition
+        
+        // Check if position is valid (not colliding with existing structures)
+        let isValid = isValidPlacementPosition(snappedPosition)
+        
+        // Update preview color based on validity
+        if isValid {
+            preview.fillColor = SKColor(red: 0.2, green: 0.8, blue: 0.2, alpha: 0.5)
+            preview.strokeColor = SKColor(red: 0.2, green: 1.0, blue: 0.2, alpha: 0.8)
+        } else {
+            preview.fillColor = SKColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 0.5)
+            preview.strokeColor = SKColor(red: 1.0, green: 0.2, blue: 0.2, alpha: 0.8)
+        }
+    }
+    
+    /// Check if a position is valid for placing the selected structure
+    func isValidPlacementPosition(_ position: CGPoint) -> Bool {
+        guard let structureType = selectedStructureType,
+              let structureData = selectedStructureData,
+              let world = gameState?.world else { return false }
+        
+        // Create structure with size from JSON
+        let structure = Structure(type: structureType, position: position)
+        structure.size = structureData.size
+        return world.canPlaceStructure(structure, at: position)
+    }
+    
+    /// Attempt to place structure at current position
+    func placeStructureAtPosition(_ position: CGPoint) -> Bool {
+        guard let structureType = selectedStructureType,
+              let player = gameState?.player,
+              let world = gameState?.world else { return false }
+        
+        // Snap to tile grid for cleaner placement
+        let snappedPosition = snapToTileGrid(position)
+        
+        // Validate position
+        if !isValidPlacementPosition(snappedPosition) {
+            showMessage("Cannot place structure here", color: .red)
+            return false
+        }
+        
+        // Create and place structure
+        let structure = Structure(type: structureType, position: snappedPosition)
+        if let structureData = selectedStructureData {
+            structure.size = structureData.size
+        }
+        
+        if world.placeStructure(structure, at: snappedPosition) {
+            gameState?.structures.append(structure)
+            
+            // Consume materials using JSON requirements
+            guard let structureData = selectedStructureData else {
+                showMessage("Structure data missing", color: .red)
+                return false
+            }
+            
+            for materialReq in structureData.requirements.materials {
+                // Convert material string to MaterialType
+                guard let materialType = MaterialType(rawValue: materialReq.type) ?? MaterialType.allCases.first(where: { $0.rawValue.lowercased() == materialReq.type.lowercased() }) else {
+                    print("⚠️ Unknown material type: \(materialReq.type)")
+                    continue
+                }
+                
+                var remaining = materialReq.quantity
+                
+                // Consume from Material instances first
+                for item in player.inventory {
+                    if let mat = item as? Material, mat.materialType == materialType {
+                        if mat.quantity <= remaining {
+                            remaining -= mat.quantity
+                            player.inventory.removeAll { $0.id == item.id }
+                            if remaining == 0 { break }
+                        } else {
+                            mat.quantity -= remaining
+                            remaining = 0
+                            break
+                        }
+                    }
+                }
+                
+                // If still need more, consume from Item instances with matching ItemType
+                if remaining > 0 {
+                    let itemType: ItemType?
+                    switch materialType {
+                    case .wood: itemType = .wood
+                    case .stone: itemType = .stone
+                    case .iron: itemType = .iron
+                    case .cloth: itemType = .cloth
+                    case .rope: itemType = .rope
+                    case .nails: itemType = .nails
+                    }
+                    
+                    if let itemType = itemType {
+                        for item in player.inventory {
+                            if item.type == itemType && !(item is Material) {
+                                if item.quantity <= remaining {
+                                    remaining -= item.quantity
+                                    player.inventory.removeAll { $0.id == item.id }
+                                    if remaining == 0 { break }
+                                } else {
+                                    item.quantity -= remaining
+                                    remaining = 0
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Re-render the world
+            if useTiledMap {
+                loadAndRenderTiledMap(fileName: tiledMapFileName)
+            } else {
+                renderWorld()
+            }
+            
+            let structureName = selectedStructureData?.name ?? structureType.rawValue
+            showMessage("\(structureName) placed!", color: .green)
+            exitBuildPlacementMode()
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Show instructions for build placement mode
+    func showBuildPlacementInstructions() {
+        guard let camera = cameraNode else { return }
+        
+        // Remove existing instructions
+        camera.childNode(withName: "buildPlacementInstructions")?.removeFromParent()
+        
+        // Create instructions panel
+        let instructions = SKShapeNode(rectOf: CGSize(width: size.width * 0.8, height: 100), cornerRadius: 8)
+        instructions.fillColor = SKColor(white: 0.1, alpha: 0.9)
+        instructions.strokeColor = .white
+        instructions.lineWidth = 2
+        instructions.position = CGPoint(x: 0, y: size.height / 2 - 80)
+        instructions.zPosition = 2100
+        instructions.name = "buildPlacementInstructions"
+        
+        let instructionText = SKLabelNode(fontNamed: "Arial-BoldMT")
+        instructionText.text = "Tap/Click to place structure | ESC/Cancel to exit"
+        instructionText.fontSize = 18
+        instructionText.fontColor = .white
+        instructionText.verticalAlignmentMode = .center
+        instructionText.zPosition = 2101
+        
+        instructions.addChild(instructionText)
+        camera.addChild(instructions)
     }
     
     // MARK: - Object Interaction
@@ -4548,8 +5565,13 @@ extension GameScene {
     }
     
     /// Show a brief message to the player
-    private func showMessage(_ message: String) {
-        guard let camera = cameraNode else { return }
+    func showMessage(_ message: String, color: SKColor = .white) {
+        guard let camera = cameraNode else { 
+            print("⚠️ GameScene: showMessage - no camera node")
+            return 
+        }
+        
+        print("📢 GameScene: showMessage called - '\(message)', color: \(color)")
         
         // Remove any existing message
         camera.childNode(withName: "messageLabel")?.removeFromParent()
@@ -4557,29 +5579,31 @@ extension GameScene {
         let messageLabel = SKLabelNode(fontNamed: "Arial-BoldMT")
         messageLabel.text = message
         messageLabel.fontSize = 24
-        messageLabel.fontColor = .white
+        messageLabel.fontColor = color
         messageLabel.position = CGPoint(x: 0, y: size.height * 0.3)
-        messageLabel.zPosition = 300
+        messageLabel.zPosition = 10000  // Very high zPosition to appear above all UI
         messageLabel.name = "messageLabel"
+        messageLabel.horizontalAlignmentMode = .center
         
         // Add background
         let background = SKShapeNode(rectOf: CGSize(width: messageLabel.frame.width + 40, height: messageLabel.frame.height + 20), cornerRadius: 8)
         background.fillColor = SKColor(white: 0, alpha: 0.7)
-        background.strokeColor = .white
+        background.strokeColor = color
         background.lineWidth = 2
         background.position = CGPoint(x: 0, y: 0)
+        background.zPosition = -1
         messageLabel.insertChild(background, at: 0)
         
         camera.addChild(messageLabel)
+        print("✅ GameScene: Message label added to camera at position \(messageLabel.position), zPosition: \(messageLabel.zPosition)")
         
-        // Fade out after 2 seconds
-        let fadeOut = SKAction.fadeOut(withDuration: 0.5)
+        // Animate message appearance and fade out
+        messageLabel.alpha = 0
+        let fadeIn = SKAction.fadeIn(withDuration: 0.3)
+        let wait = SKAction.wait(forDuration: 3.0)  // Increased to 3 seconds
+        let fadeOut = SKAction.fadeOut(withDuration: 0.3)
         let remove = SKAction.removeFromParent()
-        messageLabel.run(SKAction.sequence([
-            SKAction.wait(forDuration: 2.0),
-            fadeOut,
-            remove
-        ]))
+        messageLabel.run(SKAction.sequence([fadeIn, wait, fadeOut, remove]))
     }
     
     /// Handle dialogue response selection

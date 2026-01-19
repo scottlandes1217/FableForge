@@ -10,6 +10,7 @@ import Foundation
 struct GameCharacter: Codable, Identifiable {
     let id: UUID
     var name: String
+    var race: Race
     var characterClass: CharacterClass
     var creationDate: Date
     var spriteDescription: String? // Description used to generate the sprite
@@ -18,9 +19,10 @@ struct GameCharacter: Codable, Identifiable {
     // Format: ["idle_south", "idle_west", "idle_east", "idle_north", "walk_south_0", "walk_south_1", "walk_south_2", "walk_south_3", ...]
     var framePaths: [String]? // Paths to individual frame images
     
-    init(name: String, characterClass: CharacterClass, spriteDescription: String? = nil, framePaths: [String]? = nil) {
+    init(name: String, race: Race, characterClass: CharacterClass, spriteDescription: String? = nil, framePaths: [String]? = nil) {
         self.id = UUID()
         self.name = name
+        self.race = race
         self.characterClass = characterClass
         self.creationDate = Date()
         self.spriteDescription = spriteDescription

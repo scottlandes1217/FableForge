@@ -73,8 +73,8 @@ class SpriteAtlasGenerator:
             return None
     
     def generate_image_text_to_image(self, prompt: str, negative_prompt: str = "", size: int = 128, width: int = None, height: int = None) -> Optional[Image.Image]:
-        """Generate image using Replicate's Flux-dev text-to-image API"""
-        version_hash = self.get_model_version(FLUX_DEV_MODEL)
+        """Generate image using Replicate's Flux-2-pro text-to-image API"""
+        version_hash = self.get_model_version(FLUX_2_PRO_MODEL)
         if not version_hash:
             return None
         
@@ -128,6 +128,12 @@ class SpriteAtlasGenerator:
             "seed": int(time.time()) % (2**31)
         }
         
+        # Note: Flux-2-pro model parameters need to be verified against the actual API schema.
+        # Common parameters that may be supported:
+        # "guidance_scale": 7.5,  # Higher = stronger prompt adherence (if supported)
+        # "num_inference_steps": 50  # More steps = better detail (if supported)
+        # Check https://replicate.com/black-forest-labs/flux-2-pro/api for actual supported parameters
+        
         if negative_prompt:
             input_params["negative_prompt"] = negative_prompt
         
@@ -160,7 +166,9 @@ class SpriteAtlasGenerator:
             return None
     
     def remove_background(self, image: Image.Image) -> Optional[Image.Image]:
-        """Remove background from image using Replicate rembg model"""
+        """Remove background from image using Replicate bria/remove-background model
+        Bria RMBG 2.0 is better at preserving fine details like hair, especially light/white hair.
+        It uses non-binary masks (256 levels of transparency) for smoother edge transitions."""
         # Convert image to bytes
         img_bytes = BytesIO()
         image.save(img_bytes, format='PNG')
@@ -172,11 +180,11 @@ class SpriteAtlasGenerator:
         image_data_uri = f"data:image/png;base64,{base64_image}"
         
         # Get model version
-        model_name = "cjwbw/rembg"
+        model_name = "bria/remove-background"
         version_hash = self.get_model_version(model_name)
         if not version_hash:
-            # Fallback to known working version
-            version_hash = "fb8af171cfa1616dcf4f220882e77ab2a5bf03f29d7a49fd2919bc30e5e5d94b"
+            print(f"❌ Failed to get version hash for {model_name}")
+            return None
         
         url = f"{REPLICATE_BASE_URL}/predictions"
         headers = {
@@ -184,12 +192,9 @@ class SpriteAtlasGenerator:
             "Content-Type": "application/json"
         }
         
+        # Bria doesn't need alpha_matting parameters - it has its own internal algorithms
         input_params = {
-            "image": image_data_uri,
-            "alpha_matting": True,
-            "alpha_matting_foreground_threshold": 200,
-            "alpha_matting_background_threshold": 20,
-            "alpha_matting_erode_size": 15
+            "image": image_data_uri
         }
         
         request_body = {
@@ -510,25 +515,28 @@ class SpriteAtlasGenerator:
                 if part_idx < len(parts):
                     original_tile_map = parts[part_idx].get("tileMap", None)
         
-        # Determine layer structure:
+        # Determine layer structure for trees:
         # - 1-2 rows: single "low" layer
-        # - 3+ rows: first 2 rows = "low", remaining = "high"
+        # - 3+ rows: LAST 2 rows = "low" (trunk at bottom), FIRST rows = "high" (canopy at top)
+        # Note: For trees, the bottom rows (trunk) should be "low" and top rows (canopy) should be "high"
         if num_rows <= 2:
             # Single "low" layer
             low_rows = tile_map_layout
             high_rows = []
         else:
-            # First 2 rows = "low", rest = "high"
-            low_rows = tile_map_layout[:2]
-            high_rows = tile_map_layout[2:]
+            # Last 2 rows = "low" (trunk), first rows = "high" (canopy)
+            # This ensures trunk is in front of player (low layer) and canopy is behind (high layer)
+            low_rows = tile_map_layout[-2:]  # Last 2 rows = trunk (bottom)
+            high_rows = tile_map_layout[:-2]  # First rows = canopy (top)
         
         # Calculate zOffset based on tileMap structure
-        # zOffset should increase with row index to ensure proper layering
-        # Base zOffset for low layer (rows 0-1): 0
-        # High layer zOffset: needs to be significantly higher to ensure proper rendering
-        # Use a multiplier to ensure sufficient separation (at least 20, scales with rows)
-        low_z_offset = 0
-        high_z_offset = max(20, num_rows * 3)  # At least 20, scales with total rows (3x multiplier for safety)
+        # Since low layer (trunk, last rows) goes to entitiesAboveNode (in front of player)
+        # and high layer (canopy, first rows) goes to entitiesBelowNode (behind player),
+        # the low layer should have a higher zOffset to ensure proper layering within its container
+        # Low layer (trunk): higher zOffset to be more in front
+        # High layer (canopy): lower zOffset to be more behind
+        low_z_offset = max(20, num_rows * 3)  # Higher zOffset for trunk (in front)
+        high_z_offset = 0  # Lower zOffset for canopy (behind)
         
         # Calculate sizes and offsets
         parts = []
@@ -539,10 +547,19 @@ class SpriteAtlasGenerator:
             low_width = max_cols * tile_size
             low_height = len(low_rows) * tile_size
             
+            # Calculate offset_x to center low layer under high layer if low is narrower
+            # If we have both high and low rows, center the narrower one
+            if high_rows:
+                high_max_cols = max(len(row) for row in high_rows) if high_rows else 0
+                # Center low layer under high layer if low is narrower
+                low_offset_x = ((high_max_cols - max_cols) * tile_size) / 2 if high_max_cols > max_cols else 0
+            else:
+                low_offset_x = 0
+            
             low_part = {
                 "layer": "low",
                 "tileGrid": low_rows,
-                "offset": {"x": 0, "y": 0},
+                "offset": {"x": int(low_offset_x), "y": 0},
                 "size": {"width": low_width, "height": low_height},
                 "zOffset": low_z_offset,
                 "tileSize": tile_size
@@ -562,10 +579,15 @@ class SpriteAtlasGenerator:
             # Offset high layer to center it over low layer
             low_max_cols = max(len(row) for row in low_rows) if low_rows else 0
             offset_x = ((low_max_cols - max_cols) * tile_size) / 2 if low_max_cols > max_cols else 0
-            # offset_y should position the high layer right at the top of the low layer
-            # In SpriteKit with top-left anchor (0, 1), negative Y moves upward
-            # We need to move up by the height of the low layer to position the high layer above it
-            offset_y = -len(low_rows) * tile_size
+            # offset_y should position the high layer above the low layer
+            # Since high layer is the top rows (canopy) and low layer is the bottom rows (trunk),
+            # the high layer needs to be positioned ABOVE the low layer
+            # In SpriteKit with top-left anchor (0, 1), the position is the top-left corner
+            # Low layer (trunk) is at offset (0, 0), meaning its top-left is at Y=0, extending down to Y=-low_height
+            # High layer (canopy) should be positioned so its bottom aligns with the top of the low layer (Y=0)
+            # High layer's top-left should be at Y=high_height so its bottom (top-left - height) is at Y=0
+            # So offset_y should be positive: high_height
+            offset_y = high_height
             
             parts.append({
                 "layer": "high",
@@ -737,17 +759,28 @@ class SpriteAtlasGenerator:
             width_px = max_cols * self.tile_size
             height_px = num_rows * self.tile_size
             
-            # Describe the layout for the AI
-            layout_desc = f"multi-tile sprite spanning {max_cols} tiles wide and {num_rows} tiles tall"
+            # Describe the size/dimensions for the AI - AVOID mentioning "tiles" or "grid" in visual description
+            # CRITICAL: This is ONLY for size reference - the image should be ONE SOLID CONTINUOUS OBJECT
+            # Do NOT visualize tiles, grid, rows, or any segmentation - just generate a single seamless image
+            # Use visual descriptions like "width" and "height" instead of "tiles"
             if num_rows > 1:
-                row_descs = []
-                for i, count in enumerate(tile_map_counts, 1):
-                    row_descs.append(f"row {i}: {count} tiles")
-                layout_desc += f" ({', '.join(row_descs)})"
-                # Important: specify left-aligned layout for consistent extraction
-                layout_desc += ", all rows left-aligned (shorter rows have empty space on the right, not centered)"
+                # Describe shape without mentioning tiles
+                if max_cols > num_rows:
+                    shape_desc = f"wide horizontal sprite" if max_cols > num_rows * 2 else f"rectangular sprite"
+                elif num_rows > max_cols:
+                    shape_desc = f"tall vertical sprite" if num_rows > max_cols * 2 else f"rectangular sprite"
+                else:
+                    shape_desc = f"square sprite"
+                
+                # Describe the object shape (wider at top, narrower at bottom, etc.) without mentioning tiles
+                layout_desc = f"{shape_desc}, {width_px} pixels wide and {height_px} pixels tall"
+            else:
+                layout_desc = f"{width_px}x{height_px} pixel sprite"
             
-            size_instruction = f"{layout_desc}, {width_px}x{height_px} pixel sprite, "
+            # Add CRITICAL note about seamless image
+            layout_desc += ". CRITICAL: Generate as ONE SOLID CONTINUOUS OBJECT - no grid lines, no divisions, no segmentation, no visible boundaries, no checkerboard, no tile marks, completely seamless image"
+            
+            size_instruction = f"{layout_desc}, EXACTLY {width_px}x{height_px} pixels (width {width_px} pixels, height {height_px} pixels), CRITICAL: entire image must fill full {height_px} pixel height from top to bottom with seamless continuous object, no cropping, no missing bottom content, "
         else:
             size_instruction = f"single tile, {self.tile_size}x{self.tile_size} pixel sprite, "
         
@@ -755,14 +788,45 @@ class SpriteAtlasGenerator:
         # Use isometric/top-down perspective for game tiles
         style_instruction = f"Isometric top-down view game sprite, {size_instruction}game asset style matching existing tileset, clean edges, pixel art aesthetic, game-ready asset"
         
-        prompt = f"{base_desc}. {style_instruction}. Centered in frame, full object visible."
+        # Strong, explicit prompt with repetition for emphasis
+        # Note: Prompt weighting syntax like (keyword:weight) may or may not be supported by Flux-2-pro
+        # Using explicit repetition instead for guaranteed effect
+        prompt = (
+            f"{base_desc}. {style_instruction}. "
+            f"Single object only, one object only, no other objects. "
+            f"CRITICAL: Object must completely fill the entire frame from edge to edge. "
+            f"No empty space, no gaps, no padding, no margin, no border. "
+            f"Object extends to all four edges - top edge, bottom edge, left edge, right edge. "
+            f"Full object visible from top to bottom edge, nothing cut off at bottom, "
+            f"complete from top row to bottom row. "
+            f"SOLID SEAMLESS IMAGE: No visible grid lines, no tile boundaries, no dividing lines, "
+            f"no segmentation marks, no grid overlay, no tile markers, no checkerboard pattern. "
+            f"Generate as ONE continuous solid object - the image will be split into tiles later during processing. "
+            f"NO base. NO ground patch. NO pedestal. NO square base. "
+            f"NO green base. NO brown base. NO grass base. NO dirt base. NO stone base. "
+            f"NO base at bottom. NO ground tile at bottom. NO base element. "
+            f"Object extends directly to bottom edge without any base element or ground tile. "
+            f"Black background, solid black background only, no other background elements."
+        )
         
-        # Negative prompt to avoid unwanted features (similar to character generation)
+        # Negative prompt to avoid unwanted features - use weighting for emphasis
+        # Repeat key unwanted terms to increase their weight
         negative_prompt = (
-            "multiple objects, cluttered, complex background, realistic photo, 3D render, "
-            "blurry, low quality, text, watermark, signature, anime style, chibi style, "
-            "super-deformed, hyper-realistic concept art, Pixar style, DreamWorks style, "
-            "kid-like, childish, side view, front view, not isometric, not top-down"
+            "multiple objects, two objects, three objects, many objects, several objects, "
+            "duplicate objects, repeated objects, cluttered, complex background, "
+            "detailed background, textured background, colored background, gradient background, "
+            "white background, transparent background, realistic photo, 3D render, blurry, "
+            "low quality, text, watermark, signature, anime style, chibi style, super-deformed, "
+            "hyper-realistic concept art, Pixar style, DreamWorks style, kid-like, childish, "
+            "side view, front view, not isometric, not top-down, "
+            "grid lines, tile boundaries, dividing lines, segmentation marks, grid overlay, "
+            "tile markers, checkerboard pattern, tile grid, visible grid, grid pattern, "
+            "grid structure, grid layout, grid segmentation, tile divisions, tile borders, "
+            "(base at bottom:3.0), (ground patch:3.0), (pedestal:3.0), (square base:3.0), "
+            "(green base:3.0), (brown base:3.0), (ground tile:3.0), (base element:3.0), "
+            "(grass base:3.0), (dirt base:3.0), (stone base:3.0), "
+            "empty space around edges, gaps, padding, margin, border, "
+            "(unwanted base at bottom:4.0), (unwanted ground element:4.0)"
         )
         
         return prompt, negative_prompt
@@ -1158,7 +1222,33 @@ class SpriteAtlasGenerator:
                         break
                     continue
                 
-                # Resize to calculated size
+                # Verify and resize to calculated size
+                # First, check if generated image matches expected dimensions (within tolerance)
+                generated_width, generated_height = image.size
+                expected_width = generate_width
+                expected_height = generate_height
+                
+                # Warn if dimensions are significantly off
+                width_diff = abs(generated_width - expected_width) / expected_width if expected_width > 0 else 0
+                height_diff = abs(generated_height - expected_height) / expected_height if expected_height > 0 else 0
+                
+                if width_diff > 0.05 or height_diff > 0.05:
+                    print(f"   ⚠️ Generated image size {generated_width}x{generated_height} differs from expected {expected_width}x{expected_height}")
+                    print(f"      Width diff: {width_diff*100:.1f}%, Height diff: {height_diff*100:.1f}%")
+                
+                # CRITICAL: Check if generated image is missing bottom content
+                # If height is significantly less than expected, reject and regenerate
+                if generated_height < expected_height * 0.9:
+                    print(f"   ❌ REJECTING: Generated image height ({generated_height}) is too short - missing bottom content!")
+                    print(f"      Expected: {expected_height}, Got: {generated_height} (missing {expected_height - generated_height} pixels at bottom)")
+                    if attempts < max_attempts:
+                        print(f"      Regenerating to ensure full height...")
+                        continue  # Skip to next attempt
+                    else:
+                        print(f"      Max attempts reached - proceeding with partial image (will stretch)")
+                
+                # Resize to calculated size (this will stretch if aspect ratio differs)
+                # IMPORTANT: Only resize AFTER validation - don't stretch missing content
                 if image.size != (image_width, image_height):
                     image = image.resize((image_width, image_height), Image.Resampling.LANCZOS)
                 
@@ -1177,34 +1267,169 @@ class SpriteAtlasGenerator:
                     approved = True
                 
                 # Remove background from approved image
-                print("   🎨 Removing background...")
-                image_no_bg = self.remove_background(image)
+                # IMPORTANT: Add padding before background removal to prevent cropping
+                # Background removal might auto-crop, so we pad to ensure full content is preserved
+                print(f"   📏 Image before background removal: {image.size[0]}x{image.size[1]} (target: {image_width}x{image_height})")
+                
+                padding = max(10, self.tile_size // 4)  # Add padding (at least 10px or 1/4 tile size)
+                padded_width = image_width + (padding * 2)
+                padded_height = image_height + (padding * 2)
+                
+                # Create padded image with black background
+                padded_image = Image.new('RGBA', (padded_width, padded_height), (0, 0, 0, 255))
+                # Paste original image centered in padded image
+                paste_x = (padded_width - image_width) // 2
+                paste_y = (padded_height - image_height) // 2
+                print(f"   📦 Adding padding: {padding}px on all sides, pasting original at ({paste_x}, {paste_y})")
+                padded_image.paste(image, (paste_x, paste_y))
+                
+                print(f"   🎨 Removing background from padded image ({padded_width}x{padded_height})...")
+                image_no_bg = self.remove_background(padded_image)
                 
                 if image_no_bg:
+                    # Check if background removal changed the size
+                    bg_removed_width, bg_removed_height = image_no_bg.size
+                    if bg_removed_width != padded_width or bg_removed_height != padded_height:
+                        print(f"   ⚠️ Background removal changed size from {padded_width}x{padded_height} to {bg_removed_width}x{bg_removed_height}")
+                        # If background removal cropped the image (made it smaller),
+                        # resize it back to padded size first to restore full dimensions
+                        # This preserves what content remains, even if slightly stretched
+                        if bg_removed_width < padded_width or bg_removed_height < padded_height:
+                            print(f"   ⚠️ Background removal cropped content, resizing back to padded size...")
+                            image_no_bg = image_no_bg.resize((padded_width, padded_height), Image.Resampling.LANCZOS)
+                    
+                    print(f"   📏 Image after background removal: {bg_removed_width}x{bg_removed_height} (expected padded: {padded_width}x{padded_height})")
+                    
+                    # Crop back to original size (removing padding from all sides)
+                    # The padding ensures that even if background removal cropped some edges,
+                    # our content should still be in the padded region
+                    crop_box = (padding, padding, padding + image_width, padding + image_height)
+                    print(f"   ✂️  Cropping to remove padding: crop_box=({crop_box[0]}, {crop_box[1]}, {crop_box[2]}, {crop_box[3]})")
+                    
+                    # Verify crop box is within image bounds
+                    if crop_box[2] > bg_removed_width or crop_box[3] > bg_removed_height:
+                        print(f"   ⚠️ WARNING: Crop box extends beyond image bounds!")
+                        print(f"      Crop box: ({crop_box[0]}, {crop_box[1]}, {crop_box[2]}, {crop_box[3]})")
+                        print(f"      Image size: {bg_removed_width}x{bg_removed_height}")
+                        # Adjust crop box to fit within image
+                        crop_box = (
+                            crop_box[0],
+                            crop_box[1],
+                            min(crop_box[2], bg_removed_width),
+                            min(crop_box[3], bg_removed_height)
+                        )
+                        print(f"      Adjusted crop box: ({crop_box[0]}, {crop_box[1]}, {crop_box[2]}, {crop_box[3]})")
+                    
+                    image_no_bg = image_no_bg.crop(crop_box)
+                    print(f"   📏 Image after cropping: {image_no_bg.size[0]}x{image_no_bg.size[1]} (target: {image_width}x{image_height})")
+                    
+                    # Final resize to exact dimensions
                     if image_no_bg.size != (image_width, image_height):
                         image_no_bg = image_no_bg.resize((image_width, image_height), Image.Resampling.LANCZOS)
+                        print(f"   📏 Image after final resize: {image_no_bg.size[0]}x{image_no_bg.size[1]}")
+                    
                     image = image_no_bg
                 else:
                     print("   ⚠️ Background removal failed, using original image")
                 
                 if tile_map_str:
                     # Handle tileMap: split image into tiles and add to atlas
+                    # CRITICAL: Verify image dimensions match expected before extraction
+                    actual_width, actual_height = image.size
+                    if actual_width != image_width or actual_height != image_height:
+                        print(f"   ⚠️ WARNING: Image size mismatch before extraction!")
+                        print(f"      Expected: {image_width}x{image_height}")
+                        print(f"      Actual: {actual_width}x{actual_height}")
+                        if actual_width < image_width or actual_height < image_height:
+                            print(f"      ❌ Image is smaller than expected - tiles may be missing!")
+                    
                     print(f"   ✂️  Splitting image into {num_rows} rows based on tileMap...")
                     tile_map_layout = []
                     frame_numbers = []
                     atlas_name = atlas_png.stem
                     
+                    # Determine layer structure to calculate per-layer center offsets
+                    # All rows in the same layer should use the SAME center offset (based on widest row in that layer)
+                    num_rows = len(tile_map_counts)
+                    if num_rows <= 2:
+                        # Single low layer: all rows use the same offset
+                        low_row_indices = list(range(num_rows))
+                        high_row_indices = []
+                    else:
+                        # Last 2 rows = low layer, first rows = high layer
+                        low_row_indices = list(range(num_rows - 2, num_rows))  # Last 2 rows
+                        high_row_indices = list(range(num_rows - 2))  # First rows
+                    
+                    # Calculate max width per layer
+                    low_layer_max_width = max([tile_map_counts[i] * self.tile_size for i in low_row_indices]) if low_row_indices else 0
+                    high_layer_max_width = max([tile_map_counts[i] * self.tile_size for i in high_row_indices]) if high_row_indices else 0
+                    
+                    # Calculate center offsets per layer
+                    low_layer_center_offset = (actual_width - low_layer_max_width) / 2 if actual_width > low_layer_max_width and low_layer_max_width > 0 else 0
+                    high_layer_center_offset = (actual_width - high_layer_max_width) / 2 if actual_width > high_layer_max_width and high_layer_max_width > 0 else 0
+                    
+                    print(f"   📐 Layer offsets: high={high_layer_center_offset:.0f}px (max {high_layer_max_width}px), low={low_layer_center_offset:.0f}px (max {low_layer_max_width}px)")
+                    
                     # Split image into tiles based on tileMap
                     current_frame = 1
-                    print(f"   📐 Extracting tiles from image ({image_width}x{image_height})...")
+                    print(f"   📐 Extracting tiles from image ({actual_width}x{actual_height}) (expected {image_width}x{image_height})...")
                     for row_idx, tile_count in enumerate(tile_map_counts):
                         row_tiles = []
-                        print(f"      Row {row_idx}: extracting {tile_count} tiles (from x=0 to x={tile_count * self.tile_size})")
+                        y = row_idx * self.tile_size
+                        
+                        # Use the appropriate center offset for this row's layer
+                        if row_idx in low_row_indices:
+                            center_offset_x = low_layer_center_offset
+                        elif row_idx in high_row_indices:
+                            center_offset_x = high_layer_center_offset
+                        else:
+                            # Fallback: center this specific row
+                            row_width = tile_count * self.tile_size
+                            center_offset_x = (actual_width - row_width) / 2 if actual_width > row_width else 0
+                        
+                        row_width = tile_count * self.tile_size
+                        start_x = center_offset_x
+                        end_x = center_offset_x + row_width
+                        layer_name = "low" if row_idx in low_row_indices else "high"
+                        print(f"      Row {row_idx} ({layer_name}): extracting {tile_count} tiles (centered from x={start_x:.0f} to x={end_x:.0f}, y={y} to y={y + self.tile_size})")
+                        
+                        # Verify row is within image bounds
+                        if y + self.tile_size > actual_height:
+                            print(f"         ⚠️ WARNING: Row {row_idx} extends beyond image height! (y={y}, tile_size={self.tile_size}, image_height={actual_height})")
+                        
                         for col_idx in range(tile_count):
-                            # Extract tile from image
-                            x = col_idx * self.tile_size
-                            y = row_idx * self.tile_size
-                            tile_image = image.crop((x, y, x + self.tile_size, y + self.tile_size))
+                            # Extract tile from image (centered if row is narrower than image)
+                            x = center_offset_x + (col_idx * self.tile_size)
+                            
+                            # Verify tile is within image bounds
+                            if x + self.tile_size > actual_width:
+                                print(f"         ⚠️ WARNING: Tile at col {col_idx} extends beyond image width! (x={x}, tile_size={self.tile_size}, image_width={actual_width})")
+                            
+                            # Ensure crop coordinates are within image bounds
+                            crop_left = max(0, x)
+                            crop_top = max(0, y)
+                            crop_right = min(actual_width, x + self.tile_size)
+                            crop_bottom = min(actual_height, y + self.tile_size)
+                            
+                            # Validate crop box before extracting
+                            if crop_right <= crop_left or crop_bottom <= crop_top:
+                                print(f"         ❌ ERROR: Invalid crop box for tile ({col_idx},{row_idx}): ({crop_left},{crop_top},{crop_right},{crop_bottom})")
+                                # Create empty tile instead of skipping
+                                tile_image = Image.new('RGBA', (self.tile_size, self.tile_size), (0, 0, 0, 0))
+                                print(f"         ⚠️ Created empty tile as placeholder")
+                            else:
+                                tile_image = image.crop((crop_left, crop_top, crop_right, crop_bottom))
+                            
+                            # If crop resulted in smaller tile, pad or resize
+                            if tile_image.size[0] != self.tile_size or tile_image.size[1] != self.tile_size:
+                                print(f"         ⚠️ WARNING: Extracted tile size {tile_image.size} != expected {self.tile_size}x{self.tile_size}")
+                                # Always resize to expected size (even if empty, to maintain grid structure)
+                                if tile_image.size[0] > 0 and tile_image.size[1] > 0:
+                                    tile_image = tile_image.resize((self.tile_size, self.tile_size), Image.Resampling.LANCZOS)
+                                else:
+                                    # Create empty tile instead of skipping - we need to maintain the tileGrid structure
+                                    tile_image = Image.new('RGBA', (self.tile_size, self.tile_size), (0, 0, 0, 0))
+                                    print(f"         ⚠️ Tile was empty, created transparent placeholder to maintain grid")
                             
                             # Save temp tile
                             temp_tile_path = tiles_dir / f"tile_{idx}_r{row_idx}_c{col_idx}_temp.png"
@@ -1215,7 +1440,18 @@ class SpriteAtlasGenerator:
                             frame_numbers.append(frame_number)
                             tile_id = f"{atlas_name}-{frame_number}"
                             row_tiles.append(tile_id)
-                            print(f"         Col {col_idx}: extracted from ({x},{y}) -> {tile_id} (frame {frame_number})")
+                            
+                            # Check if tile has content (not fully transparent)
+                            has_content = False
+                            if tile_image.mode == 'RGBA':
+                                # Check if any pixel is not fully transparent
+                                alpha_channel = tile_image.split()[3]
+                                has_content = any(alpha_channel.getdata())
+                            else:
+                                has_content = True
+                            
+                            content_status = "✅" if has_content else "⚠️ (transparent/empty)"
+                            print(f"         Col {col_idx}: extracted from ({x:.0f},{y:.0f}) to ({crop_right:.0f},{crop_bottom:.0f}) -> {tile_id} (frame {frame_number}) {content_status}")
                             
                             # Clean up temp file
                             try:
@@ -1225,14 +1461,35 @@ class SpriteAtlasGenerator:
                             
                             current_frame += 1
                         
+                        # Validate row has expected number of tiles
+                        expected_tile_count = tile_count
+                        actual_tile_count = len(row_tiles)
+                        if actual_tile_count != expected_tile_count:
+                            print(f"      ⚠️ WARNING: Row {row_idx} has {actual_tile_count} tiles but expected {expected_tile_count}!")
+                            print(f"         This will cause a mismatch in the tileGrid structure!")
+                        
                         tile_map_layout.append(row_tiles)
-                        print(f"      Row {row_idx} complete: {row_tiles}")
+                        print(f"      Row {row_idx} complete: {row_tiles} ({actual_tile_count}/{expected_tile_count} tiles)")
                     
-                    # Update prefab with tileMap structure
+                    # Validate tile_map_layout matches tileMap structure
                     print(f"   📝 Updating prefab file with tileMap structure...")
                     print(f"   📋 Tile layout to write:")
                     for row_idx, row in enumerate(tile_map_layout):
-                        print(f"      Row {row_idx}: {row}")
+                        expected_count = tile_map_counts[row_idx] if row_idx < len(tile_map_counts) else 0
+                        actual_count = len(row)
+                        status = "✅" if actual_count == expected_count else "❌"
+                        print(f"      Row {row_idx}: {row} {status} ({actual_count}/{expected_count} tiles)")
+                    
+                    # Verify tile_map_layout structure matches tileMap
+                    if len(tile_map_layout) != len(tile_map_counts):
+                        print(f"   ❌ ERROR: tile_map_layout has {len(tile_map_layout)} rows but tileMap has {len(tile_map_counts)} rows!")
+                    else:
+                        for row_idx in range(len(tile_map_layout)):
+                            expected = tile_map_counts[row_idx]
+                            actual = len(tile_map_layout[row_idx])
+                            if actual != expected:
+                                print(f"   ❌ ERROR: Row {row_idx} has {actual} tiles but tileMap expects {expected}!")
+                    
                     self.update_prefab_with_tile_map(entity_info, tile_map_layout, prefab_file, self.tile_size)
                     
                     print(f"   ✅ Complete! Generated {sum(tile_map_counts)} tiles across {num_rows} rows")

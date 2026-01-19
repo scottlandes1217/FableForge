@@ -13,7 +13,7 @@
       "col": 0,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "2": {
@@ -24,7 +24,7 @@
       "col": 1,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "3": {
@@ -35,7 +35,7 @@
       "col": 2,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "4": {
@@ -46,7 +46,7 @@
       "col": 3,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "5": {
@@ -57,7 +57,7 @@
       "col": 4,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "6": {
@@ -68,7 +68,7 @@
       "col": 5,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "7": {
@@ -79,7 +79,7 @@
       "col": 6,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "8": {
@@ -90,7 +90,7 @@
       "col": 7,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "9": {
@@ -101,7 +101,7 @@
       "col": 8,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "10": {
@@ -112,7 +112,7 @@
       "col": 9,
       "row": 0,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "11": {
@@ -123,7 +123,7 @@
       "col": 0,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "12": {
@@ -134,7 +134,7 @@
       "col": 1,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "13": {
@@ -145,7 +145,7 @@
       "col": 2,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "14": {
@@ -156,7 +156,7 @@
       "col": 3,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "15": {
@@ -167,7 +167,7 @@
       "col": 4,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "16": {
@@ -178,7 +178,7 @@
       "col": 5,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "17": {
@@ -189,7 +189,7 @@
       "col": 6,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "18": {
@@ -200,7 +200,7 @@
       "col": 7,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "19": {
@@ -211,7 +211,7 @@
       "col": 8,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "20": {
@@ -222,7 +222,7 @@
       "col": 9,
       "row": 1,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "21": {
@@ -233,7 +233,7 @@
       "col": 0,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "22": {
@@ -244,7 +244,7 @@
       "col": 1,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "23": {
@@ -255,7 +255,7 @@
       "col": 2,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "24": {
@@ -266,7 +266,7 @@
       "col": 3,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "25": {
@@ -277,7 +277,7 @@
       "col": 4,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "26": {
@@ -288,7 +288,7 @@
       "col": 5,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "27": {
@@ -299,7 +299,7 @@
       "col": 6,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "28": {
@@ -310,7 +310,7 @@
       "col": 7,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "29": {
@@ -321,7 +321,7 @@
       "col": 8,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "30": {
@@ -332,7 +332,7 @@
       "col": 9,
       "row": 2,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "31": {
@@ -343,7 +343,7 @@
       "col": 0,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "32": {
@@ -354,7 +354,7 @@
       "col": 1,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "33": {
@@ -365,7 +365,7 @@
       "col": 2,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "34": {
@@ -376,7 +376,7 @@
       "col": 3,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An oak tree with a trunk and leafy canopy.",
       "type": "prefab"
     },
     "35": {
@@ -387,7 +387,7 @@
       "col": 4,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
       "type": "prefab"
     },
     "36": {
@@ -398,7 +398,359 @@
       "col": 5,
       "row": 3,
       "name": "tree_oak_01",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "37": {
+      "x": 96,
+      "y": 48,
+      "width": 16,
+      "height": 16,
+      "col": 6,
+      "row": 3,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "38": {
+      "x": 112,
+      "y": 48,
+      "width": 16,
+      "height": 16,
+      "col": 7,
+      "row": 3,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "39": {
+      "x": 128,
+      "y": 48,
+      "width": 16,
+      "height": 16,
+      "col": 8,
+      "row": 3,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "40": {
+      "x": 144,
+      "y": 48,
+      "width": 16,
+      "height": 16,
+      "col": 9,
+      "row": 3,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "41": {
+      "x": 0,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 0,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "42": {
+      "x": 16,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 1,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "43": {
+      "x": 32,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 2,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "44": {
+      "x": 48,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 3,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "45": {
+      "x": 64,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 4,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "46": {
+      "x": 80,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 5,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "47": {
+      "x": 96,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 6,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "48": {
+      "x": 112,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 7,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "49": {
+      "x": 128,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 8,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "50": {
+      "x": 144,
+      "y": 64,
+      "width": 16,
+      "height": 16,
+      "col": 9,
+      "row": 4,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "51": {
+      "x": 0,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 0,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "52": {
+      "x": 16,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 1,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "53": {
+      "x": 32,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 2,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "54": {
+      "x": 48,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 3,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "55": {
+      "x": 64,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 4,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "56": {
+      "x": 80,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 5,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "57": {
+      "x": 96,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 6,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "58": {
+      "x": 112,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 7,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "59": {
+      "x": 128,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 8,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "60": {
+      "x": 144,
+      "y": 80,
+      "width": 16,
+      "height": 16,
+      "col": 9,
+      "row": 5,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "61": {
+      "x": 0,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 0,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "62": {
+      "x": 16,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 1,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "63": {
+      "x": 32,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 2,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "64": {
+      "x": 48,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 3,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "65": {
+      "x": 64,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 4,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "66": {
+      "x": 80,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 5,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "67": {
+      "x": 96,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 6,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "type": "prefab"
+    },
+    "68": {
+      "x": 112,
+      "y": 96,
+      "width": 16,
+      "height": 16,
+      "col": 7,
+      "row": 6,
+      "name": "tree_oak_01",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
       "type": "prefab"
     }
   }

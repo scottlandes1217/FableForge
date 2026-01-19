@@ -69,7 +69,10 @@ class StartScreenScene: SKScene {
     func checkForSaveFile() {
         // Migrate old save file if it exists
         SaveManager.migrateOldSaveIfNeeded()
-        hasSaveFile = SaveManager.hasAnySaves()
+        // Show continue button if there are any characters OR any saves
+        let hasCharacters = !SaveManager.getAllCharacters().isEmpty
+        let hasSaves = SaveManager.hasAnySaves()
+        hasSaveFile = hasCharacters || hasSaves
     }
     
     func showLogoScreen() {
@@ -80,71 +83,41 @@ class StartScreenScene: SKScene {
         let isLandscape = size.width > size.height
         let minDimension = min(size.width, size.height)
         
-        // Calculate responsive sizes
-        let logoScale: CGFloat = isLandscape ? minDimension / 800 : minDimension / 600
-        let wolfSize: CGFloat = isLandscape ? min(200, minDimension * 0.25) : min(250, minDimension * 0.35)
-        let titleFontSize: CGFloat = isLandscape ? min(48, size.width * 0.08) : min(64, size.height * 0.1)
-        let subtitleFontSize: CGFloat = isLandscape ? min(18, size.width * 0.03) : min(24, size.height * 0.04)
+        // Use book_page image as background
+        let backgroundImage = SKSpriteNode(imageNamed: "book_page")
+        backgroundImage.size = size
+        backgroundImage.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        backgroundImage.zPosition = 0
+        backgroundImage.name = "backgroundImage"
+        addChild(backgroundImage)
         
-        // Create logo sprite from asset
-        let logoSprite = SKSpriteNode(imageNamed: "main_logo")
-        let spriteLogoY = isLandscape ? size.height / 2 + 80 : size.height / 2 + 120
-        logoSprite.position = CGPoint(x: size.width / 2, y: spriteLogoY)
+        // Use book cover image as foreground (on top of background)
+        let bookCover = SKSpriteNode(imageNamed: "book_cover")
+        bookCover.size = size
+        bookCover.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        bookCover.zPosition = 1
+        bookCover.name = "bookCover"
+        // Scale to fill while maintaining aspect ratio
+        let coverAspectRatio = bookCover.size.width / bookCover.size.height
+        let screenAspectRatio = size.width / size.height
+        if coverAspectRatio > screenAspectRatio {
+            // Cover is wider - fit to height
+            bookCover.size = CGSize(width: size.height * coverAspectRatio, height: size.height)
+        } else {
+            // Cover is taller - fit to width
+            bookCover.size = CGSize(width: size.width, height: size.width / coverAspectRatio)
+        }
+        addChild(bookCover)
         
-        // Scale logo to appropriate size
-        let logoAspectRatio = logoSprite.size.width / logoSprite.size.height
-        let targetLogoHeight = wolfSize * 1.8
-        let targetLogoWidth = targetLogoHeight * logoAspectRatio
-        logoSprite.size = CGSize(width: targetLogoWidth, height: targetLogoHeight)
-        logoSprite.setScale(logoScale)
-        addChild(logoSprite)
-        
-        // Main logo text container
-        let logoContainer = SKNode()
-        let logoY = isLandscape ? size.height / 2 - 40 : size.height / 2 - 20
-        logoContainer.position = CGPoint(x: size.width / 2, y: logoY)
-        addChild(logoContainer)
-        
-        // Main logo text with shadow
-        let logoShadow = SKLabelNode(fontNamed: "Arial-BoldMT")
-        logoShadow.text = "FableForge"
-        logoShadow.fontSize = titleFontSize
-        logoShadow.fontColor = SKColor(white: 0.0, alpha: 0.4)
-        logoShadow.position = CGPoint(x: 3, y: -3)
-        logoShadow.zPosition = 1
-        logoContainer.addChild(logoShadow)
-        
-        let logoMain = SKLabelNode(fontNamed: "Arial-BoldMT")
-        logoMain.text = "FableForge"
-        logoMain.fontSize = titleFontSize
-        logoMain.fontColor = MenuStyling.bookAccent
-        logoMain.zPosition = 2
-        logoContainer.addChild(logoMain)
-        
-        // Subtitle
-        let subtitle = SKLabelNode(fontNamed: "Arial")
-        subtitle.text = "A World of Adventure"
-        subtitle.fontSize = subtitleFontSize
-        subtitle.fontColor = MenuStyling.inkColor
-        let subtitleY = isLandscape ? -titleFontSize * 0.6 : -titleFontSize * 0.7
-        subtitle.position = CGPoint(x: 0, y: subtitleY)
-        subtitle.zPosition = 2
-        logoContainer.addChild(subtitle)
-        
-        // Subtle pulse animation for logo
-        let pulseUp = SKAction.scale(to: 1.02, duration: 2.0)
-        let pulseDown = SKAction.scale(to: 1.0, duration: 2.0)
-        let pulse = SKAction.sequence([pulseUp, pulseDown])
-        logoContainer.run(SKAction.repeatForever(pulse))
-        
-        // "Tap to continue" prompt
-        let promptY = isLandscape ? size.height / 2 - size.height / 2 + 60 : 100
+        // "Tap to continue" prompt at bottom
+        let promptY: CGFloat = isLandscape ? 60 : 80
         let prompt = SKLabelNode(fontNamed: "Arial")
         prompt.text = "Tap to Continue"
         prompt.fontSize = isLandscape ? min(18, size.width * 0.03) : min(20, size.height * 0.03)
-        prompt.fontColor = MenuStyling.inkMuted
+        prompt.fontColor = SKColor(white: 0.7, alpha: 0.8)
         prompt.position = CGPoint(x: size.width / 2, y: promptY)
         prompt.zPosition = 10
+        prompt.name = "continuePrompt"
         addChild(prompt)
         
         // Blink animation for prompt
@@ -338,17 +311,24 @@ class StartScreenScene: SKScene {
         removeAllChildren()
         currentState = .menu
         
+        // Update hasSaveFile before showing menu
+        checkForSaveFile()
+        
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
-        // Book page panel
-        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
-        panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        panel.zPosition = 1
-        addChild(panel)
+        // Add background image
+        let backgroundImage = SKSpriteNode(imageNamed: "book_page")
+        backgroundImage.size = size
+        backgroundImage.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        backgroundImage.zPosition = 0
+        backgroundImage.name = "backgroundImage"
+        addChild(backgroundImage)
         
-        // Book title - positioned with more padding from top border
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 90 : size.height / 2 + dims.panelHeight / 2 - 100
+        // Book page panel removed - no margins needed
+        
+        // Book title - positioned with padding from top
+        let titleY = isLandscape ? size.height - 90 : size.height - 100
         let title = MenuStyling.createBookTitle(text: "Main Menu", position: CGPoint(x: size.width / 2, y: titleY))
         title.zPosition = 10
         addChild(title)
@@ -399,6 +379,14 @@ class StartScreenScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
+        // Add background image
+        let backgroundImage = SKSpriteNode(imageNamed: "book_page")
+        backgroundImage.size = size
+        backgroundImage.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        backgroundImage.zPosition = 0
+        backgroundImage.name = "backgroundImage"
+        addChild(backgroundImage)
+        
         // Book page panel
         let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -408,7 +396,7 @@ class StartScreenScene: SKScene {
         
         // Book title - positioned with more padding from top border
         let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
-        let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
+        let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 24 : 28)
         title.zPosition = 10
         addChild(title)
         
@@ -421,7 +409,7 @@ class StartScreenScene: SKScene {
         
         // Calculate available space for characters
         // Top boundary: below title (with some spacing)
-        let titleHeight: CGFloat = isLandscape ? 30 : 34
+        let titleHeight: CGFloat = isLandscape ? 24 : 28
         let titleBottom = titleY - titleHeight / 2
         let topSpacing: CGFloat = isLandscape ? 20 : 25
         let containerTop = titleBottom - topSpacing
@@ -573,6 +561,14 @@ class StartScreenScene: SKScene {
         let dims = MenuStyling.getResponsiveDimensions(size: size)
         let isLandscape = size.width > size.height
         
+        // Add background image
+        let backgroundImage = SKSpriteNode(imageNamed: "book_page")
+        backgroundImage.size = size
+        backgroundImage.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        backgroundImage.zPosition = 0
+        backgroundImage.name = "backgroundImage"
+        addChild(backgroundImage)
+        
         // Book page panel
         let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
         panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -583,7 +579,7 @@ class StartScreenScene: SKScene {
         // Book title - moved down to avoid border overlap
         // Book title - positioned with more padding from top border
         let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
-        let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 30 : 34)
+        let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 24 : 28)
         title.zPosition = 10
         addChild(title)
         
@@ -981,17 +977,19 @@ class StartScreenScene: SKScene {
         
         switch currentState {
         case .logo:
-            // Transition to menu
+            // Animate book opening and transition to menu
             print("  → Transitioning from logo to menu")
             isTransitioning = true
-            showMenuScreen()
-            // Clear the transitioning flag after a brief delay to prevent click-through
-            run(SKAction.sequence([
-                SKAction.wait(forDuration: 0.2),
-                SKAction.run { [weak self] in
-                    self?.isTransitioning = false
-                }
-            ]))
+            animateBookOpening {
+                self.showMenuScreen()
+                // Clear the transitioning flag after a brief delay to prevent click-through
+                self.run(SKAction.sequence([
+                    SKAction.wait(forDuration: 0.2),
+                    SKAction.run { [weak self] in
+                        self?.isTransitioning = false
+                    }
+                ]))
+            }
             
         case .menu:
             // Check which button was tapped
@@ -1370,6 +1368,8 @@ class StartScreenScene: SKScene {
             
             // If no characters left, go back to menu
             if SaveManager.getAllCharacters().isEmpty {
+                // Update hasSaveFile before showing menu
+                checkForSaveFile()
                 showMenuScreen()
             }
         } else {
@@ -1384,6 +1384,26 @@ class StartScreenScene: SKScene {
     func cancelDeleteCharacter() {
         removeConfirmationDialog()
         characterToDelete = nil
+    }
+    
+    func animateBookOpening(completion: @escaping () -> Void) {
+        // Simple, elegant fade transition to menu
+        // Fade out all logo screen elements smoothly
+        let fadeOut = SKAction.fadeOut(withDuration: 0.6)
+        let fadeOutSlow = SKAction.fadeOut(withDuration: 0.8)
+        
+        // Fade out book cover and all elements
+        enumerateChildNodes(withName: "//*") { node, _ in
+            node.run(fadeOut)
+        }
+        
+        // After fade completes, show menu
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.6),
+            SKAction.run {
+                completion()
+            }
+        ]))
     }
     
     func removeConfirmationDialog() {

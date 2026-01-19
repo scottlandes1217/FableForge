@@ -8011,7 +8011,7 @@
   <properties>
    <property name="characterLayer" type="bool" value="false"/>
    <property name="collision" type="bool" value="false"/>
-   <property name="zOffset" type="float" value="80"/>
+   <property name="zOffset" type="float" value="40"/>
   </properties>
   <data encoding="csv">
    <chunk x="-32" y="-16" width="16" height="16">
@@ -8091,9 +8091,9 @@
 204,205,0,2147484352,2147484351,0,0,0,0,0,0,0,0,0,0,0,
 1654,1678,346,699,1701,0,0,0,0,0,0,0,0,0,0,0,
 365,1695,367,2147484366,2147484365,548,0,0,0,0,0,0,0,0,0,0,
-0,1694,0,2147484387,2147484386,1056,1048,1056,1048,1056,1048,1049,0,1047,1048,1056,
-303,0,0,1700,683,1689,1698,204,1700,1698,204,1066,0,1064,582,583,
-324,1679,1682,0,348,349,2147484370,0,249,250,658,659,0,602,603,604,
+0,1694,0,2147484387,2147484386,1056,1048,1056,1048,1056,1048,1049,0,1047,1339,1340,
+303,0,0,1700,683,1689,1698,204,1700,1698,204,1066,0,1064,1356,583,
+324,1679,1682,0,348,349,2147484370,0,249,250,658,659,0,602,1373,604,
 0,0,0,368,369,1073,1082,1073,1082,1073,1082,1083,0,1081,1082,1073,
 0,0,0,0,0,0,644,645,291,292,740,0,0,0,0,740,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8127,6 +8127,7 @@
  <layer id="62" name="World_Door" width="16" height="24">
   <properties>
    <property name="collision" type="bool" value="true"/>
+   <property name="doorId" value="world_grassland"/>
    <property name="prefabsFile" value="prefabs_grassland"/>
    <property name="proceduralWorldTrigger" type="bool" value="true"/>
   </properties>
@@ -8136,8 +8137,8 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,1339,1340,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,1356,1357,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1357,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,1373,1374,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8154,8 +8155,8 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-1341,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-1358,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 1375,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -8172,7 +8173,7 @@
  <layer id="24" name="Fence" width="16" height="24">
   <properties>
    <property name="collision" type="bool" value="true"/>
-   <property name="zOffset" type="float" value="80"/>
+   <property name="zOffset" type="float" value="20"/>
   </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
@@ -8332,7 +8333,7 @@
  <layer id="51" name="House_roof" width="16" height="24">
   <properties>
    <property name="collision" type="bool" value="false"/>
-   <property name="zOffset" type="float" value="40"/>
+   <property name="zOffset" type="float" value="150"/>
   </properties>
   <data encoding="csv">
    <chunk x="-16" y="-16" width="16" height="16">
@@ -8374,6 +8375,9 @@
   </data>
  </layer>
  <layer id="59" name="Tall Objects" width="16" height="24">
+  <properties>
+   <property name="zOffset" type="float" value="150"/>
+  </properties>
   <data encoding="csv">
    <chunk x="0" y="-16" width="16" height="16">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

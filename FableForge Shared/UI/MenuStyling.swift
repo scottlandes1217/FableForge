@@ -583,5 +583,53 @@ class MenuStyling {
         
         return container
     }
+    
+    // Create a fancy book page border frame
+    static func createBookPageBorder(size: CGSize, padding: CGFloat = 10.0) -> SKNode {
+        let container = SKNode()
+        
+        // Outer border (thick brown)
+        let outerBorder = SKShapeNode(rectOf: CGSize(width: size.width + padding * 2, height: size.height + padding * 2), cornerRadius: 4)
+        outerBorder.fillColor = .clear
+        outerBorder.strokeColor = parchmentBorder
+        outerBorder.lineWidth = 4.0
+        outerBorder.zPosition = 1
+        container.addChild(outerBorder)
+        
+        // Middle decorative border (lighter brown)
+        let middleBorder = SKShapeNode(rectOf: CGSize(width: size.width + padding * 2 - 4, height: size.height + padding * 2 - 4), cornerRadius: 3)
+        middleBorder.fillColor = .clear
+        middleBorder.strokeColor = parchmentDark
+        middleBorder.lineWidth = 1.5
+        middleBorder.zPosition = 2
+        container.addChild(middleBorder)
+        
+        // Inner border (darker brown accent)
+        let innerBorder = SKShapeNode(rectOf: CGSize(width: size.width + padding * 2 - 8, height: size.height + padding * 2 - 8), cornerRadius: 2)
+        innerBorder.fillColor = .clear
+        innerBorder.strokeColor = bookAccent
+        innerBorder.lineWidth = 1.0
+        innerBorder.zPosition = 3
+        container.addChild(innerBorder)
+        
+        // Corner decorations (small squares at corners)
+        let cornerSize: CGFloat = 8.0
+        let halfWidth = (size.width + padding * 2) / 2.0
+        let halfHeight = (size.height + padding * 2) / 2.0
+        
+        for xSign in [-1, 1] {
+            for ySign in [-1, 1] {
+                let corner = SKShapeNode(rectOf: CGSize(width: cornerSize, height: cornerSize))
+                corner.fillColor = bookAccent
+                corner.strokeColor = parchmentBorder
+                corner.lineWidth = 1.0
+                corner.position = CGPoint(x: CGFloat(xSign) * (halfWidth - cornerSize / 2 - 2), y: CGFloat(ySign) * (halfHeight - cornerSize / 2 - 2))
+                corner.zPosition = 4
+                container.addChild(corner)
+            }
+        }
+        
+        return container
+    }
 }
 

@@ -19,6 +19,7 @@ struct WorldConfig: Codable {
     let enemies: EnemyConfig?
     let animals: AnimalConfig?
     let waterFeatures: WaterFeatureConfig?
+    let exitConfig: ExitConfig?  // Optional exit configuration
 }
 
 struct TerrainConfig: Codable {
@@ -69,4 +70,34 @@ struct AnimalConfig: Codable {
 struct WaterFeatureConfig: Codable {
     let type: String  // "none", "rivers", "lakes", "islands", "ocean"
     let density: String?  // "low", "medium", "high" (optional)
+}
+
+struct ExitConfig: Codable {
+    let hasExit: Bool  // Whether this world has exits
+    let exits: [ExitDefinition]?  // Array of exit definitions (each exit can go to different worlds)
+    // Legacy support - these are used if exits array is not provided
+    let exitTiles: [ExitTileConfig]?  // Optional: specific exit tile positions (relative to entry point)
+    let defaultExitOffset: ExitOffset?  // Optional: default exit position relative to entry (if exitTiles not specified)
+}
+
+struct ExitDefinition: Codable {
+    let x: Int  // X offset in tiles from entry point (negative = west, positive = east)
+    let y: Int  // Y offset in tiles from entry point (negative = south, positive = north)
+    let tileGID: String?  // Optional: specific tile GID to use for exit (e.g., "exterior-123")
+    let targetPrefabFile: String?  // Optional: which prefab file to load when exit is hit (e.g., "prefabs_desert"). If nil, returns to TMX map
+    let targetEntryOffset: ExitOffset?  // Optional: where to spawn in the target world (relative to its entry point)
+    // TMX map return options (only used when targetPrefabFile is nil)
+    let targetTmxFile: String?  // Optional: which TMX file to return to (e.g., "Exterior"). If nil, uses current TMX file
+    let targetDoorId: String?  // Optional: which door/exit ID to use in the target TMX file. If nil, uses entry position
+}
+
+struct ExitTileConfig: Codable {
+    let x: Int  // X offset in tiles from entry point (negative = west, positive = east)
+    let y: Int  // Y offset in tiles from entry point (negative = south, positive = north)
+    let tileGID: String?  // Optional: specific tile GID to use for exit (e.g., "exterior-123")
+}
+
+struct ExitOffset: Codable {
+    let x: Int  // X offset in tiles from entry point
+    let y: Int  // Y offset in tiles from entry point
 }

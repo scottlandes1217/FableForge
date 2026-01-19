@@ -53,73 +53,26 @@ class WorldGenerator {
         )
         
         // Separate entities by z-ordering requirements
+        // NOTE: Trees and buildings have both low and high parts, but we keep them as SINGLE entities
+        // The rendering system (ChunkSystem) will split the parts by layer automatically
         for entity in proceduralEntities {
             switch entity.type {
-            case .tree:
-                // Trees: low layer (trunk) below, high layer (canopy) above
-                entitiesBelow.append(ProceduralEntity(
-                    type: .tree,
-                    prefabId: "\(entity.prefabId)_low",
-                    position: entity.position,
-                    rotation: entity.rotation,
-                    variant: entity.variant
-                ))
-                entitiesAbove.append(ProceduralEntity(
-                    type: .tree,
-                    prefabId: "\(entity.prefabId)_high",
-                    position: entity.position,
-                    rotation: entity.rotation,
-                    variant: entity.variant
-                ))
+            case .tree, .building:
+                // Trees and buildings: Keep as single entity, rendering system will split parts by layer
+                // Low parts (trunk/walls) go to entitiesBelow container (zPosition 40, behind player)
+                // High parts (canopy/roof) go to entitiesAbove container (zPosition 110, in front of player)
+                // But we put the entity in entitiesBelow so low parts render correctly
+                entitiesBelow.append(entity)
             case .rock, .decoration, .chest:
                 // Rocks, decorations, and chests only have a low layer (single part)
-                entitiesBelow.append(ProceduralEntity(
-                    type: entity.type,
-                    prefabId: entity.type == .chest ? entity.prefabId : "\(entity.prefabId)_low",
-                    position: entity.position,
-                    rotation: entity.rotation,
-                    variant: entity.variant
-                ))
-            case .building:
-                // Buildings: low layer (walls/floor) below, high layer (roof) above
-                entitiesBelow.append(ProceduralEntity(
-                    type: .building,
-                    prefabId: "\(entity.prefabId)_low",
-                    position: entity.position,
-                    rotation: entity.rotation,
-                    variant: entity.variant
-                ))
-                entitiesAbove.append(ProceduralEntity(
-                    type: .building,
-                    prefabId: "\(entity.prefabId)_high",
-                    position: entity.position,
-                    rotation: entity.rotation,
-                    variant: entity.variant
-                ))
+                entitiesBelow.append(entity)
             }
         }
         
         // Apply player-placed entities from delta
+        // Keep entities as single entities - rendering system will handle layer splitting
         for addedEntity in delta.addedEntities {
-            // Determine if entity goes below or above based on type
-            if addedEntity.type == .building {
-                entitiesBelow.append(ProceduralEntity(
-                    type: .building,
-                    prefabId: "\(addedEntity.prefabId)_low",
-                    position: addedEntity.position,
-                    rotation: addedEntity.rotation,
-                    variant: addedEntity.variant
-                ))
-                entitiesAbove.append(ProceduralEntity(
-                    type: .building,
-                    prefabId: "\(addedEntity.prefabId)_high",
-                    position: addedEntity.position,
-                    rotation: addedEntity.rotation,
-                    variant: addedEntity.variant
-                ))
-            } else {
-                entitiesBelow.append(addedEntity)
-            }
+            entitiesBelow.append(addedEntity)
         }
         
         return ChunkData(chunkKey: chunkKey, tiles: tiles, entitiesBelow: entitiesBelow, entitiesAbove: entitiesAbove)

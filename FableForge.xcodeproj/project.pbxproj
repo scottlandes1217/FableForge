@@ -25,30 +25,42 @@
 		6753AA102F18C23000DF0F1E /* Interior1.tmx in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA0F2F18C23000DF0F1E /* Interior1.tmx */; };
 		6753AA112F18C23000DF0F1E /* Interior1.tmx in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA0F2F18C23000DF0F1E /* Interior1.tmx */; };
 		6753AA122F18C23000DF0F1E /* Interior1.tmx in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA0F2F18C23000DF0F1E /* Interior1.tmx */; };
-		6753AA162F1A03E500DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA132F1A03E500DF0F1E /* animals.json */; };
-		6753AA172F1A03E500DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA132F1A03E500DF0F1E /* animals.json */; };
-		6753AA182F1A03E500DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA132F1A03E500DF0F1E /* animals.json */; };
-		6753AA192F1A03E500DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA142F1A03E500DF0F1E /* npcs.json */; };
-		6753AA1A2F1A03E500DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA142F1A03E500DF0F1E /* npcs.json */; };
-		6753AA1B2F1A03E500DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA142F1A03E500DF0F1E /* npcs.json */; };
-		6753AA1C2F1A03E500DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA152F1A03E500DF0F1E /* enemies.json */; };
-		6753AA1D2F1A03E500DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA152F1A03E500DF0F1E /* enemies.json */; };
-		6753AA1E2F1A03E500DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA152F1A03E500DF0F1E /* enemies.json */; };
-		6753AA212F1A06AF00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA1F2F1A06AF00DF0F1E /* skills.json */; };
-		6753AA222F1A06AF00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA1F2F1A06AF00DF0F1E /* skills.json */; };
-		6753AA232F1A06AF00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA1F2F1A06AF00DF0F1E /* skills.json */; };
-		6753AA242F1A06AF00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA202F1A06AF00DF0F1E /* items.json */; };
-		6753AA252F1A06AF00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA202F1A06AF00DF0F1E /* items.json */; };
-		6753AA262F1A06AF00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA202F1A06AF00DF0F1E /* items.json */; };
-		6753AA2B2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA272F1A0C5B00DF0F1E /* prefabs_desert.json */; };
-		6753AA2C2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA272F1A0C5B00DF0F1E /* prefabs_desert.json */; };
-		6753AA2D2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA272F1A0C5B00DF0F1E /* prefabs_desert.json */; };
-		6753AA2E2F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA282F1A0C5B00DF0F1E /* prefabs_grassland.json */; };
-		6753AA2F2F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA282F1A0C5B00DF0F1E /* prefabs_grassland.json */; };
-		6753AA302F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA282F1A0C5B00DF0F1E /* prefabs_grassland.json */; };
-		6753AA312F1A0C5B00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA2A2F1A0C5B00DF0F1E /* chests.json */; };
-		6753AA322F1A0C5B00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA2A2F1A0C5B00DF0F1E /* chests.json */; };
-		6753AA332F1A0C5B00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA2A2F1A0C5B00DF0F1E /* chests.json */; };
+		6753AA592F1DABAF00DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */; };
+		6753AA5A2F1DABAF00DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */; };
+		6753AA5B2F1DABAF00DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4F2F1DABAF00DF0F1E /* animals.json */; };
+		6753AA5C2F1DABAF00DF0F1E /* buildable_structures.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA502F1DABAF00DF0F1E /* buildable_structures.json */; };
+		6753AA5D2F1DABAF00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA512F1DABAF00DF0F1E /* chests.json */; };
+		6753AA5E2F1DABAF00DF0F1E /* classes.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA522F1DABAF00DF0F1E /* classes.json */; };
+		6753AA5F2F1DABAF00DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA532F1DABAF00DF0F1E /* enemies.json */; };
+		6753AA602F1DABAF00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA542F1DABAF00DF0F1E /* items.json */; };
+		6753AA612F1DABAF00DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA552F1DABAF00DF0F1E /* npcs.json */; };
+		6753AA622F1DABAF00DF0F1E /* races.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA562F1DABAF00DF0F1E /* races.json */; };
+		6753AA632F1DABAF00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA572F1DABAF00DF0F1E /* skills.json */; };
+		6753AA642F1DAE3C00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA542F1DABAF00DF0F1E /* items.json */; };
+		6753AA652F1DAE3C00DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA532F1DABAF00DF0F1E /* enemies.json */; };
+		6753AA662F1DAE3C00DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA552F1DABAF00DF0F1E /* npcs.json */; };
+		6753AA672F1DAE3C00DF0F1E /* buildable_structures.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA502F1DABAF00DF0F1E /* buildable_structures.json */; };
+		6753AA682F1DAE3C00DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4F2F1DABAF00DF0F1E /* animals.json */; };
+		6753AA692F1DAE3C00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA512F1DABAF00DF0F1E /* chests.json */; };
+		6753AA6A2F1DAE3C00DF0F1E /* races.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA562F1DABAF00DF0F1E /* races.json */; };
+		6753AA6B2F1DAE3C00DF0F1E /* classes.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA522F1DABAF00DF0F1E /* classes.json */; };
+		6753AA6C2F1DAE3C00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA572F1DABAF00DF0F1E /* skills.json */; };
+		6753AA6D2F1DAE3C00DF0F1E /* items.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA542F1DABAF00DF0F1E /* items.json */; };
+		6753AA6E2F1DAE3C00DF0F1E /* enemies.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA532F1DABAF00DF0F1E /* enemies.json */; };
+		6753AA6F2F1DAE3C00DF0F1E /* npcs.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA552F1DABAF00DF0F1E /* npcs.json */; };
+		6753AA702F1DAE3C00DF0F1E /* buildable_structures.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA502F1DABAF00DF0F1E /* buildable_structures.json */; };
+		6753AA712F1DAE3C00DF0F1E /* animals.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4F2F1DABAF00DF0F1E /* animals.json */; };
+		6753AA722F1DAE3C00DF0F1E /* chests.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA512F1DABAF00DF0F1E /* chests.json */; };
+		6753AA732F1DAE3C00DF0F1E /* races.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA562F1DABAF00DF0F1E /* races.json */; };
+		6753AA742F1DAE3C00DF0F1E /* classes.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA522F1DABAF00DF0F1E /* classes.json */; };
+		6753AA752F1DAE3C00DF0F1E /* skills.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA572F1DABAF00DF0F1E /* skills.json */; };
+		6753AA762F1DAE4200DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */; };
+		6753AA772F1DAE4200DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */; };
+		6753AA782F1DAE4200DF0F1E /* prefabs_desert.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */; };
+		6753AA792F1DAE4200DF0F1E /* prefabs_grassland.json in Resources */ = {isa = PBXBuildFile; fileRef = 6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */; };
+		6753AA7B2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
+		6753AA7C2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
+		6753AA7D2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
 		67C26A732F1334C400C97685 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A722F1334C400C97685 /* AppDelegate.swift */; };
 		67C26A752F1334C400C97685 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A742F1334C400C97685 /* GameViewController.swift */; };
 		67C26A782F1334C400C97685 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = 67C26A772F1334C400C97685 /* Base */; };
@@ -111,6 +123,9 @@
 		67C26AED2F1335D700C97685 /* GameUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AE62F1335D700C97685 /* GameUI.swift */; };
 		67C26AEE2F1335D700C97685 /* GameUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AE62F1335D700C97685 /* GameUI.swift */; };
 		67C26AEF2F1335D700C97685 /* GameUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AE62F1335D700C97685 /* GameUI.swift */; };
+		67C26AF02F1335D700C97685 /* CharacterUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF12F1335D700C97685 /* CharacterUI.swift */; };
+		67C26AF32F1335D700C97685 /* CharacterUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF12F1335D700C97685 /* CharacterUI.swift */; };
+		67C26AF42F1335D700C97685 /* CharacterUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF12F1335D700C97685 /* CharacterUI.swift */; };
 		67C26AF52F13363700C97685 /* StartScreenScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF42F13363700C97685 /* StartScreenScene.swift */; };
 		67C26AF62F13363700C97685 /* StartScreenScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF42F13363700C97685 /* StartScreenScene.swift */; };
 		67C26AF72F13363700C97685 /* StartScreenScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26AF42F13363700C97685 /* StartScreenScene.swift */; };
@@ -150,14 +165,18 @@
 		6753AA072F145E7F00DF0F1E /* GameScene_iOS.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GameScene_iOS.swift; path = "FableForge Shared/GameScene_iOS.swift"; sourceTree = SOURCE_ROOT; };
 		6753AA082F145E7F00DF0F1E /* GameScene_macOS.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GameScene_macOS.swift; path = "FableForge Shared/GameScene_macOS.swift"; sourceTree = SOURCE_ROOT; };
 		6753AA0F2F18C23000DF0F1E /* Interior1.tmx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = Interior1.tmx; sourceTree = "<group>"; };
-		6753AA132F1A03E500DF0F1E /* animals.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = animals.json; sourceTree = "<group>"; };
-		6753AA142F1A03E500DF0F1E /* npcs.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = npcs.json; sourceTree = "<group>"; };
-		6753AA152F1A03E500DF0F1E /* enemies.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = enemies.json; sourceTree = "<group>"; };
-		6753AA1F2F1A06AF00DF0F1E /* skills.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = skills.json; sourceTree = "<group>"; };
-		6753AA202F1A06AF00DF0F1E /* items.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = items.json; sourceTree = "<group>"; };
-		6753AA272F1A0C5B00DF0F1E /* prefabs_desert.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = prefabs_desert.json; sourceTree = "<group>"; };
-		6753AA282F1A0C5B00DF0F1E /* prefabs_grassland.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = prefabs_grassland.json; sourceTree = "<group>"; };
-		6753AA2A2F1A0C5B00DF0F1E /* chests.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = chests.json; sourceTree = "<group>"; };
+		6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = prefabs_desert.json; sourceTree = "<group>"; };
+		6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = prefabs_grassland.json; sourceTree = "<group>"; };
+		6753AA4F2F1DABAF00DF0F1E /* animals.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = animals.json; sourceTree = "<group>"; };
+		6753AA502F1DABAF00DF0F1E /* buildable_structures.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = buildable_structures.json; sourceTree = "<group>"; };
+		6753AA512F1DABAF00DF0F1E /* chests.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = chests.json; sourceTree = "<group>"; };
+		6753AA522F1DABAF00DF0F1E /* classes.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = classes.json; sourceTree = "<group>"; };
+		6753AA532F1DABAF00DF0F1E /* enemies.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = enemies.json; sourceTree = "<group>"; };
+		6753AA542F1DABAF00DF0F1E /* items.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = items.json; sourceTree = "<group>"; };
+		6753AA552F1DABAF00DF0F1E /* npcs.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = npcs.json; sourceTree = "<group>"; };
+		6753AA562F1DABAF00DF0F1E /* races.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = races.json; sourceTree = "<group>"; };
+		6753AA572F1DABAF00DF0F1E /* skills.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = skills.json; sourceTree = "<group>"; };
+		6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BuildUI.swift; sourceTree = "<group>"; };
 		67C26A672F1334C200C97685 /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
 		67C26A6A2F1334C400C97685 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		67C26A6F2F1334C400C97685 /* FableForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FableForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -190,6 +209,7 @@
 		67C26AE42F1335D700C97685 /* MenuStyling.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MenuStyling.swift; sourceTree = "<group>"; };
 		67C26AE52F1335D700C97685 /* CombatUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CombatUI.swift; sourceTree = "<group>"; };
 		67C26AE62F1335D700C97685 /* GameUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameUI.swift; sourceTree = "<group>"; };
+		67C26AF12F1335D700C97685 /* CharacterUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CharacterUI.swift; sourceTree = "<group>"; };
 		67C26AF42F13363700C97685 /* StartScreenScene.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StartScreenScene.swift; sourceTree = "<group>"; };
 		67C26AFC2F13365500C97685 /* Exterior.tmx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = Exterior.tmx; sourceTree = "<group>"; };
 		67C26B002F13365B00C97685 /* CombatScene.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CombatScene.swift; sourceTree = "<group>"; };
@@ -227,13 +247,30 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		6753AA292F1A0C5B00DF0F1E /* Maps */ = {
+		6753AA4E2F1DABAF00DF0F1E /* Maps */ = {
 			isa = PBXGroup;
 			children = (
-				6753AA272F1A0C5B00DF0F1E /* prefabs_desert.json */,
-				6753AA282F1A0C5B00DF0F1E /* prefabs_grassland.json */,
+				6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */,
+				6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */,
 			);
 			path = Maps;
+			sourceTree = "<group>";
+		};
+		6753AA582F1DABAF00DF0F1E /* Prefabs */ = {
+			isa = PBXGroup;
+			children = (
+				6753AA4E2F1DABAF00DF0F1E /* Maps */,
+				6753AA4F2F1DABAF00DF0F1E /* animals.json */,
+				6753AA502F1DABAF00DF0F1E /* buildable_structures.json */,
+				6753AA512F1DABAF00DF0F1E /* chests.json */,
+				6753AA522F1DABAF00DF0F1E /* classes.json */,
+				6753AA532F1DABAF00DF0F1E /* enemies.json */,
+				6753AA542F1DABAF00DF0F1E /* items.json */,
+				6753AA552F1DABAF00DF0F1E /* npcs.json */,
+				6753AA562F1DABAF00DF0F1E /* races.json */,
+				6753AA572F1DABAF00DF0F1E /* skills.json */,
+			);
+			path = Prefabs;
 			sourceTree = "<group>";
 		};
 		67C26A612F1334C200C97685 = {
@@ -250,10 +287,10 @@
 		67C26A662F1334C200C97685 /* FableForge Shared */ = {
 			isa = PBXGroup;
 			children = (
+				6753AA582F1DABAF00DF0F1E /* Prefabs */,
 				67C26AB12F13353A00C97685 /* Models */,
 				67C26AB22F13356100C97685 /* Systems */,
 				67C26AB32F13356900C97685 /* UI */,
-				67C26AB42F13357000C97685 /* Prefabs */,
 				67C26A672F1334C200C97685 /* Actions.sks */,
 				67C26AFC2F13365500C97685 /* Exterior.tmx */,
 				6753AA0F2F18C23000DF0F1E /* Interior1.tmx */,
@@ -348,25 +385,13 @@
 		67C26AB32F13356900C97685 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */,
 				67C26AE52F1335D700C97685 /* CombatUI.swift */,
 				67C26AE62F1335D700C97685 /* GameUI.swift */,
+				67C26AF12F1335D700C97685 /* CharacterUI.swift */,
 				67C26AE42F1335D700C97685 /* MenuStyling.swift */,
 			);
 			path = UI;
-			sourceTree = "<group>";
-		};
-		67C26AB42F13357000C97685 /* Prefabs */ = {
-			isa = PBXGroup;
-			children = (
-				6753AA292F1A0C5B00DF0F1E /* Maps */,
-				6753AA2A2F1A0C5B00DF0F1E /* chests.json */,
-				6753AA202F1A06AF00DF0F1E /* items.json */,
-				6753AA1F2F1A06AF00DF0F1E /* skills.json */,
-				6753AA132F1A03E500DF0F1E /* animals.json */,
-				6753AA152F1A03E500DF0F1E /* enemies.json */,
-				6753AA142F1A03E500DF0F1E /* npcs.json */,
-			);
-			path = Prefabs;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -469,20 +494,23 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6753AA622F1DABAF00DF0F1E /* races.json in Resources */,
 				67C26A782F1334C400C97685 /* Base in Resources */,
-				6753AA192F1A03E500DF0F1E /* npcs.json in Resources */,
-				6753AA242F1A06AF00DF0F1E /* items.json in Resources */,
+				6753AA592F1DABAF00DF0F1E /* prefabs_desert.json in Resources */,
+				6753AA602F1DABAF00DF0F1E /* items.json in Resources */,
+				6753AA5E2F1DABAF00DF0F1E /* classes.json in Resources */,
 				67C26AFD2F13365500C97685 /* Exterior.tmx in Resources */,
+				6753AA5D2F1DABAF00DF0F1E /* chests.json in Resources */,
+				6753AA612F1DABAF00DF0F1E /* npcs.json in Resources */,
 				67C26A9A2F1334C500C97685 /* Actions.sks in Resources */,
-				6753AA1C2F1A03E500DF0F1E /* enemies.json in Resources */,
+				6753AA632F1DABAF00DF0F1E /* skills.json in Resources */,
 				67C26A7B2F1334C400C97685 /* Base in Resources */,
 				67C26AA32F1334C500C97685 /* Assets.xcassets in Resources */,
-				6753AA2B2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */,
+				6753AA5C2F1DABAF00DF0F1E /* buildable_structures.json in Resources */,
+				6753AA5F2F1DABAF00DF0F1E /* enemies.json in Resources */,
+				6753AA5B2F1DABAF00DF0F1E /* animals.json in Resources */,
 				6753AA102F18C23000DF0F1E /* Interior1.tmx in Resources */,
-				6753AA162F1A03E500DF0F1E /* animals.json in Resources */,
-				6753AA212F1A06AF00DF0F1E /* skills.json in Resources */,
-				6753AA2E2F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */,
-				6753AA312F1A0C5B00DF0F1E /* chests.json in Resources */,
+				6753AA5A2F1DABAF00DF0F1E /* prefabs_grassland.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -491,19 +519,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				67C26A882F1334C500C97685 /* Base in Resources */,
-				6753AA1A2F1A03E500DF0F1E /* npcs.json in Resources */,
-				6753AA252F1A06AF00DF0F1E /* items.json in Resources */,
 				67C26AFE2F13365500C97685 /* Exterior.tmx in Resources */,
 				67C26A9B2F1334C500C97685 /* Actions.sks in Resources */,
-				6753AA1D2F1A03E500DF0F1E /* enemies.json in Resources */,
+				6753AA762F1DAE4200DF0F1E /* prefabs_desert.json in Resources */,
+				6753AA772F1DAE4200DF0F1E /* prefabs_grassland.json in Resources */,
+				6753AA642F1DAE3C00DF0F1E /* items.json in Resources */,
+				6753AA652F1DAE3C00DF0F1E /* enemies.json in Resources */,
+				6753AA662F1DAE3C00DF0F1E /* npcs.json in Resources */,
+				6753AA672F1DAE3C00DF0F1E /* buildable_structures.json in Resources */,
+				6753AA682F1DAE3C00DF0F1E /* animals.json in Resources */,
+				6753AA692F1DAE3C00DF0F1E /* chests.json in Resources */,
+				6753AA6A2F1DAE3C00DF0F1E /* races.json in Resources */,
+				6753AA6B2F1DAE3C00DF0F1E /* classes.json in Resources */,
+				6753AA6C2F1DAE3C00DF0F1E /* skills.json in Resources */,
 				67C26A8B2F1334C500C97685 /* Base in Resources */,
 				67C26AA42F1334C500C97685 /* Assets.xcassets in Resources */,
-				6753AA2C2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */,
 				6753AA112F18C23000DF0F1E /* Interior1.tmx in Resources */,
-				6753AA172F1A03E500DF0F1E /* animals.json in Resources */,
-				6753AA222F1A06AF00DF0F1E /* skills.json in Resources */,
-				6753AA2F2F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */,
-				6753AA322F1A0C5B00DF0F1E /* chests.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -511,19 +542,22 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6753AA1B2F1A03E500DF0F1E /* npcs.json in Resources */,
-				6753AA232F1A06AF00DF0F1E /* skills.json in Resources */,
 				67C26A982F1334C500C97685 /* Base in Resources */,
-				6753AA182F1A03E500DF0F1E /* animals.json in Resources */,
 				6753AA122F18C23000DF0F1E /* Interior1.tmx in Resources */,
 				67C26AFF2F13365500C97685 /* Exterior.tmx in Resources */,
-				6753AA332F1A0C5B00DF0F1E /* chests.json in Resources */,
 				67C26AA52F1334C500C97685 /* Assets.xcassets in Resources */,
+				6753AA6D2F1DAE3C00DF0F1E /* items.json in Resources */,
+				6753AA6E2F1DAE3C00DF0F1E /* enemies.json in Resources */,
+				6753AA6F2F1DAE3C00DF0F1E /* npcs.json in Resources */,
+				6753AA702F1DAE3C00DF0F1E /* buildable_structures.json in Resources */,
+				6753AA712F1DAE3C00DF0F1E /* animals.json in Resources */,
+				6753AA722F1DAE3C00DF0F1E /* chests.json in Resources */,
+				6753AA782F1DAE4200DF0F1E /* prefabs_desert.json in Resources */,
+				6753AA792F1DAE4200DF0F1E /* prefabs_grassland.json in Resources */,
+				6753AA732F1DAE3C00DF0F1E /* races.json in Resources */,
+				6753AA742F1DAE3C00DF0F1E /* classes.json in Resources */,
+				6753AA752F1DAE3C00DF0F1E /* skills.json in Resources */,
 				67C26A9C2F1334C500C97685 /* Actions.sks in Resources */,
-				6753AA262F1A06AF00DF0F1E /* items.json in Resources */,
-				6753AA1E2F1A03E500DF0F1E /* enemies.json in Resources */,
-				6753AA302F1A0C5B00DF0F1E /* prefabs_grassland.json in Resources */,
-				6753AA2D2F1A0C5B00DF0F1E /* prefabs_desert.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -542,6 +576,7 @@
 				67C26AD22F1335CD00C97685 /* SaveManager.swift in Sources */,
 				6753AA042F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AED2F1335D700C97685 /* GameUI.swift in Sources */,
+				67C26AF02F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA092F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B092F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
 				67C26B012F13365B00C97685 /* CombatScene.swift in Sources */,
@@ -549,6 +584,7 @@
 				6753AA0C2F145E8000DF0F1E /* GameScene_macOS.swift in Sources */,
 				67C26ABC2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A732F1334C400C97685 /* AppDelegate.swift in Sources */,
+				6753AA7B2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
 				67C26ADB2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC22F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE72F1335D700C97685 /* MenuStyling.swift in Sources */,
@@ -580,6 +616,7 @@
 				67C26AD32F1335CD00C97685 /* SaveManager.swift in Sources */,
 				6753AA052F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AEE2F1335D700C97685 /* GameUI.swift in Sources */,
+				67C26AF32F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA0A2F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B0A2F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
 				67C26B022F13365B00C97685 /* CombatScene.swift in Sources */,
@@ -587,6 +624,7 @@
 				6753AA0D2F145E8000DF0F1E /* GameScene_macOS.swift in Sources */,
 				67C26ABD2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A832F1334C500C97685 /* AppDelegate.swift in Sources */,
+				6753AA7C2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
 				67C26ADC2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC32F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE82F1335D700C97685 /* MenuStyling.swift in Sources */,
@@ -618,6 +656,7 @@
 				67C26AD42F1335CD00C97685 /* SaveManager.swift in Sources */,
 				6753AA062F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AEF2F1335D700C97685 /* GameUI.swift in Sources */,
+				67C26AF42F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA0B2F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B0B2F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
 				67C26B032F13365B00C97685 /* CombatScene.swift in Sources */,
@@ -625,6 +664,7 @@
 				6753AA0E2F145E8000DF0F1E /* GameScene_macOS.swift in Sources */,
 				67C26ABE2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A932F1334C500C97685 /* AppDelegate.swift in Sources */,
+				6753AA7D2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
 				67C26ADD2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC42F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE92F1335D700C97685 /* MenuStyling.swift in Sources */,

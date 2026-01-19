@@ -13,7 +13,12 @@
       "range": 1,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "claw",
@@ -28,7 +33,12 @@
       "range": 1,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "charge",
@@ -43,7 +53,12 @@
       "range": 1,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal", "player"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": ["fighter", "barbarian", "paladin"],
+      "races": []
     },
     {
       "id": "pounce",
@@ -58,7 +73,12 @@
       "range": 2,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal", "player"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": ["rogue", "ranger"],
+      "races": []
     },
     {
       "id": "howl",
@@ -80,7 +100,12 @@
         }
       ],
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "roar",
@@ -102,7 +127,12 @@
         }
       ],
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "dive",
@@ -117,7 +147,12 @@
       "range": 2,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "tackle",
@@ -132,7 +167,12 @@
       "range": 1,
       "effects": null,
       "targetType": "enemy",
-      "animationId": null
+      "animationId": null,
+      "allowedOwners": ["animal"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": [],
+      "races": []
     },
     {
       "id": "fireball",
@@ -171,7 +211,12 @@
         }
       ],
       "size": {"width": 96, "height": 96},
-      "zPosition": 100
+      "zPosition": 100,
+      "allowedOwners": ["player", "npc"],
+      "animationTileSet": "exterior-3000,exterior-3001,exterior-3002,exterior-3003,exterior-3004,exterior-3005,exterior-3006,exterior-3007,exterior-3008",
+      "iconTileSet": "exterior-3004",
+      "classes": ["wizard", "sorcerer"],
+      "races": []
     },
     {
       "id": "heal",
@@ -210,7 +255,12 @@
         }
       ],
       "size": {"width": 96, "height": 96},
-      "zPosition": 100
+      "zPosition": 100,
+      "allowedOwners": ["player", "npc"],
+      "animationTileSet": "exterior-3100,exterior-3101,exterior-3102,exterior-3103,exterior-3104",
+      "iconTileSet": "exterior-3102",
+      "classes": ["cleric", "paladin", "ranger"],
+      "races": []
     },
     {
       "id": "power_strike",
@@ -225,7 +275,12 @@
       "range": 1,
       "effects": null,
       "targetType": "enemy",
-      "animationId": "power_strike"
+      "animationId": "power_strike",
+      "allowedOwners": ["player"],
+      "animationTileSet": null,
+      "iconTileSet": null,
+      "classes": ["fighter", "paladin", "barbarian"],
+      "races": []
     }
   ]
 }

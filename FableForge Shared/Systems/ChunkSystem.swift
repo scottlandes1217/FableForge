@@ -440,7 +440,7 @@ class ChunkManager {
         
         // Debug: Log chunk rendering summary
         if tilesRendered > 0 || tilesFailed > 0 {
-            print("📊 Chunk (\(chunkData.chunkKey.x), \(chunkData.chunkKey.y)) rendered: \(tilesRendered) tiles, \(tilesFailed) failed")
+            // Chunk rendered (debug log removed for performance)
             if !gidCounts.isEmpty {
                 let topGIDs = gidCounts.sorted { $0.value > $1.value }.prefix(5)
                 print("   Top GIDs used: \(topGIDs.map { "GID \($0.key): \($0.value)" }.joined(separator: ", "))")
@@ -448,27 +448,228 @@ class ChunkManager {
         }
         
         // Render entities below player
-        renderEntities(chunkData.entitiesBelow, in: entitiesBelowNode, tileSize: tileSize)
+        // CORRECT: Low parts (trunk/bottom) go to entitiesBelow (zPosition 40, BEHIND player)
+        //          High parts (canopy/top) go to entitiesAbove (zPosition 110, IN FRONT of player)
+        renderEntities(chunkData.entitiesBelow, lowContainer: entitiesBelowNode, highContainer: entitiesAboveNode, tileSize: tileSize)
         
-        // Render entities above player
-        renderEntities(chunkData.entitiesAbove, in: entitiesAboveNode, tileSize: tileSize)
+        // Render entities above player (only high parts, all go to entitiesAbove)
+        renderEntities(chunkData.entitiesAbove, lowContainer: entitiesBelowNode, highContainer: entitiesAboveNode, tileSize: tileSize)
     }
     
     /// Render entities using PrefabFactory
-    private func renderEntities(_ entities: [ProceduralEntity], in container: SKNode, tileSize: CGFloat) {
-        let containerName = container.name ?? "unknown"
-        let containerZPos = container.zPosition
+    /// Properly separates low and high layer parts into appropriate containers
+    /// CORRECT: Low parts (trunk/bottom) go to entitiesBelow (zPosition 40, BEHIND player)
+    ///          High parts (canopy/top) go to entitiesAbove (zPosition 110, IN FRONT of player)
+    private func renderEntities(_ entities: [ProceduralEntity], lowContainer: SKNode, highContainer: SKNode, tileSize: CGFloat) {
         for entity in entities {
-            let sprites = PrefabFactory.shared.createEntitySprites(entity, tileSize: tileSize)
-            for sprite in sprites {
-                container.addChild(sprite)
+            // Get sprites separated by layer
+            let (lowSprites, highSprites) = PrefabFactory.shared.createEntitySpritesByLayer(entity, tileSize: tileSize)
+            
+            // Debug: Log layer assignment for trees
+            if entity.type == .tree {
+                print("🌳 Tree entity '\(entity.prefabId)': \(lowSprites.count) low sprites, \(highSprites.count) high sprites")
+            }
+            
+            // Create container node for physics body (only needed if entity has collision)
+            var physicsContainer: SKNode? = nil
+            
+            // CORRECT: Low parts (trunk/bottom) should be BEHIND player (zPosition 40)
+            //          High parts (canopy/top) should be IN FRONT of player (zPosition 110)
+            // Note: "low" in JSON = bottom/trunk, "high" in JSON = top/canopy
+            
+            // Low parts (trunk/bottom) go to lowContainer which is entitiesBelowNode (zPosition 40 = behind player)
+            // CRITICAL: For trees, lowSprites are the TRUNK sprites (from "layer": "low" in JSON)
+            if !lowSprites.isEmpty {
+                // Create container for low parts (for physics body attachment)
+                let lowEntityContainer = SKNode()
+                lowEntityContainer.position = entity.position
+                lowEntityContainer.name = "entity_\(entity.prefabId)_low"
+                lowEntityContainer.zPosition = 0  // Inherit from parent (entitiesBelowNode has zPosition 40)
                 
-                // Add physics body if needed (for collision)
-                if let physicsBody = PrefabFactory.shared.createPhysicsBody(entity, tileSize: tileSize) {
-                    physicsBody.isDynamic = false  // Static collision
-                    physicsBody.categoryBitMask = 0x1  // Collision category (can be customized)
-                    sprite.physicsBody = physicsBody
+                // Add sprites to container, adjusting positions to be relative to container
+                // CRITICAL: These sprites are the TRUNK sprites (lowSprites from "layer": "low")
+                for sprite in lowSprites {
+                    // Convert from world coordinates to container-relative coordinates
+                    // Sprites were created at: entity.position + part.offset + tileOffset
+                    // Trunk part has offset (0, 0), so sprites are at: entity.position + tileOffset
+                    // After conversion: tileOffset (relative to container)
+                    sprite.position = CGPoint(
+                        x: sprite.position.x - entity.position.x,
+                        y: sprite.position.y - entity.position.y
+                    )
+                    sprite.zPosition = 0  // Ensure sprites inherit container zPosition
+                    lowEntityContainer.addChild(sprite)
                 }
+                
+                // Add to entitiesBelow container (behind player)
+                lowContainer.addChild(lowEntityContainer)
+                // CRITICAL: Set physicsContainer to trunk container for trees
+                // This ensures physics and debug boxes are on the trunk, not canopy
+                physicsContainer = lowEntityContainer  // Use low container for physics
+            }
+            
+            // High parts (canopy/top) go to highContainer which is entitiesAboveNode (zPosition 110 = in front of player)
+            if !highSprites.isEmpty {
+                // Create container for high parts
+                let highEntityContainer = SKNode()
+                highEntityContainer.position = entity.position
+                highEntityContainer.name = "entity_\(entity.prefabId)_high"
+                highEntityContainer.zPosition = 0  // Inherit from parent (entitiesAboveNode has zPosition 110)
+                
+                // Add sprites to container, adjusting positions to be relative to container
+                for sprite in highSprites {
+                    // Convert from world coordinates to container-relative coordinates
+                    sprite.position = CGPoint(
+                        x: sprite.position.x - entity.position.x,
+                        y: sprite.position.y - entity.position.y
+                    )
+                    sprite.zPosition = 0  // Ensure sprites inherit container zPosition
+                    highEntityContainer.addChild(sprite)
+                }
+                
+                // Add to entitiesAbove container (in front of player)
+                highContainer.addChild(highEntityContainer)
+                
+                // If no low container was created, use high container for physics
+                if physicsContainer == nil {
+                    physicsContainer = highEntityContainer
+                }
+            }
+            
+            // Add physics body to container (only once per entity)
+            // IMPORTANT: For trees, physics should be on the LOW container (trunk), not high container (canopy)
+            if let container = physicsContainer {
+                // CRITICAL: For trees, verify we're using the LOW container (trunk), not high container (canopy)
+                if entity.type == .tree {
+                    let expectedLowContainerName = "entity_\(entity.prefabId)_low"
+                    if container.name != expectedLowContainerName {
+                        print("⚠️ ERROR: Tree physics body is being added to WRONG container!")
+                        print("   Expected: '\(expectedLowContainerName)' (trunk)")
+                        print("   Actual: '\(container.name ?? "unknown")'")
+                        print("   This is a BUG - physics and debug boxes will be in wrong location!")
+                        // Try to find the correct container
+                        if let correctContainer = lowContainer.children.first(where: { ($0.name ?? "") == expectedLowContainerName }) {
+                            print("   Found correct container: '\(correctContainer.name ?? "unknown")'")
+                            // Use the correct container instead
+                            // NOTE: We can't change container here because it's used later
+                            // But we can log it for debugging
+                        }
+                    } else {
+                        print("   ✅ Using correct trunk container: '\(container.name ?? "unknown")'")
+                    }
+                }
+                
+                if let physicsBody = PrefabFactory.shared.createPhysicsBody(entity, tileSize: tileSize) {
+                    physicsBody.isDynamic = false
+                    physicsBody.categoryBitMask = 0x1
+                    physicsBody.collisionBitMask = 0xFFFFFFFF  // Collide with everything
+                    physicsBody.contactTestBitMask = 0x0  // Don't need contact callbacks
+                    
+                    // Calculate collision box position based on actual sprite positions
+                    // This ensures collision boxes align with visual sprites for ALL entity types
+                    var collisionX: CGFloat = 0
+                    var collisionY: CGFloat = 0
+                    var bodySize: CGSize
+                    
+                    // Get collision size from prefab definition
+                    let sourceTileSize: CGFloat = 16.0
+                    let scale = tileSize / sourceTileSize
+                    
+                    if let prefab = PrefabFactory.shared.getPrefab(entity.prefabId) {
+                        // Use the prefab's collision spec to get the correct size
+                        switch prefab.collisionShape {
+                        case .rectangle(let size):
+                            bodySize = CGSize(width: size.width * scale, height: size.height * scale)
+                        case .circle(let radius):
+                            bodySize = CGSize(width: radius * 2 * scale, height: radius * 2 * scale)
+                        case .none:
+                            bodySize = CGSize(width: 32 * scale, height: 32 * scale) // Default
+                        }
+                    } else {
+                        // Fallback if prefab not found
+                        bodySize = CGSize(width: 48 * scale, height: 32 * scale)
+                    }
+                    
+                    // Calculate bounding box from sprites in the container
+                    // CRITICAL: Use the actual sprites IN THE CONTAINER, not the lowSprites array
+                    // The container sprites have already been converted to container-relative coordinates
+                    // at lines 491-502, so their positions are correct for bounding box calculation
+                    let spritesToUse = container.children.compactMap { $0 as? SKSpriteNode }
+                    
+                    // Verify we have sprites and log container info
+                    print("🔍 Container '\(container.name ?? "unknown")' has \(container.children.count) children (\(spritesToUse.count) sprites)")
+                    if entity.type == .tree {
+                        print("   Expected for tree: trunk sprites (low layer) in container")
+                        print("   lowSprites count: \(lowSprites.count), container sprites: \(spritesToUse.count)")
+                    }
+                    
+                    if !spritesToUse.isEmpty {
+                        // Calculate bounding box from sprites
+                        // Sprites use anchorPoint (0, 1) = top-left, so they extend down and right
+                        var minX: CGFloat = CGFloat.greatestFiniteMagnitude
+                        var maxX: CGFloat = -CGFloat.greatestFiniteMagnitude
+                        var minY: CGFloat = CGFloat.greatestFiniteMagnitude
+                        var maxY: CGFloat = -CGFloat.greatestFiniteMagnitude
+                        
+                        print("🔍 Calculating collision box for entity '\(entity.prefabId)' using \(spritesToUse.count) sprites")
+                        
+                        for (index, sprite) in spritesToUse.enumerated() {
+                            // Sprites use anchorPoint (0, 1) = top-left
+                            // So sprite.position is the TOP-LEFT corner
+                            let spriteLeft = sprite.position.x
+                            let spriteRight = sprite.position.x + sprite.size.width
+                            let spriteTop = sprite.position.y
+                            let spriteBottom = sprite.position.y - sprite.size.height
+                            
+                            if entity.type == .tree && index < 3 {
+                                print("   Tree sprite \(index): pos=(\(sprite.position.x), \(sprite.position.y)), size=(\(sprite.size.width), \(sprite.size.height)), bounds=(\(spriteLeft), \(spriteBottom)) to (\(spriteRight), \(spriteTop))")
+                            }
+                            
+                            minX = min(minX, spriteLeft)
+                            maxX = max(maxX, spriteRight)
+                            minY = min(minY, spriteBottom)
+                            maxY = max(maxY, spriteTop)
+                        }
+                        
+                        print("   Sprite bounds: x=[\(minX), \(maxX)], y=[\(minY), \(maxY)]")
+                        print("   Body size: \(bodySize)")
+                        
+                        // Position collision box at center-bottom of visual sprites
+                        collisionX = (minX + maxX) / 2
+                        // Position at bottom: since physics body is centered, position its center
+                        // at minY + bodySize.height/2 so its bottom edge aligns with sprite bottom
+                        // For trees, ensure collision is at the base of the trunk
+                        if entity.type == .tree {
+                            // For trees, position collision box bottom at minY (bottom of trunk sprites)
+                            // Physics body is centered, so position center at minY + bodySize.height/2
+                            collisionY = minY + bodySize.height / 2
+                            print("   Tree collision Y calculation: minY=\(minY), bodyHeight=\(bodySize.height), collisionY=\(collisionY) (center of box, bottom at \(collisionY - bodySize.height/2))")
+                        } else {
+                            // For other entities, same calculation
+                            collisionY = minY + bodySize.height / 2
+                        }
+                        
+                        print("   Collision box position (local): (\(collisionX), \(collisionY))")
+                        print("   Container position: (\(container.position.x), \(container.position.y))")
+                        print("   Collision box position (world): (\(container.position.x + collisionX), \(container.position.y + collisionY))")
+                        
+                        // Create physics node and position it
+                        let physicsNode = SKNode()
+                        physicsNode.position = CGPoint(x: collisionX, y: collisionY)
+                        physicsNode.physicsBody = physicsBody
+                        container.addChild(physicsNode)
+                    } else {
+                        // No sprites found - fallback to attaching directly to container
+                        container.physicsBody = physicsBody
+                    }
+                } else {
+                    // Debug: Log when physics body creation fails
+                    if entity.type == .tree {
+                        print("⚠️ Failed to create physics body for tree '\(entity.prefabId)'")
+                    }
+                }
+            } else if entity.type == .tree {
+                print("⚠️ No physics container created for tree '\(entity.prefabId)' (no sprites?)")
             }
         }
     }

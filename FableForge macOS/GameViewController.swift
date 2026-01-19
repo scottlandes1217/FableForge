@@ -30,6 +30,9 @@ class GameViewController: NSViewController {
         // Forward scroll wheel events to the scene
         if let scene = (self.view as? SKView)?.scene as? StartScreenScene {
             scene.scrollWheel(with: event)
+        } else if let scene = (self.view as? SKView)?.scene as? GameScene {
+            // Forward to GameScene for BuildUI scrolling
+            scene.scrollWheel(with: event)
         }
     }
 

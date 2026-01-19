@@ -44,6 +44,32 @@
     "waterFeatures": {
       "type": "rivers",
       "density": "medium"
+    },
+    "exitConfig": {
+      "hasExit": true,
+      "exits": [
+        {
+          "x": 0,
+          "y": -2,
+          "tileGID": null,
+          "targetPrefabFile": null,
+          "targetEntryOffset": null,
+          "targetTmxFile": "Exterior",
+          "targetDoorId": "exit_02"
+        },
+        {
+          "x": -3,
+          "y": 0,
+          "tileGID": null,
+          "targetPrefabFile": "prefabs_grassland",
+          "targetEntryOffset": {
+            "x": 0,
+            "y": 2
+          },
+          "targetTmxFile": null,
+          "targetDoorId": null
+        }
+      ]
     }
   },
   "prefabs": [

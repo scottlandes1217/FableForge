@@ -19,9 +19,11 @@ enum StructureType: String, CaseIterable, Codable {
     case gate = "Gate"
     
     var requiredMaterials: [MaterialType: Int] {
+        // DEPRECATED: Requirements are now loaded from JSON (buildable_structures.json)
+        // This is kept for backwards compatibility only
         switch self {
         case .farm:
-            return [.wood: 10, .rope: 2]
+            return [.wood: 10] // JSON: 10 Wood only
         case .shelter:
             return [.wood: 15, .cloth: 5]
         case .barn:

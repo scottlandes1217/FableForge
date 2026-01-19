@@ -18,6 +18,71 @@ extension GameScene {
         let cameraLocation = convert(location, to: camera)
         touchStartLocation = cameraLocation
         
+        // Handle CharacterUI touches FIRST (if visible, it takes priority over everything)
+        // Check ALL nodes at this location FIRST to see if any are CharacterUI-related
+        let allNodesAtLocation = nodes(at: location)
+        var foundCharacterUINode = false
+        var characterUINodeNames: [String] = []
+        for node in allNodesAtLocation {
+            var currentNode: SKNode? = node
+            while let current = currentNode {
+                if let name = current.name {
+                    if name == "characterUIPanel" || 
+                       name == "closeCharacterUI" ||
+                       name.hasPrefix("tabButton_") ||
+                       name.hasPrefix("learnButton_") ||
+                       name.hasPrefix("increaseButton_") {
+                        foundCharacterUINode = true
+                        characterUINodeNames.append(name)
+                        break
+                    }
+                }
+                currentNode = current.parent
+            }
+            if foundCharacterUINode { break }
+        }
+        
+        // If we found any CharacterUI node, process CharacterUI touches and return
+        if foundCharacterUINode {
+            // Check if the panel still exists (if it was just closed, it might be gone)
+            let panelExists = camera.childNode(withName: "characterUIPanel") != nil
+            
+            if let characterUI = characterUI, characterUI.isVisible && panelExists {
+                if characterUI.handleTouch(at: cameraLocation) {
+                    return // Touch was handled by CharacterUI
+                }
+            }
+            
+            // If panel doesn't exist or CharacterUI isn't visible, allow other buttons to be processed
+            // (the CharacterUI was likely just closed)
+            if !panelExists {
+                // Continue to button processing below
+            } else {
+                // Panel exists but CharacterUI didn't handle it - block other buttons
+                return
+            }
+        }
+        
+        // Check if panel exists and contains the touch
+        if let panel = camera.childNode(withName: "characterUIPanel") {
+            if panel.contains(cameraLocation) {
+                // Touch is within CharacterUI panel - only process CharacterUI touches
+                if let characterUI = characterUI, characterUI.isVisible {
+                    if characterUI.handleTouch(at: cameraLocation) {
+                        return // Touch was handled by CharacterUI
+                    }
+                }
+                // Even if not handled or not visible, don't process other buttons if touch is in CharacterUI panel area
+                return
+            }
+        }
+        
+        // If CharacterUI is visible but touch is outside panel, still don't process other UI buttons
+        // (CharacterUI takes full priority when visible)
+        if let characterUI = characterUI, characterUI.isVisible {
+            return
+        }
+        
         // Check if touching UI elements (panels are children of camera)
         if let inventoryPanel = camera.childNode(withName: "inventoryPanel") {
             let cameraLocation = convert(location, to: camera)
@@ -27,10 +92,9 @@ extension GameScene {
             }
         }
         
-        if let buildPanel = camera.childNode(withName: "buildPanel") {
-            let cameraLocation = convert(location, to: camera)
-            if buildPanel.contains(cameraLocation) {
-                handleBuildPanelTouch(at: location, in: buildPanel)
+        // Handle BuildUI touches
+        if let buildUI = buildUI, buildUI.isVisible {
+            if buildUI.handleTouch(at: location) {
                 return
             }
         }
@@ -62,28 +126,69 @@ extension GameScene {
         // Check for UI buttons using nodes(at:) for reliable hit-testing
         let touchedNodes = nodes(at: location)
         
-        // Helper closure to see if any touched node (or its parent) matches a name
-        func didTouch(nodeNamed targetName: String) -> Bool {
-            return touchedNodes.contains { node in
-                node.name == targetName || node.parent?.name == targetName
+        // Helper function to check if a node is part of CharacterUI
+        func isCharacterUINode(_ node: SKNode) -> Bool {
+            var currentNode: SKNode? = node
+            while let current = currentNode {
+                if current.name == "characterUIPanel" || current.name == "closeCharacterUI" {
+                    return true
+                }
+                currentNode = current.parent
+            }
+            return false
+        }
+        
+        // Filter out any CharacterUI nodes from touched nodes
+        let filteredNodes = touchedNodes.filter { !isCharacterUINode($0) }
+        
+        // Use atPoint to get the SINGLE topmost node at this location
+        // This ensures only one button is processed
+        let topmostNode = camera.atPoint(cameraLocation)
+        
+        // Helper function to find button name by traversing up the node tree
+        func findButtonName(startingFrom node: SKNode) -> String? {
+            var currentNode: SKNode? = node
+            while let current = currentNode {
+                if let name = current.name, 
+                   (name == "characterButton" || name == "inventoryButton" || 
+                    name == "buildButton" || name == "settingsButton") {
+                    return name
+                }
+                currentNode = current.parent
+            }
+            return nil
+        }
+        
+        // Process only the topmost button
+        if let buttonName = findButtonName(startingFrom: topmostNode) {
+            switch buttonName {
+            case "characterButton":
+                print("[GameScene] Character button touched (topmost node)")
+                if let player = gameState?.player {
+                    characterUI?.toggle(player: player)
+                }
+                return
+            case "inventoryButton":
+                print("[GameScene] Inventory button touched (topmost node)")
+                showInventory()
+                return
+            case "buildButton":
+                print("[GameScene] Build button touched (topmost node)")
+                showBuildMenu()
+                return
+            case "settingsButton":
+                print("[GameScene] Settings button touched (topmost node)")
+                showSettings()
+                return
+            default:
+                break
             }
         }
         
-        if didTouch(nodeNamed: "inventoryButton") {
-            print("[GameScene] Inventory button touched")
-            showInventory()
-            return
-        }
-        
-        if didTouch(nodeNamed: "buildButton") {
-            print("[GameScene] Build button touched")
-            showBuildMenu()
-            return
-        }
-        
-        if didTouch(nodeNamed: "settingsButton") {
-            print("[GameScene] Settings button touched")
-            showSettings()
+        // Handle build placement mode touches
+        if isBuildPlacementMode {
+            // Update placement preview position
+            updatePlacementPreview(at: location)
             return
         }
         
@@ -101,8 +206,22 @@ extension GameScene {
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first, let camera = cameraNode else { return }
+        guard let touch = touches.first else { return }
         let location = touch.location(in: self)
+        
+        // Handle build placement mode - update preview position
+        if isBuildPlacementMode {
+            updatePlacementPreview(at: location)
+            return
+        }
+        
+        // Handle BuildUI scrolling
+        if let buildUI = buildUI, buildUI.isVisible {
+            buildUI.handleTouchMoved(at: location)
+            return
+        }
+        
+        guard let camera = cameraNode else { return }
         let cameraLocation = convert(location, to: camera)
         
         // Handle drag and drop if already dragging
@@ -157,7 +276,7 @@ extension GameScene {
                         if let itemContainer = inventoryPanel.childNode(withName: "//itemContainer_\(index)") {
                             draggedItemNode = itemContainer.copy() as? SKNode
                             draggedItemNode?.alpha = 0.7
-                            draggedItemNode?.zPosition = 500
+                            draggedItemNode?.zPosition = 6000 // Above inventory panel (2000), context menu (5000), but below messages (10000)
                             draggedItemNode?.position = cameraLocation
                             camera.addChild(draggedItemNode!)
                         }
@@ -195,6 +314,20 @@ extension GameScene {
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Handle build placement mode
+        if isBuildPlacementMode, let touch = touches.first {
+            let location = touch.location(in: self)
+            placeStructureAtPosition(location)
+            return
+        }
+        
+        // Handle BuildUI touch end
+        if let buildUI = buildUI, buildUI.isVisible {
+            if buildUI.handleTouchEnded(at: location) {
+                return
+            }
+        }
+        
         // Handle drag and drop end
         if let draggedIndex = draggedItemIndex, let draggedNode = draggedItemNode,
            let touch = touches.first, let camera = cameraNode {
@@ -338,7 +471,10 @@ extension GameScene {
         if let closeButton = touchedNodes.first(where: { findNodeWithName("closeInventory", startingFrom: $0) != nil }) {
             if findNodeWithName("closeInventory", startingFrom: closeButton) != nil {
                 panel.removeFromParent()
-                isGamePaused = false
+                // Only resume game if no other UI is open
+                if characterUI?.isVisible != true {
+                    isGamePaused = false
+                }
                 return
             }
         }
@@ -394,36 +530,6 @@ extension GameScene {
         }
     }
     
-    func handleBuildPanelTouch(at location: CGPoint, in panel: SKNode) {
-        guard let camera = cameraNode else { return }
-        let cameraLocation = convert(location, to: camera)
-        let localPoint = panel.convert(cameraLocation, from: camera)
-        
-        // Use nodes(at:) to get all nodes at the touch point, then traverse parent chain
-        let touchedNodes = panel.nodes(at: localPoint)
-        
-        // Check for close button
-        if let closeNode = touchedNodes.first(where: { findNodeWithName("closeBuild", startingFrom: $0) != nil }) {
-            if findNodeWithName("closeBuild", startingFrom: closeNode) != nil {
-                panel.removeFromParent()
-                isGamePaused = false
-                return
-            }
-        }
-        
-        // Check for build buttons
-        for structureType in StructureType.allCases {
-            let buttonName = "build_\(structureType.rawValue)"
-            if let buildNode = touchedNodes.first(where: { findNodeWithName(buttonName, startingFrom: $0) != nil }) {
-                if findNodeWithName(buttonName, startingFrom: buildNode) != nil {
-                    attemptBuildStructure(type: structureType)
-                    panel.removeFromParent()
-                    isGamePaused = false
-                    return
-                }
-            }
-        }
-    }
     
     func handleSettingsPanelTouch(at location: CGPoint, in panel: SKNode) {
         guard let camera = cameraNode else { return }
@@ -437,7 +543,10 @@ extension GameScene {
         if let closeNode = touchedNodes.first(where: { findNodeWithName("closeSettings", startingFrom: $0) != nil }) {
             if findNodeWithName("closeSettings", startingFrom: closeNode) != nil {
                 panel.removeFromParent()
-                isGamePaused = false
+                // Only resume game if no other UI is open
+                if characterUI?.isVisible != true {
+                    isGamePaused = false
+                }
                 return
             }
         }
@@ -482,7 +591,10 @@ extension GameScene {
         if let closeNode = touchedNodes.first(where: { findNodeWithName("closeSaveSlot", startingFrom: $0) != nil }) {
             if findNodeWithName("closeSaveSlot", startingFrom: closeNode) != nil {
                 panel.removeFromParent()
-                isGamePaused = false
+                // Only resume game if no other UI is open
+                if characterUI?.isVisible != true {
+                    isGamePaused = false
+                }
                 return
             }
         }
@@ -513,7 +625,10 @@ extension GameScene {
         if let closeNode = touchedNodes.first(where: { findNodeWithName("closeLoadSlot", startingFrom: $0) != nil }) {
             if findNodeWithName("closeLoadSlot", startingFrom: closeNode) != nil {
                 panel.removeFromParent()
-                isGamePaused = false
+                // Only resume game if no other UI is open
+                if characterUI?.isVisible != true {
+                    isGamePaused = false
+                }
                 return
             }
         }
@@ -783,33 +898,6 @@ extension GameScene {
         button.addChild(label)
         
         return button
-    }
-    
-    func showMessage(_ text: String, color: SKColor) {
-        guard let camera = cameraNode else { return }
-        
-        // Remove any existing message
-        camera.childNode(withName: "saveLoadMessage")?.removeFromParent()
-        
-        // Create message label
-        let message = SKLabelNode(fontNamed: "Arial-BoldMT")
-        message.text = text
-        message.fontSize = 24
-        message.fontColor = color
-        message.position = CGPoint(x: 0, y: -size.height / 2 + 100)
-        message.zPosition = 2000
-        message.name = "saveLoadMessage"
-        message.horizontalAlignmentMode = .center
-        camera.addChild(message)
-        
-        // Animate message appearance and fade out
-        message.alpha = 0
-        let fadeIn = SKAction.fadeIn(withDuration: 0.3)
-        let wait = SKAction.wait(forDuration: 2.0)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.3)
-        let remove = SKAction.removeFromParent()
-        let sequence = SKAction.sequence([fadeIn, wait, fadeOut, remove])
-        message.run(sequence)
     }
     
     func attemptBuildStructure(type: StructureType) {

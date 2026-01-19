@@ -4,11 +4,11 @@
       "id": "goblin_01",
       "name": "Goblin",
       "description": "A small, aggressive goblin. Weak but fast. Found in groups.",
-      "tileMap": "1",
+      "tileMap": "2,2,2",
       "parts": [
         {
           "layer": "low",
-          "tileGrid": [["exterior-1000"]],
+          "tileGrid": [["generate"]],
           "offset": {"x": 0, "y": 0},
           "size": {"width": 32, "height": 32},
           "zOffset": 0,

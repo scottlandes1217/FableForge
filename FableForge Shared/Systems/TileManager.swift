@@ -392,13 +392,13 @@ class TileManager {
         
         // Load atlas texture if not cached
         if spriteAtlasTextures[atlasName] == nil {
-            print("🖼️ TileManager: Loading sprite atlas '\(atlasName)'")
+            // Loading sprite atlas (debug log removed for performance)
             let texture = SKTexture(imageNamed: atlasName)
             let textureSize = texture.size()
             if textureSize.width > 0 && textureSize.height > 0 {
                 texture.filteringMode = .nearest
                 spriteAtlasTextures[atlasName] = texture
-                print("✅ TileManager: Loaded sprite atlas '\(atlasName)' - size: \(textureSize.width)x\(textureSize.height)")
+                // Loaded sprite atlas (debug log removed for performance)
             } else {
                 print("⚠️ TileManager: Could not load sprite atlas '\(atlasName)' - texture size is 0")
                 return nil

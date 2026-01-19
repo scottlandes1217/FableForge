@@ -38,6 +38,16 @@ enum Ability: String, Codable {
     case strength, dexterity, constitution, intelligence, wisdom, charisma
 }
 
+// D&D Races
+enum Race: String, CaseIterable, Codable {
+    case human = "Human"
+    case elf = "Elf"
+    case dwarf = "Dwarf"
+    case halfling = "Halfling"
+    case orc = "Orc"
+    case tiefling = "Tiefling"
+}
+
 // D&D Classes
 enum CharacterClass: String, CaseIterable, Codable {
     case fighter = "Fighter"
@@ -65,6 +75,20 @@ enum CharacterClass: String, CaseIterable, Codable {
         case .wizard: return .intelligence
         case .cleric: return .wisdom
         case .bard: return .charisma
+        }
+    }
+    
+    enum ResourceType {
+        case mana
+        case rage
+        case energy
+    }
+    
+    var resourceType: ResourceType {
+        switch self {
+        case .wizard, .cleric, .ranger, .paladin, .bard: return .mana
+        case .barbarian: return .rage
+        case .fighter, .rogue: return .energy
         }
     }
 }
@@ -122,6 +146,14 @@ class Player: NSObject, Codable {
     var hitPoints: Int
     var maxHitPoints: Int
     var armorClass: Int = 10
+    
+    // Resource pools (mana, rage, energy)
+    var mana: Int = 0
+    var maxMana: Int = 0
+    var rage: Int = 0
+    var maxRage: Int = 0
+    var energy: Int = 0
+    var maxEnergy: Int = 0
     var skills: [SkillProficiency] = []
     var inventory: [Item] = []
     var equippedWeapon: Weapon?
@@ -129,6 +161,25 @@ class Player: NSObject, Codable {
     var companions: [Animal] = []  // Up to 5 companions
     var positionX: CGFloat = 0
     var positionY: CGFloat = 0
+    
+    // Equipment slots
+    var equippedHead: Armor?
+    var equippedChest: Armor?
+    var equippedLegs: Armor?
+    var equippedHands: Armor?
+    var equippedFeet: Armor?
+    var equippedNeck: Item?
+    var equippedRing1: Item?
+    var equippedRing2: Item?
+    var equippedWeaponLeft: Weapon?
+    var equippedWeaponRight: Weapon?
+    
+    // Skill and attribute points
+    var skillPoints: Int = 0
+    var attributePoints: Int = 0
+    
+    // Learned skills (from skills.json)
+    var learnedSkills: [String] = [] // Array of skill IDs
     
     // Maximum number of companions
     static let maxCompanions = 5
@@ -166,6 +217,11 @@ class Player: NSObject, Codable {
         case hitPoints, maxHitPoints, armorClass, skills, inventory
         case equippedWeapon, equippedArmor, companions
         case positionX, positionY, buildingSkills
+        case equippedHead, equippedChest, equippedLegs, equippedHands, equippedFeet
+        case equippedNeck, equippedRing1, equippedRing2
+        case equippedWeaponLeft, equippedWeaponRight
+        case skillPoints, attributePoints, learnedSkills
+        case mana, maxMana, rage, maxRage, energy, maxEnergy
     }
     
     var proficiencyBonus: Int {
@@ -181,6 +237,26 @@ class Player: NSObject, Codable {
         let conModifier = abilityScores.modifier(for: .constitution)
         self.maxHitPoints = characterClass.hitDie + conModifier
         self.hitPoints = maxHitPoints
+        
+        // Initialize resources based on class
+        let resourceType = characterClass.resourceType
+        switch resourceType {
+        case .mana:
+            let intModifier = abilityScores.modifier(for: .intelligence)
+            self.maxMana = max(0, characterClass.hitDie + intModifier)
+            self.mana = maxMana
+        case .rage:
+            self.maxRage = 100 // Rage is typically 0-100
+            self.rage = 0
+        case .energy:
+            let dexModifier = abilityScores.modifier(for: .dexterity)
+            self.maxEnergy = max(0, characterClass.hitDie * 2 + dexModifier)
+            self.energy = maxEnergy
+        }
+        
+        // Initialize skill and attribute points (start with 0, allocated during character creation)
+        self.skillPoints = 0
+        self.attributePoints = 0
         
         super.init()
         
@@ -255,10 +331,67 @@ class Player: NSObject, Codable {
         maxHitPoints += hitDieRoll + conModifier
         hitPoints = maxHitPoints
         
+        // Update resources on level up
+        let resourceType = characterClass.resourceType
+        switch resourceType {
+        case .mana:
+            let intModifier = abilityScores.modifier(for: .intelligence)
+            maxMana += hitDieRoll + intModifier
+            mana = maxMana
+        case .rage:
+            // Rage max stays at 100, but could increase with level
+            maxRage = 100
+        case .energy:
+            let dexModifier = abilityScores.modifier(for: .dexterity)
+            maxEnergy += hitDieRoll + dexModifier
+            energy = maxEnergy
+        }
+        
+        // Grant skill points and attribute points on level up
+        skillPoints += 3
+        attributePoints += 5
+        
         // Update proficiency bonus for all skills
         for i in 0..<skills.count {
             skills[i].proficiencyBonus = proficiencyBonus
         }
+    }
+    
+    // Spend attribute points to increase an ability score
+    func spendAttributePoint(on ability: Ability) -> Bool {
+        guard attributePoints > 0 else { return false }
+        guard abilityScores.score(for: ability) < 20 else { return false } // Max 20
+        
+        attributePoints -= 1
+        switch ability {
+        case .strength: abilityScores.strength += 1
+        case .dexterity: abilityScores.dexterity += 1
+        case .constitution: abilityScores.constitution += 1
+        case .intelligence: abilityScores.intelligence += 1
+        case .wisdom: abilityScores.wisdom += 1
+        case .charisma: abilityScores.charisma += 1
+        }
+        
+        // Recalculate HP if constitution changed
+        if ability == .constitution {
+            let conModifier = abilityScores.modifier(for: .constitution)
+            let oldConModifier = (abilityScores.constitution - 1 - 10) / 2
+            let conDiff = conModifier - oldConModifier
+            maxHitPoints += conDiff * level
+            hitPoints = min(hitPoints + conDiff * level, maxHitPoints)
+        }
+        
+        return true
+    }
+    
+    // Learn a new skill (spend skill point)
+    func learnSkill(skillId: String) -> Bool {
+        guard skillPoints > 0 else { return false }
+        guard !learnedSkills.contains(skillId) else { return false }
+        
+        skillPoints -= 1
+        learnedSkills.append(skillId)
+        return true
     }
     
     func rollInitiative() -> Int {
@@ -302,6 +435,25 @@ class Player: NSObject, Codable {
         positionX = try container.decode(CGFloat.self, forKey: .positionX)
         positionY = try container.decode(CGFloat.self, forKey: .positionY)
         buildingSkills = try container.decode([BuildingSkill: Int].self, forKey: .buildingSkills)
+        equippedHead = try container.decodeIfPresent(Armor.self, forKey: .equippedHead)
+        equippedChest = try container.decodeIfPresent(Armor.self, forKey: .equippedChest)
+        equippedLegs = try container.decodeIfPresent(Armor.self, forKey: .equippedLegs)
+        equippedHands = try container.decodeIfPresent(Armor.self, forKey: .equippedHands)
+        equippedFeet = try container.decodeIfPresent(Armor.self, forKey: .equippedFeet)
+        equippedNeck = try container.decodeIfPresent(Item.self, forKey: .equippedNeck)
+        equippedRing1 = try container.decodeIfPresent(Item.self, forKey: .equippedRing1)
+        equippedRing2 = try container.decodeIfPresent(Item.self, forKey: .equippedRing2)
+        equippedWeaponLeft = try container.decodeIfPresent(Weapon.self, forKey: .equippedWeaponLeft)
+        equippedWeaponRight = try container.decodeIfPresent(Weapon.self, forKey: .equippedWeaponRight)
+        skillPoints = try container.decodeIfPresent(Int.self, forKey: .skillPoints) ?? 0
+        attributePoints = try container.decodeIfPresent(Int.self, forKey: .attributePoints) ?? 0
+        learnedSkills = try container.decodeIfPresent([String].self, forKey: .learnedSkills) ?? []
+        mana = try container.decodeIfPresent(Int.self, forKey: .mana) ?? 0
+        maxMana = try container.decodeIfPresent(Int.self, forKey: .maxMana) ?? 0
+        rage = try container.decodeIfPresent(Int.self, forKey: .rage) ?? 0
+        maxRage = try container.decodeIfPresent(Int.self, forKey: .maxRage) ?? 0
+        energy = try container.decodeIfPresent(Int.self, forKey: .energy) ?? 0
+        maxEnergy = try container.decodeIfPresent(Int.self, forKey: .maxEnergy) ?? 0
         super.init()
         // Recalculate proficiency bonus for skills
         for i in 0..<skills.count {
@@ -327,6 +479,25 @@ class Player: NSObject, Codable {
         try container.encode(positionX, forKey: .positionX)
         try container.encode(positionY, forKey: .positionY)
         try container.encode(buildingSkills, forKey: .buildingSkills)
+        try container.encodeIfPresent(equippedHead, forKey: .equippedHead)
+        try container.encodeIfPresent(equippedChest, forKey: .equippedChest)
+        try container.encodeIfPresent(equippedLegs, forKey: .equippedLegs)
+        try container.encodeIfPresent(equippedHands, forKey: .equippedHands)
+        try container.encodeIfPresent(equippedFeet, forKey: .equippedFeet)
+        try container.encodeIfPresent(equippedNeck, forKey: .equippedNeck)
+        try container.encodeIfPresent(equippedRing1, forKey: .equippedRing1)
+        try container.encodeIfPresent(equippedRing2, forKey: .equippedRing2)
+        try container.encodeIfPresent(equippedWeaponLeft, forKey: .equippedWeaponLeft)
+        try container.encodeIfPresent(equippedWeaponRight, forKey: .equippedWeaponRight)
+        try container.encode(skillPoints, forKey: .skillPoints)
+        try container.encode(attributePoints, forKey: .attributePoints)
+        try container.encode(learnedSkills, forKey: .learnedSkills)
+        try container.encode(mana, forKey: .mana)
+        try container.encode(maxMana, forKey: .maxMana)
+        try container.encode(rage, forKey: .rage)
+        try container.encode(maxRage, forKey: .maxRage)
+        try container.encode(energy, forKey: .energy)
+        try container.encode(maxEnergy, forKey: .maxEnergy)
     }
 }
 

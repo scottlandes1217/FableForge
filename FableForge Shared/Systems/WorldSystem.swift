@@ -220,6 +220,40 @@ class WorldMap: NSObject, Codable {
         return tile.isWalkable && tile.structureId == nil
     }
     
+    func canPlaceStructure(_ structure: Structure, at position: CGPoint) -> Bool {
+        guard let tile = tileAt(position: position) else { return false }
+        if tile.structureId != nil { return false }
+        
+        let x = Int(position.x / tileSize)
+        let y = Int(position.y / tileSize)
+        
+        // Check if area is clear
+        let sizeX = Int(structure.size.width)
+        let sizeY = Int(structure.size.height)
+        
+        for dy in 0..<sizeY {
+            for dx in 0..<sizeX {
+                let checkX = x + dx
+                let checkY = y + dy
+                
+                if checkX >= width || checkY >= height {
+                    return false
+                }
+                
+                if tiles[checkY][checkX].structureId != nil {
+                    return false
+                }
+                
+                // Also check if tile is walkable (can't place on water)
+                if !tiles[checkY][checkX].isWalkable {
+                    return false
+                }
+            }
+        }
+        
+        return true
+    }
+    
     func placeStructure(_ structure: Structure, at position: CGPoint) -> Bool {
         guard let tile = tileAt(position: position) else { return false }
         if tile.structureId != nil { return false }

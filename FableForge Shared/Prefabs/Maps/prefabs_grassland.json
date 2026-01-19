@@ -68,101 +68,125 @@
     "waterFeatures": {
       "type": "rivers",
       "density": "medium"
+    },
+    "exitConfig": {
+      "hasExit": true,
+      "exits": [
+        {
+          "x": 0,
+          "y": -2,
+          "tileGID": null,
+          "targetPrefabFile": null,
+          "targetEntryOffset": null,
+          "targetTmxFile": "Exterior",
+          "targetDoorId": "world_grassland"
+        },
+        {
+          "x": 23,
+          "y": 10,
+          "tileGID": null,
+          "targetPrefabFile": "prefabs_desert",
+          "targetEntryOffset": {
+            "x": 0,
+            "y": 2
+          },
+          "targetTmxFile": null,
+          "targetDoorId": null
+        }
+      ]
     }
   },
   "prefabs": [
     {
       "id": "tree_oak_01",
       "type": "tree",
-      "description": "A medium-sized oak tree with a trunk and leafy canopy. Common in temperate forests. Can be chopped for wood.",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
       "parts": [
         {
           "layer": "low",
           "tileGrid": [
             [
-              "grasslands_atlas-1",
-              "grasslands_atlas-2",
-              "grasslands_atlas-3",
-              "grasslands_atlas-4"
+              "grasslands_atlas-65",
+              "grasslands_atlas-66"
             ],
             [
-              "grasslands_atlas-5",
-              "grasslands_atlas-6",
-              "grasslands_atlas-7",
-              "grasslands_atlas-8",
-              "grasslands_atlas-9",
-              "grasslands_atlas-10"
+              "grasslands_atlas-67",
+              "grasslands_atlas-68"
             ]
           ],
           "offset": {
-            "x": 0,
+            "x": 32,
             "y": 0
           },
           "size": {
-            "width": 96,
+            "width": 32,
             "height": 32
           },
-          "zOffset": 0,
+          "zOffset": 21,
           "tileSize": 16,
-          "tileMap": "4,6,6,6,6,6,2"
+          "tileMap": "6,6,6,6,6,2,2"
         },
         {
           "layer": "high",
           "tileGrid": [
             [
-              "grasslands_atlas-11",
-              "grasslands_atlas-12",
-              "grasslands_atlas-13",
-              "grasslands_atlas-14",
-              "grasslands_atlas-15",
-              "grasslands_atlas-16"
-            ],
-            [
-              "grasslands_atlas-17",
-              "grasslands_atlas-18",
-              "grasslands_atlas-19",
-              "grasslands_atlas-20",
-              "grasslands_atlas-21",
-              "grasslands_atlas-22"
-            ],
-            [
-              "grasslands_atlas-23",
-              "grasslands_atlas-24",
-              "grasslands_atlas-25",
-              "grasslands_atlas-26",
-              "grasslands_atlas-27",
-              "grasslands_atlas-28"
-            ],
-            [
-              "grasslands_atlas-29",
-              "grasslands_atlas-30",
-              "grasslands_atlas-31",
-              "grasslands_atlas-32",
-              "grasslands_atlas-33",
-              "grasslands_atlas-34"
-            ],
-            [
               "grasslands_atlas-35",
-              "grasslands_atlas-36"
+              "grasslands_atlas-36",
+              "grasslands_atlas-37",
+              "grasslands_atlas-38",
+              "grasslands_atlas-39",
+              "grasslands_atlas-40"
+            ],
+            [
+              "grasslands_atlas-41",
+              "grasslands_atlas-42",
+              "grasslands_atlas-43",
+              "grasslands_atlas-44",
+              "grasslands_atlas-45",
+              "grasslands_atlas-46"
+            ],
+            [
+              "grasslands_atlas-47",
+              "grasslands_atlas-48",
+              "grasslands_atlas-49",
+              "grasslands_atlas-50",
+              "grasslands_atlas-51",
+              "grasslands_atlas-52"
+            ],
+            [
+              "grasslands_atlas-53",
+              "grasslands_atlas-54",
+              "grasslands_atlas-55",
+              "grasslands_atlas-56",
+              "grasslands_atlas-57",
+              "grasslands_atlas-58"
+            ],
+            [
+              "grasslands_atlas-59",
+              "grasslands_atlas-60",
+              "grasslands_atlas-61",
+              "grasslands_atlas-62",
+              "grasslands_atlas-63",
+              "grasslands_atlas-64"
             ]
           ],
           "offset": {
             "x": 0,
-            "y": -32
+            "y": 80
           },
           "size": {
             "width": 96,
             "height": 80
           },
-          "zOffset": 20,
+          "zOffset": 0,
           "tileSize": 16
         }
       ],
       "collision": {
         "type": "rectangle",
         "size": {
-          "width": 16,
-          "height": 16
+          "width": 20,
+          "height": 32
         }
       },
       "zPosition": 0

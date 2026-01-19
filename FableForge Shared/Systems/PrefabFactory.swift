@@ -638,6 +638,13 @@ class PrefabFactory {
         return chestPrefabs
     }
     
+    /// Get a prefab definition by ID (for procedural entities like trees, rocks, etc.)
+    func getPrefab(_ id: String) -> PrefabDefinition? {
+        let baseId = id.replacingOccurrences(of: "_low", with: "")
+            .replacingOccurrences(of: "_high", with: "")
+        return prefabs[baseId]
+    }
+    
     /// Create sprite nodes for a chest prefab
     func createChestSprites(_ prefab: ChestPrefab, position: CGPoint, rotation: CGFloat = 0) -> [SKSpriteNode] {
         return createEntitySprites(from: prefab.parts, position: position, rotation: rotation, zPosition: prefab.zPosition)
@@ -694,15 +701,29 @@ class PrefabFactory {
         prefabs[prefab.id] = prefab
     }
     
-    /// Create sprite nodes for an entity
-    func createEntitySprites(_ entity: ProceduralEntity, tileSize: CGFloat) -> [SKSpriteNode] {
+    /// Create sprite nodes for an entity, separated by layer
+    /// Returns a tuple: (lowLayerSprites, highLayerSprites)
+    func createEntitySpritesByLayer(_ entity: ProceduralEntity, tileSize: CGFloat) -> (low: [SKSpriteNode], high: [SKSpriteNode]) {
         // Handle chests separately (they're stored in chestPrefabs, not prefabs)
         if entity.type == .chest {
             if let chestPrefab = chestPrefabs[entity.prefabId] {
-                return createChestSprites(chestPrefab, position: entity.position, rotation: entity.rotation)
+                let allSprites = createChestSprites(chestPrefab, position: entity.position, rotation: entity.rotation)
+                // Chests typically only have low layer parts, but check anyway
+                var lowSprites: [SKSpriteNode] = []
+                var highSprites: [SKSpriteNode] = []
+                for part in chestPrefab.parts {
+                    let partSprites = createSpritesForPart(part, entity: entity, tileSize: tileSize)
+                    if part.layer == "high" {
+                        highSprites.append(contentsOf: partSprites)
+                    } else {
+                        lowSprites.append(contentsOf: partSprites)
+                    }
+                }
+                return (low: lowSprites, high: highSprites)
             } else {
                 print("⚠️ PrefabFactory: Unknown chest prefab ID '\(entity.prefabId)'")
-                return createFallbackSprite(entity: entity, tileSize: tileSize)
+                let fallback = createFallbackSprite(entity: entity, tileSize: tileSize)
+                return (low: fallback, high: [])
             }
         }
         
@@ -713,116 +734,137 @@ class PrefabFactory {
         
         guard let prefab = prefabs[basePrefabId] else {
             print("⚠️ PrefabFactory: Unknown prefab ID '\(basePrefabId)' (available: \(prefabs.keys.sorted().joined(separator: ", ")))")
-            return createFallbackSprite(entity: entity, tileSize: tileSize)
+            let fallback = createFallbackSprite(entity: entity, tileSize: tileSize)
+            return (low: fallback, high: [])
         }
         
+        var lowSprites: [SKSpriteNode] = []
+        var highSprites: [SKSpriteNode] = []
+        
+        // Always render all parts and separate them by their actual layer
+        // This ensures that entities with both low and high parts are properly split
+        // regardless of which container they're being rendered in
+        for part in prefab.parts {
+            let partSprites = createSpritesForPart(part, entity: entity, tileSize: tileSize)
+            
+            // Separate by actual part layer
+            // CORRECT: "low" = bottom/trunk parts → go to entitiesAbove (zPosition 110, IN FRONT of player)
+            //          "high" = top/canopy parts → go to entitiesBelow (zPosition 40, BEHIND player)
+            if part.layer == "high" {
+                highSprites.append(contentsOf: partSprites)
+            } else {
+                // Default to low for "low" layer or any other value
+                lowSprites.append(contentsOf: partSprites)
+            }
+        }
+        
+        return (low: lowSprites, high: highSprites)
+    }
+    
+    /// Helper to create sprites for a single part (EntityPrefabPart version for chests, enemies, etc.)
+    private func createSpritesForPart(_ part: EntityPrefabPart, entity: ProceduralEntity, tileSize: CGFloat) -> [SKSpriteNode] {
+        // Convert EntityPrefabPart to PrefabPart format
+        let prefabPart = PrefabPart(
+            layer: part.layer,
+            tileGrid: part.tileGrid,
+            assetName: nil,  // EntityPrefabPart doesn't have assetName
+            offset: part.offset,
+            size: part.size,
+            zOffset: part.zOffset,
+            tileSize: part.tileSize
+        )
+        return createSpritesForPart(prefabPart, entity: entity, tileSize: tileSize)
+    }
+    
+    /// Helper to create sprites for a single part (PrefabPart version for map prefabs)
+    private func createSpritesForPart(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat) -> [SKSpriteNode] {
         var sprites: [SKSpriteNode] = []
         
-        // Determine which layer(s) to render based on prefabId suffix
-        // Entities are created with "_low" or "_high" suffix by WorldGenerator
-        let targetLayer: String?
-        if entity.prefabId.contains("_low") {
-            targetLayer = "low"
-        } else if entity.prefabId.contains("_high") {
-            targetLayer = "high"
-        } else {
-            targetLayer = nil  // Render all parts (for debugging/complete entities)
-        }
+        // Determine tile size for this part
+        let partTileSize = tileSize
         
-        // Create sprites for matching layer parts
-        for part in prefab.parts {
-            if let targetLayer = targetLayer, part.layer != targetLayer {
-                continue  // Skip parts that don't match the target layer
-            }
-            
-            // Determine tile size for this part
-            // Use world tileSize instead of part.tileSize to ensure consistent scaling
-            // part.tileSize is just metadata about the source image, not the render size
-            let partTileSize = tileSize
-            
-            // Render tileGrid (works for both single-tile [["gid"]] and multi-tile grids)
-            let grid = part.tileGrid
-                // Multi-tile part: render each non-nil GID in the grid
-                let gridHeight = grid.count
-                guard gridHeight > 0 else { continue }
-                let gridWidth = grid.first?.count ?? 0
-                guard gridWidth > 0 else { continue }
+        // Render tileGrid (works for both single-tile [["gid"]] and multi-tile grids)
+        let grid = part.tileGrid
+        let gridHeight = grid.count
+        guard gridHeight > 0 else { return [] }
+        let gridWidth = grid.first?.count ?? 0
+        guard gridWidth > 0 else { return [] }
+        
+        for (rowIndex, row) in grid.enumerated() {
+            for (colIndex, gid) in row.enumerated() {
+                guard let gidSpec = gid else { continue }  // Skip nil tiles
                 
-                for (rowIndex, row) in grid.enumerated() {
-                    for (colIndex, gid) in row.enumerated() {
-                        guard let gidSpec = gid else { continue }  // Skip nil tiles
-                        
-                        // Try to create sprite directly (handles both GIDs and sprite atlases)
-                        let sprite: SKSpriteNode
-                        if let directGID = Int(gidSpec) {
-                            // Direct GID number
-                            if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: partTileSize, height: partTileSize)) {
-                                sprite = createdSprite
-                            } else if let assetName = part.assetName {
-                                // Fallback to asset if GID fails
-                                let texture = SKTexture(imageNamed: assetName)
-                                sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
-                            } else {
-                                // Final fallback: colored rectangle
-                                sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
-                            }
-                        } else if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: partTileSize, height: partTileSize)) {
-                            // Sprite atlas or parsed GID
-                            sprite = createdSprite
-                        } else if let assetName = part.assetName {
-                            // Fallback to asset if sprite atlas/GID fails
-                            let texture = SKTexture(imageNamed: assetName)
-                            sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
-                        } else {
-                            // Final fallback: colored rectangle
-                            sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
-                        }
-                        
-                        // Calculate position for this tile in the grid
-                        // Grid coordinates: (0,0) is top-left, (col, row) increases right/down
-                        // SpriteKit: position increases right/up
-                        let tileOffsetX = CGFloat(colIndex) * partTileSize
-                        let tileOffsetY = -CGFloat(rowIndex) * partTileSize  // Negative because Y increases up in SpriteKit
-                        
-                        // Position relative to entity center + part offset + tile offset
-                        // Scale offset from source tile size (part.tileSize) to world tile size (tileSize)
-                        let offsetScale = part.tileSize > 0 ? (tileSize / part.tileSize) : 1.0
-                        let scaledOffsetX = part.offset.x * offsetScale
-                        let scaledOffsetY = part.offset.y * offsetScale
-                        
-                        sprite.position = CGPoint(
-                            x: entity.position.x + scaledOffsetX + tileOffsetX,
-                            y: entity.position.y + scaledOffsetY + tileOffsetY
-                        )
-                        // Sprite zPosition is always 0 - layering is handled by container zPosition
-                        // Low layer sprites go in entitiesBelowNode (zPosition 40)
-                        // High layer sprites go in entitiesAboveNode (zPosition 110)
-                        sprite.zPosition = 0
-                        sprite.anchorPoint = CGPoint(x: 0, y: 1)  // Top-left anchor for tile grid alignment
-                        sprite.zRotation = entity.rotation
-                        
-                        // Apply variant if specified
-                        if let variant = entity.variant {
-                            applyVariant(sprite: sprite, variant: variant)
-                        }
-                        
-                        sprites.append(sprite)
+                // Handle "generate" as a special placeholder value
+                let sprite: SKSpriteNode
+                if gidSpec.lowercased() == "generate" {
+                    // Create a placeholder sprite (cyan to indicate it needs a real GID)
+                    sprite = SKSpriteNode(color: SKColor.cyan, size: CGSize(width: partTileSize, height: partTileSize))
+                    sprite.alpha = 0.5  // Make it semi-transparent to indicate it's a placeholder
+                    sprite.colorBlendFactor = 1.0
+                    // Note: This is a placeholder - replace "generate" with actual GIDs in the JSON
+                } else {
+                
+                    // Try to create sprite directly (handles both GIDs and sprite atlases)
+                    if let directGID = Int(gidSpec) {
+                    // Direct GID number
+                    if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: partTileSize, height: partTileSize)) {
+                        sprite = createdSprite
+                    } else if let assetName = part.assetName {
+                        // Fallback to asset if GID fails
+                        let texture = SKTexture(imageNamed: assetName)
+                        sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
+                    } else {
+                        // Final fallback: colored rectangle
+                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
+                    }
+                } else if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: partTileSize, height: partTileSize)) {
+                    // Sprite atlas or parsed GID
+                    sprite = createdSprite
+                } else if let assetName = part.assetName {
+                    // Fallback to asset if sprite atlas/GID fails
+                    let texture = SKTexture(imageNamed: assetName)
+                    sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
+                    } else {
+                        // Final fallback: colored rectangle
+                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
                     }
                 }
-        }
-        
-        // If no parts matched and we have a partName filter, render all parts (shouldn't happen, but fallback)
-        if sprites.isEmpty && targetLayer != nil {
-            return createEntitySprites(ProceduralEntity(
-                type: entity.type,
-                prefabId: basePrefabId,
-                position: entity.position,
-                rotation: entity.rotation,
-                variant: entity.variant
-            ), tileSize: tileSize)
+                
+                // Calculate position for this tile in the grid
+                let tileOffsetX = CGFloat(colIndex) * partTileSize
+                let tileOffsetY = -CGFloat(rowIndex) * partTileSize  // Negative because Y increases up in SpriteKit
+                
+                // Position relative to entity center + part offset + tile offset
+                let offsetScale = part.tileSize > 0 ? (tileSize / part.tileSize) : 1.0
+                let scaledOffsetX = part.offset.x * offsetScale
+                let scaledOffsetY = part.offset.y * offsetScale
+                
+                sprite.position = CGPoint(
+                    x: entity.position.x + scaledOffsetX + tileOffsetX,
+                    y: entity.position.y + scaledOffsetY + tileOffsetY
+                )
+                // Sprite zPosition is always 0 - layering is handled by container zPosition
+                sprite.zPosition = 0
+                sprite.anchorPoint = CGPoint(x: 0, y: 1)  // Top-left anchor for tile grid alignment
+                sprite.zRotation = entity.rotation
+                
+                // Apply variant if specified
+                if let variant = entity.variant {
+                    applyVariant(sprite: sprite, variant: variant)
+                }
+                
+                sprites.append(sprite)
+            }
         }
         
         return sprites
+    }
+    
+    /// Create sprite nodes for an entity (legacy method - returns all sprites together)
+    /// Use createEntitySpritesByLayer for proper layer separation
+    func createEntitySprites(_ entity: ProceduralEntity, tileSize: CGFloat) -> [SKSpriteNode] {
+        let (low, high) = createEntitySpritesByLayer(entity, tileSize: tileSize)
+        return low + high
     }
     
     /// Create physics body for an entity
@@ -830,11 +872,16 @@ class PrefabFactory {
         // Handle chests separately
         if entity.type == .chest {
             if let chestPrefab = chestPrefabs[entity.prefabId] {
+                // Scale collision size from source tile size to world tile size
+                let sourceTileSize = chestPrefab.tileSize > 0 ? chestPrefab.tileSize : 32.0
+                let scale = tileSize / sourceTileSize
+                
                 switch chestPrefab.collision.type {
                 case "rectangle":
-                    return SKPhysicsBody(rectangleOf: chestPrefab.collision.size)
+                    let scaledSize = CGSize(width: chestPrefab.collision.size.width * scale, height: chestPrefab.collision.size.height * scale)
+                    return SKPhysicsBody(rectangleOf: scaledSize)
                 case "circle":
-                    let radius = chestPrefab.collision.size.width / 2
+                    let radius = (chestPrefab.collision.size.width * scale) / 2
                     return SKPhysicsBody(circleOfRadius: radius)
                 case "none":
                     return nil
@@ -852,11 +899,24 @@ class PrefabFactory {
             return nil
         }
         
+        // Scale collision size from source tile size to world tile size
+        // Get source tile size from first part (or default to 32)
+        let sourceTileSize = prefab.parts.first?.tileSize ?? 32.0
+        let scale = sourceTileSize > 0 ? (tileSize / sourceTileSize) : 1.0
+        
         switch prefab.collisionShape {
         case .rectangle(let size):
-            return SKPhysicsBody(rectangleOf: size)
+            let scaledSize = CGSize(width: size.width * scale, height: size.height * scale)
+            let physicsBody = SKPhysicsBody(rectangleOf: scaledSize)
+            // Position physics body at bottom-center (tree collision should be at base of trunk)
+            // SpriteKit physics bodies are centered by default, so we use an offset
+            physicsBody.usesPreciseCollisionDetection = true
+            return physicsBody
         case .circle(let radius):
-            return SKPhysicsBody(circleOfRadius: radius)
+            let scaledRadius = radius * scale
+            let physicsBody = SKPhysicsBody(circleOfRadius: scaledRadius)
+            physicsBody.usesPreciseCollisionDetection = true
+            return physicsBody
         case .none:
             return nil
         }
@@ -1041,7 +1101,8 @@ class PrefabFactory {
                     entities: jsonConfig.entities,
                     enemies: jsonConfig.enemies,
                     animals: jsonConfig.animals,
-                    waterFeatures: jsonConfig.waterFeatures
+                    waterFeatures: jsonConfig.waterFeatures,
+                    exitConfig: jsonConfig.exitConfig
                 )
                 print("✅ PrefabFactory: Loaded world config from \(fileName).json: '\(jsonConfig.name)' (seed: \(jsonConfig.seed))")
             }
@@ -1620,6 +1681,15 @@ class PrefabFactory {
     func createSpriteFromGIDSpec(_ gidSpec: String?, size: CGSize) -> SKSpriteNode? {
         guard let gidSpec = gidSpec, !gidSpec.isEmpty else { return nil }
         
+        // Handle "generate" as a special placeholder value
+        if gidSpec.lowercased() == "generate" {
+            // Create a placeholder sprite (cyan to indicate it needs a real GID)
+            let sprite = SKSpriteNode(color: SKColor.cyan, size: size)
+            sprite.alpha = 0.5  // Make it semi-transparent to indicate it's a placeholder
+            sprite.colorBlendFactor = 1.0
+            return sprite
+        }
+        
         // Check if it's "atlas-frameNumber" format (sprite atlas)
         if let dashIndex = gidSpec.firstIndex(of: "-") {
             let atlasName = String(gidSpec[..<dashIndex])
@@ -1628,17 +1698,22 @@ class PrefabFactory {
                 return nil
             }
             
-            // Loading sprite from atlas (debug log removed for performance)
-            
             // Try sprite atlas first
             if let sprite = TileManager.shared.createSpriteFromAtlas(atlasName: atlasName, frameNumber: frameNumber, size: size) {
-                // Successfully loaded sprite from atlas (debug log removed for performance)
                 return sprite
             }
             
-            print("⚠️ PrefabFactory: Failed to load from atlas '\(atlasName)', trying Tiled tileset lookup")
+            // If atlas lookup fails, don't fall back to Tiled tileset lookup for sprite atlases
+            // Sprite atlases are separate from Tiled tilesets and shouldn't be confused
+            // Only fall back if it might be a Tiled tileset name (not a sprite atlas)
+            // Check if it's a known sprite atlas name pattern (ends with "_atlas")
+            if atlasName.hasSuffix("_atlas") {
+                // This is definitely a sprite atlas, don't try Tiled tileset lookup
+                print("⚠️ PrefabFactory: Failed to load sprite from atlas '\(atlasName)' frame \(frameNumber)")
+                return nil
+            }
             
-            // Fall back to Tiled tileset lookup
+            // For non-atlas names, try Tiled tileset lookup as fallback
             if let gid = parseGIDSpec(gidSpec) {
                 return TileManager.shared.createSprite(for: gid, size: size)
             }
@@ -1716,4 +1791,5 @@ private struct WorldConfigJSON: Codable {
     let enemies: EnemyConfig?
     let animals: AnimalConfig?
     let waterFeatures: WaterFeatureConfig?
+    let exitConfig: ExitConfig?
 }
