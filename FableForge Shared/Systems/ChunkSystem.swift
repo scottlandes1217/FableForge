@@ -177,11 +177,40 @@ class ChunkManager {
     private var deltaPersistence: DeltaPersistence?
     private var tmxInstances: [TMXInstance] = []  // Registered TMX instances
     
+    /// Global entity roots as scene children so player (z=100) renders between them.
+    /// entitiesBelow z=40 (trunks, behind player), entitiesAbove z=110 (canopies, in front).
+    private var entitiesBelowRoot: SKNode?
+    private var entitiesAboveRoot: SKNode?
+    
     init(chunkSize: Int = defaultChunkSize, loadRadius: Int = defaultLoadRadius, tileSize: CGFloat, scene: SKScene) {
         self.chunkSize = chunkSize
         self.loadRadius = loadRadius
         self.tileSize = tileSize
         self.scene = scene
+    }
+    
+    /// Create global entity roots if needed; add to scene with z 40 / 110 so player (z=100) draws between them.
+    private func ensureGlobalEntityRoots() {
+        guard let scene = scene else { return }
+        if entitiesBelowRoot != nil, entitiesAboveRoot != nil { return }
+        let below = SKNode()
+        below.name = "entitiesBelowRoot"
+        below.zPosition = 40  // Behind player (100)
+        scene.addChild(below)
+        entitiesBelowRoot = below
+        let above = SKNode()
+        above.name = "entitiesAboveRoot"
+        above.zPosition = 110  // In front of player (100)
+        scene.addChild(above)
+        entitiesAboveRoot = above
+    }
+    
+    /// Remove global entity roots from scene (e.g. when unloading all before replacing ChunkManager).
+    private func removeGlobalEntityRoots() {
+        entitiesBelowRoot?.removeFromParent()
+        entitiesAboveRoot?.removeFromParent()
+        entitiesBelowRoot = nil
+        entitiesAboveRoot = nil
     }
     
     /// Set the world generator for procedural generation
@@ -369,17 +398,17 @@ class ChunkManager {
     private func unloadChunk(_ chunkKey: ChunkKey) {
         guard let chunkData = loadedChunks[chunkKey] else { return }
         
-        // Remove sprite nodes from scene
-        chunkData.chunkNode?.removeFromParent()
-        
-        // Clear references
-        chunkData.chunkNode = nil
-        chunkData.tilesNode = nil
-        chunkData.decorationsNode = nil
+        // Entity containers are in global roots; remove them first
+        chunkData.entitiesBelowNode?.removeFromParent()
+        chunkData.entitiesAboveNode?.removeFromParent()
         chunkData.entitiesBelowNode = nil
         chunkData.entitiesAboveNode = nil
         
-        // Remove from loaded chunks
+        chunkData.chunkNode?.removeFromParent()
+        chunkData.chunkNode = nil
+        chunkData.tilesNode = nil
+        chunkData.decorationsNode = nil
+        
         loadedChunks.removeValue(forKey: chunkKey)
     }
     
@@ -387,36 +416,40 @@ class ChunkManager {
     private func renderChunk(_ chunkData: ChunkData) {
         guard let scene = scene else { return }
         
-        // Create parent node for this chunk
+        ensureGlobalEntityRoots()
+        guard let entitiesBelowRoot = entitiesBelowRoot, let entitiesAboveRoot = entitiesAboveRoot else { return }
+        
+        // Create parent node for this chunk (tiles + decorations only; entities go to global roots)
         let chunkNode = SKNode()
         chunkNode.name = "chunk_\(chunkData.chunkKey.x)_\(chunkData.chunkKey.y)"
-        chunkNode.position = .zero  // Position tiles/entities relative to world coordinates
+        chunkNode.position = .zero
+        chunkNode.zPosition = 0
         scene.addChild(chunkNode)
         chunkData.chunkNode = chunkNode
         
-        // Create sub-nodes for organization
         let tilesNode = SKNode()
         tilesNode.name = "tiles"
-        tilesNode.zPosition = 0  // Ground tiles at bottom
+        tilesNode.zPosition = 0
         chunkNode.addChild(tilesNode)
         chunkData.tilesNode = tilesNode
         
         let decorationsNode = SKNode()
         decorationsNode.name = "decorations"
-        decorationsNode.zPosition = 20  // Decorations above ground tiles, below entities
+        decorationsNode.zPosition = 20
         chunkNode.addChild(decorationsNode)
         chunkData.decorationsNode = decorationsNode
         
+        // Entity containers live in global roots so player (z=100) draws between below (40) and above (110)
         let entitiesBelowNode = SKNode()
-        entitiesBelowNode.name = "entitiesBelow"
-        entitiesBelowNode.zPosition = 40  // Below player (100) - character walks in front
-        chunkNode.addChild(entitiesBelowNode)
+        entitiesBelowNode.name = "entitiesBelow_\(chunkData.chunkKey.x)_\(chunkData.chunkKey.y)"
+        entitiesBelowNode.zPosition = 0
+        entitiesBelowRoot.addChild(entitiesBelowNode)
         chunkData.entitiesBelowNode = entitiesBelowNode
         
         let entitiesAboveNode = SKNode()
-        entitiesAboveNode.name = "entitiesAbove"
-        entitiesAboveNode.zPosition = 110  // Above player (100) - character walks behind
-        chunkNode.addChild(entitiesAboveNode)
+        entitiesAboveNode.name = "entitiesAbove_\(chunkData.chunkKey.x)_\(chunkData.chunkKey.y)"
+        entitiesAboveNode.zPosition = 0
+        entitiesAboveRoot.addChild(entitiesAboveNode)
         chunkData.entitiesAboveNode = entitiesAboveNode
         
         // Render tiles
@@ -731,11 +764,37 @@ class ChunkManager {
                 } else {
                     lowEntityContainer.name = "entity_\(entity.prefabId)_low"
                 }
-                lowEntityContainer.zPosition = 0  // Inherit from parent (entitiesBelowNode has zPosition 40)
+                // CRITICAL: In SpriteKit, zPosition is relative to parent, not cumulative
+                // Low layer is in entitiesBelowNode (zPosition=40), which is for objects BEHIND the player (zPosition=100)
+                // We want the low layer's maximum effective zPosition to be just below the player
+                // Player zPosition = 100, so low layer max should be 99 (behind player)
+                let spriteZOffset = lowSprites.first?.zPosition ?? 0
+                
+                let entitiesBelowZPos: CGFloat = 40  // entitiesBelowNode.zPosition
+                let playerZPos: CGFloat = 100  // Player zPosition
+                
+                // Position low layer container so its maximum sprite zPosition is just below player
+                // We want: entitiesBelowZPos + lowEntityContainer.zPosition + spriteZOffset = playerZPos - 1
+                // So: lowEntityContainer.zPosition = playerZPos - 1 - spriteZOffset - entitiesBelowZPos
+                // Example: 100 - 1 - 21 - 40 = 38
+                // This means: effective zPosition = 40 + 38 + 21 = 99 (just below player at 100)
+                let calculatedZPos = playerZPos - 1 - spriteZOffset - entitiesBelowZPos
+                // Ensure it doesn't go negative (minimum is 0 relative to parent)
+                let lowContainerZPos = max(0, calculatedZPos)
+                
+                // CRITICAL: Set ALL container properties BEFORE adding to parent or adding children
+                // This ensures SpriteKit properly initializes the node with correct rendering state
+                // Position low layer container so it renders directly below where high layer ends
+                lowEntityContainer.zPosition = lowContainerZPos
+                lowEntityContainer.isHidden = false  // Ensure container is visible
+                lowEntityContainer.alpha = 1.0  // Ensure container is fully opaque
+                
+                // Now add container to parent (after all properties are set)
+                lowContainer.addChild(lowEntityContainer)
                 
                 // Add sprites to container, adjusting positions to be relative to container
                 // CRITICAL: These sprites are the TRUNK sprites (lowSprites from "layer": "low")
-                for sprite in lowSprites {
+                for (index, sprite) in lowSprites.enumerated() {
                     // Convert from world coordinates to container-relative coordinates
                     // Sprites were created at: entity.position + part.offset + tileOffset
                     // Trunk part has offset (0, 0), so sprites are at: entity.position + tileOffset
@@ -744,16 +803,27 @@ class ChunkManager {
                         x: sprite.position.x - entity.position.x,
                         y: sprite.position.y - entity.position.y
                     )
-                    sprite.zPosition = 0  // Ensure sprites inherit container zPosition
-                    // Make sprites non-interactive so clicks go to container (for chests)
+                    // CRITICAL: Keep sprite zPosition as part.zOffset for fine-grained layering
+                    // Lower zPosition = renders first (behind), higher zPosition = renders last (in front)
+                    // For trunks (zOffset=21), this makes them render in front of other sprites with lower zOffset
+                    // But since they're in entitiesBelowNode (zPosition=40), they still render behind player (zPosition=100)
+                    sprite.zPosition = spriteZOffset  // Keep the original zOffset for fine-grained sorting
+                    if index < 3 {  // Log first 3 sprites for debugging
+                        print("🌳 Trunk sprite \(index): zPosition=\(sprite.zPosition) (zOffset), containerZPos=\(lowEntityContainer.zPosition), alpha=\(sprite.alpha), hidden=\(sprite.isHidden), hasTexture=\(sprite.texture != nil), size=\(sprite.size)")
+                    }
+                    // For chests: make sprites hit-testable so nodes(at:) can find them
+                    // The container will still handle the interaction, but nodes(at:) needs to find the sprites
                     if entity.type == .chest {
-                        sprite.isUserInteractionEnabled = false
+                        sprite.isUserInteractionEnabled = true  // Make sprites hit-testable for nodes(at:)
                     }
                     lowEntityContainer.addChild(sprite)
                 }
-                
-                // Add to entitiesBelow container (behind player)
-                lowContainer.addChild(lowEntityContainer)
+                let effectiveLowZPos = entitiesBelowZPos + lowContainerZPos + spriteZOffset
+                print("🌳 Low container '\(lowEntityContainer.name ?? "nil")' zPosition=\(lowEntityContainer.zPosition) (calculated to be below player), parent=\(lowContainer.name ?? "nil") zPosition=\(lowContainer.zPosition), effectiveZPos=\(effectiveLowZPos) (playerZPos=\(playerZPos))")
+                if !lowSprites.isEmpty {
+                    let firstSprite = lowSprites[0]
+                    print("🌳 First trunk sprite: zPosition=\(firstSprite.zPosition) (zOffset), containerZPos=\(lowEntityContainer.zPosition), parentZPos=\(lowContainer.zPosition), effectiveZPos=\(effectiveLowZPos), alpha=\(firstSprite.alpha), hidden=\(firstSprite.isHidden), texture=\(firstSprite.texture != nil ? "present" : "nil")")
+                }
                 // CRITICAL: Set physicsContainer to trunk container for trees
                 // This ensures physics and debug boxes are on the trunk, not canopy
                 physicsContainer = lowEntityContainer  // Use low container for physics
@@ -765,7 +835,21 @@ class ChunkManager {
                 let highEntityContainer = SKNode()
                 highEntityContainer.position = entity.position
                 highEntityContainer.name = "entity_\(entity.prefabId)_high"
-                highEntityContainer.zPosition = 0  // Inherit from parent (entitiesAboveNode has zPosition 110)
+                // CRITICAL: In SpriteKit, zPosition is relative to parent, not cumulative
+                // For entitiesAboveNode, all containers should have zPosition=0 to render at the same level
+                // The part.zOffset is used for fine-grained sorting WITHIN the container (on sprites)
+                let spriteZOffset = highSprites.first?.zPosition ?? 0
+                
+                // CRITICAL: Set ALL container properties BEFORE adding to parent or adding children
+                // This ensures SpriteKit properly initializes the node with correct rendering state
+                // Set container zPosition to 0 - all containers in entitiesAboveNode render at same level
+                // Use zOffset on sprites for fine-grained layering within the container
+                highEntityContainer.zPosition = 0  // All containers in entitiesAboveNode use zPosition=0
+                highEntityContainer.isHidden = false  // Ensure container is visible
+                highEntityContainer.alpha = 1.0  // Ensure container is fully opaque
+                
+                // Now add container to parent (after all properties are set)
+                highContainer.addChild(highEntityContainer)
                 
                 // Add sprites to container, adjusting positions to be relative to container
                 for sprite in highSprites {
@@ -775,12 +859,11 @@ class ChunkManager {
                         x: sprite.position.x - entity.position.x,
                         y: sprite.position.y - entity.position.y
                     )
-                    sprite.zPosition = 0  // Ensure sprites inherit container zPosition
+                    // CRITICAL: Keep sprite zPosition as part.zOffset for fine-grained layering
+                    // Lower zPosition = renders first (behind), higher zPosition = renders last (in front)
+                    sprite.zPosition = spriteZOffset  // Keep the original zOffset for fine-grained sorting
                     highEntityContainer.addChild(sprite)
                 }
-                
-                // Add to entitiesAbove container (in front of player)
-                highContainer.addChild(highEntityContainer)
                 
                 // If no low container was created, use high container for physics
                 if physicsContainer == nil {
@@ -880,6 +963,14 @@ class ChunkManager {
                             // For other entities, same calculation
                             collisionY = minY + bodySize.height / 2
                         }
+
+                        // Apply optional collision offset from prefab (scaled to world units)
+                        if let prefab = PrefabFactory.shared.getPrefab(entity.prefabId),
+                           let offset = prefab.collisionOffset {
+                            let offsetScale = tileSize / sourceTileSize
+                            collisionX += offset.x * offsetScale
+                            collisionY += offset.y * offsetScale
+                        }
                         
                         print("   Collision box position (local): (\(collisionX), \(collisionY))")
                         print("   Container position: (\(container.position.x), \(container.position.y))")
@@ -952,6 +1043,7 @@ class ChunkManager {
         for key in keysToUnload {
             unloadChunk(key)
         }
+        removeGlobalEntityRoots()
     }
     
     /// Reload all currently loaded chunks (useful when atlas changes)

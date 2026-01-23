@@ -110,7 +110,11 @@ extension GameScene {
             let scaleFactor: CGFloat = 0.75  // 128 * 0.75 = 96
             let frameWidthPixels = CGFloat(SpriteSheetConstants.frameWidth)
             let frameHeightPixels = CGFloat(SpriteSheetConstants.frameHeight)
-            let scaledSpriteSize = CGSize(width: frameWidthPixels * scaleFactor, height: frameHeightPixels * scaleFactor)
+            let baseSpriteSize = CGSize(width: frameWidthPixels * scaleFactor, height: frameHeightPixels * scaleFactor)
+            let scaledSpriteSize = CGSize(
+                width: baseSpriteSize.width * playerSpriteScale,
+                height: baseSpriteSize.height * playerSpriteScale
+            )
             playerSpriteSize = scaledSpriteSize // Store for later use
             
             sprite = SKSpriteNode(texture: firstFrameTexture)
@@ -138,7 +142,8 @@ extension GameScene {
             print("   Sprite size: \(scaledSpriteSize), texture size: \(firstFrameTexture.size())")
         } else {
             // Fall back to simple colored square
-            sprite = SKSpriteNode(color: .blue, size: CGSize(width: 24, height: 24))
+            let fallbackSize = CGSize(width: 24 * playerSpriteScale, height: 24 * playerSpriteScale)
+            sprite = SKSpriteNode(color: .blue, size: fallbackSize)
             print("⚠️ Using default blue square sprite (no sprite sheet found)")
         }
         

@@ -87,22 +87,14 @@
         {
           "layer": "low",
           "tileGrid": [["outside_objects1-treetrunk_1"]],
-          "assetName": null,
-          "offset": {"x": -8, "y": 0},
-          "size": {"width": 16, "height": 24},
-          "zOffset": 0,
-          "tileSize": 0
+          "assetName": null
         },
         {
           "layer": "high",
           "tileGrid": [
             ["outside_objects1-treecanopy_1"]
           ],
-          "assetName": null,
-          "offset": {"x": -48, "y": 24},
-          "size": {"width": 96, "height": 96},
-          "zOffset": 0,
-          "tileSize": 32
+          "assetName": null
         }
       ],
       "collision": {
@@ -119,11 +111,7 @@
         {
           "layer": "low",
           "tileGrid": [["exterior-800"]],
-          "assetName": null,
-          "offset": {"x": 0, "y": 0},
-          "size": {"width": 32, "height": 32},
-          "zOffset": 0,
-          "tileSize": 0
+          "assetName": null
         }
       ],
       "collision": {
@@ -143,11 +131,7 @@
             ["exterior-1730", "exterior-1731"],
             ["exterior-1732", "exterior-1733"]
           ],
-          "assetName": null,
-          "offset": {"x": -32, "y": 0},
-          "size": {"width": 64, "height": 64},
-          "zOffset": 0,
-          "tileSize": 32
+          "assetName": null
         },
         {
           "layer": "high",
@@ -155,11 +139,7 @@
             ["exterior-1800", "exterior-1801", "exterior-1802"],
             [null, "exterior-1803", null]
           ],
-          "assetName": null,
-          "offset": {"x": -48, "y": 64},
-          "size": {"width": 96, "height": 64},
-          "zOffset": 0,
-          "tileSize": 32
+          "assetName": null
         }
       ],
       "collision": {

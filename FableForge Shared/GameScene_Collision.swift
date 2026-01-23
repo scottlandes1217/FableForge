@@ -151,14 +151,15 @@ extension GameScene {
     func getPlayerCollisionFrame(at position: CGPoint) -> CGRect {
         // Collision box is as wide as the character (sprite is 96x96, use ~24px wide for reasonable collision)
         // and about knee height (10px tall)
-        let collisionSize = CGSize(width: 13, height: 12)
+        let collisionSize = CGSize(width: 15, height: 20)
         let halfWidth = collisionSize.width / 2
         let halfHeight = collisionSize.height / 2
         // Offset collision box downward to position it around the feet/knees
         // Sprite is 96x96, centered at position
         // Feet are at approximately position.y - 48
         // To position collision box near feet (center around position.y - 42):
-        let collisionYOffset: CGFloat = 42.0  // Move collision box down to position around feet
+        // Scale offset to match visual sprite scaling
+        let collisionYOffset = playerCollisionYOffset * playerSpriteScale
         return CGRect(origin: CGPoint(x: position.x - halfWidth, y: position.y - halfHeight - collisionYOffset), size: collisionSize)
     }
     
@@ -191,41 +192,134 @@ extension GameScene {
         // If collision detected, identify and log the entity
         if hasCollision, let node = collisionNode {
             // CRITICAL: If auto-walking to a chest and we collide with that chest, trigger completion
+            print("🔍 canMoveToProceduralWorld: Collision detected, isAutoWalking=\(isAutoWalking), targetNode=\(autoWalkTargetNode?.name ?? "nil"), collisionNode=\(node.name ?? "nil")")
             if isAutoWalking, let targetChestNode = autoWalkTargetNode {
-                // Check if the collision node is the target chest (or a child/parent of it)
-                var isTargetChest = false
-                var checkNode: SKNode? = node
-                var depth = 0
-                while let current = checkNode, depth < 5 {
-                    if current == targetChestNode {
-                        isTargetChest = true
-                        break
+                // BACKUP CHECK: First check if the target chest's collision box intersects the player frame
+                // This ensures we trigger completion even if enumerateBodies returns a different body first
+                // (e.g. another entity at the same position, or if parent-chain walk fails)
+                var shouldTriggerCompletion = false
+                if let chestCollisionBox = getChestCollisionBox(node: targetChestNode) {
+                    let intersects = playerFrame.intersects(chestCollisionBox)
+                    if intersects {
+                        shouldTriggerCompletion = true
+                        print("✅✅✅ Auto-walk: Target chest collision box intersects player frame - will trigger completion")
+                        print("   Player frame: \(playerFrame), Chest collision box: \(chestCollisionBox)")
+                    } else {
+                        print("🔍 Auto-walk: Target chest collision box does NOT intersect player frame")
+                        print("   Player frame: \(playerFrame), Chest collision box: \(chestCollisionBox)")
                     }
-                    checkNode = current.parent
-                    depth += 1
                 }
                 
-                // Also check children of target chest
-                if !isTargetChest {
-                    func checkChildren(_ parent: SKNode) -> Bool {
-                        for child in parent.children {
-                            if child == node {
-                                return true
-                            }
-                            if checkChildren(child) {
-                                return true
+                // Find the chest container by walking up the parent chain
+                // The collision node is usually the physics node (child of container) or the container itself
+                let targetName = targetChestNode.name
+                var chestContainer: SKNode? = nil
+                
+                // First, print detailed info for debugging
+                print("🔍 Auto-walk collision check:")
+                print("   Target chest node: name=\(targetName ?? "nil"), type=\(type(of: targetChestNode))")
+                print("   Collision node: name=\(node.name ?? "nil"), type=\(type(of: node))")
+                
+                // Check if collision node is the container (by reference or name)
+                if node == targetChestNode {
+                    chestContainer = node
+                    print("✅ Auto-walk: Collision node IS target chest container (by reference)")
+                } else if let nodeName = node.name, let targetName = targetName, nodeName == targetName {
+                    chestContainer = node
+                    print("✅ Auto-walk: Collision node IS target chest container (by name: '\(nodeName)')")
+                } else {
+                    // Walk up parent chain to find chest container
+                    // The physics node is a child of the container, so we need to go up
+                    var checkNode: SKNode? = node
+                    var depth = 0
+                    print("   Walking up parent chain from collision node:")
+                    while let current = checkNode, depth < 10 {
+                        let isTarget = (current == targetChestNode) ? " <-- TARGET (by reference)" : ""
+                        let nameMatch = (current.name == targetName && targetName != nil) ? " <-- TARGET (by name)" : ""
+                        print("     [\(depth)] name=\(current.name ?? "nil"), type=\(type(of: current))\(isTarget)\(nameMatch)")
+                        
+                        // Check by reference equality first (most reliable)
+                        if current == targetChestNode {
+                            chestContainer = current
+                            print("✅ Auto-walk: Found target chest container at depth \(depth) by reference")
+                            break
+                        }
+                        // Also check by name (fallback in case references don't match)
+                        if let currentName = current.name, let targetName = targetName {
+                            if currentName == targetName {
+                                chestContainer = current
+                                print("✅ Auto-walk: Found target chest container at depth \(depth) by name match: '\(currentName)' == '\(targetName)'")
+                                break
                             }
                         }
-                        return false
+                        checkNode = current.parent
+                        depth += 1
                     }
-                    isTargetChest = checkChildren(targetChestNode)
                 }
                 
-                if isTargetChest {
-                    print("✅ Auto-walk: Collided with target chest - will trigger completion in update loop")
-                    // The update loop will detect the collision intersection and trigger completion
-                    // Just return false to prevent movement
+                // If we found the target chest container OR the backup check passed, trigger completion
+                if let container = chestContainer {
+                    // SIMPLE: If we're colliding with the target chest's physics body, we've reached it!
+                    // No need to check collision boxes or distances - the physics collision is the truth
+                    print("✅✅✅ Auto-walk: Collided with target chest physics body - triggering immediate completion")
+                    print("   Container found: name=\(container.name ?? "nil"), type=\(type(of: container))")
+                    print("   Completion handler exists: \(autoWalkCompletion != nil)")
+                    
+                    // Stop auto-walk immediately and synchronously
+                    // This prevents the back-and-forth movement
+                    self.isAutoWalking = false
+                    self.autoWalkTarget = nil
+                    self.autoWalkTargetNode = nil
+                    self.autoWalkLastPosition = nil
+                    self.autoWalkStuckCounter = 0
+                    self.autoWalkLastDirection = CGPoint.zero
+                    self.autoWalkObstacleAvoidance = nil
+                    self.currentMovementDirection = CGPoint.zero
+                    self.isMoving = false
+                    
+                    // Call completion handler synchronously (it will open the chest)
+                    if let completion = self.autoWalkCompletion {
+                        print("✅✅✅ Auto-walk: Calling completion handler to open chest UI")
+                        completion()
+                        self.autoWalkCompletion = nil
+                        print("✅✅✅ Auto-walk: Completion handler called and cleared")
+                    } else {
+                        print("⚠️⚠️⚠️ Auto-walk: No completion handler set! This is why the UI isn't opening.")
+                    }
                     return false
+                } else if shouldTriggerCompletion {
+                    // Backup: Target chest's collision box intersects player frame, but parent-chain walk didn't find container
+                    // This can happen if enumerateBodies returned a different body first, or if the node structure is unexpected
+                    // Still trigger completion since we're clearly trying to move into the target chest
+                    print("✅✅✅ Auto-walk: Target chest collision box intersects player frame (backup check) - triggering completion")
+                    print("   Note: Parent-chain walk didn't find container, but collision box check confirms we're at the target chest")
+                    print("   Completion handler exists: \(autoWalkCompletion != nil)")
+                    
+                    // Stop auto-walk immediately and synchronously
+                    self.isAutoWalking = false
+                    self.autoWalkTarget = nil
+                    self.autoWalkTargetNode = nil
+                    self.autoWalkLastPosition = nil
+                    self.autoWalkStuckCounter = 0
+                    self.autoWalkLastDirection = CGPoint.zero
+                    self.autoWalkObstacleAvoidance = nil
+                    self.currentMovementDirection = CGPoint.zero
+                    self.isMoving = false
+                    
+                    // Call completion handler synchronously (it will open the chest)
+                    if let completion = self.autoWalkCompletion {
+                        print("✅✅✅ Auto-walk: Calling completion handler to open chest UI (via backup check)")
+                        completion()
+                        self.autoWalkCompletion = nil
+                        print("✅✅✅ Auto-walk: Completion handler called and cleared")
+                    } else {
+                        print("⚠️⚠️⚠️ Auto-walk: No completion handler set! This is why the UI isn't opening.")
+                    }
+                    return false
+                } else {
+                    print("❌ Auto-walk: Collision node '\(node.name ?? "nil")' is NOT target chest '\(targetChestNode.name ?? "nil")'")
+                    print("   Target chest name: '\(targetName ?? "nil")'")
+                    print("   This collision is blocking movement but not triggering chest completion")
                 }
             }
             
@@ -777,39 +871,108 @@ extension GameScene {
     // MARK: - Chest Collision
 
     func getChestCollisionBox(node: SKNode) -> CGRect? {
+        // Check cache first to avoid expensive recalculations
+        if let cached = chestCollisionBoxCache[node] {
+            return cached
+        }
+        
         // Get chest prefab ID from userData
         guard let userData = node.userData,
               let prefabId = userData["prefabId"] as? String,
               let chestPrefab = PrefabFactory.shared.getChestPrefab(prefabId) else {
-            print("⚠️ getChestCollisionBox: Could not get chest prefab for node \(node.name ?? "nil")")
             return nil
         }
         
-        // Get collision size from prefab
-        let collisionSize = chestPrefab.collision.size
+        // Scale collision size from source tile size to world tile size (same as physics body)
+        // This ensures the collision box matches what's actually used for physics collision
+        let worldTileSize: CGFloat = 32.0  // World tile size (matches ChunkSystem)
+        let sourceTileSize = chestPrefab.tileSize > 0 ? chestPrefab.tileSize : 32.0
+        let scale = worldTileSize / sourceTileSize
         
-        // Get the actual entity position from userData (this is the world position where the chest was placed)
-        // This is more reliable than trying to calculate from node hierarchy
-        var chestWorldPos: CGPoint
-        if let positionValue = userData["position"] as? NSValue {
-            chestWorldPos = positionValue.pointValue
-        } else {
-            // Fallback: try to get position from node hierarchy
-            // Convert the node's origin (0,0) to scene coordinates
-            chestWorldPos = node.convert(CGPoint.zero, to: self)
-            print("⚠️ getChestCollisionBox: No position in userData, using converted position: \(chestWorldPos)")
-        }
-        
-        // Create collision box centered at chest position
-        // Collision box is centered at the chest's position
-        let collisionBox = CGRect(
-            x: chestWorldPos.x - collisionSize.width / 2,
-            y: chestWorldPos.y - collisionSize.height / 2,
-            width: collisionSize.width,
-            height: collisionSize.height
+        // Get raw collision size from prefab (before scaling)
+        let rawCollisionSize = chestPrefab.collision.size
+        let scaledCollisionSize = CGSize(
+            width: rawCollisionSize.width * scale,
+            height: rawCollisionSize.height * scale
         )
         
-        print("📦 getChestCollisionBox: chest '\(prefabId)' - world pos from userData: \(chestWorldPos), collision size: \(collisionSize), final box: \(collisionBox)")
+        // CRITICAL: Calculate collision box the EXACT same way ChunkSystem does
+        // Find the physics node (child with physicsBody)
+        var physicsNode: SKNode? = nil
+        for child in node.children {
+            if child.physicsBody != nil {
+                physicsNode = child
+                break
+            }
+        }
+        
+        let collisionBox: CGRect
+        if let physicsNode = physicsNode {
+            // Physics node exists - use its world position (same as ChunkSystem calculation)
+            // Convert physics node's position to scene coordinates
+            let physicsWorldPos = physicsNode.convert(CGPoint.zero, to: self)
+            
+            // Physics body is centered, so create collision box centered at physics body position
+            collisionBox = CGRect(
+                x: physicsWorldPos.x - scaledCollisionSize.width / 2,
+                y: physicsWorldPos.y - scaledCollisionSize.height / 2,
+                width: scaledCollisionSize.width,
+                height: scaledCollisionSize.height
+            )
+            print("📦 getChestCollisionBox: Using physics node - physicsWorldPos=\(physicsWorldPos), collisionBox=\(collisionBox)")
+        } else {
+            // Fallback: calculate from sprite bounds (same as ChunkSystem fallback)
+            let sprites = node.children.compactMap { $0 as? SKSpriteNode }
+            if !sprites.isEmpty {
+                var minX = CGFloat.greatestFiniteMagnitude
+                var maxX = CGFloat(-CGFloat.greatestFiniteMagnitude)
+                var minY = CGFloat.greatestFiniteMagnitude
+                var maxY = CGFloat(-CGFloat.greatestFiniteMagnitude)
+                
+                for sprite in sprites {
+                    // Sprites use anchorPoint (0, 1) = top-left
+                    let spriteLeft = sprite.position.x
+                    let spriteRight = sprite.position.x + sprite.size.width
+                    let spriteTop = sprite.position.y
+                    let spriteBottom = sprite.position.y - sprite.size.height
+                    
+                    minX = min(minX, spriteLeft)
+                    maxX = max(maxX, spriteRight)
+                    minY = min(minY, spriteBottom)
+                    maxY = max(maxY, spriteTop)
+                }
+                
+                // Position collision box at center-bottom (same as physics body calculation in ChunkSystem)
+                let localCollisionX = (minX + maxX) / 2
+                let localCollisionY = minY + scaledCollisionSize.height / 2
+                
+                // Convert to scene coordinates
+                let nodeScenePosition = node.convert(CGPoint.zero, to: self)
+                let sceneCollisionX = nodeScenePosition.x + localCollisionX
+                let sceneCollisionY = nodeScenePosition.y + localCollisionY
+                
+                collisionBox = CGRect(
+                    x: sceneCollisionX - scaledCollisionSize.width / 2,
+                    y: sceneCollisionY - scaledCollisionSize.height / 2,
+                    width: scaledCollisionSize.width,
+                    height: scaledCollisionSize.height
+                )
+                print("📦 getChestCollisionBox: Using sprite bounds fallback - collisionBox=\(collisionBox)")
+            } else {
+                // Final fallback: center at node position
+                let nodeScenePosition = node.convert(CGPoint.zero, to: self)
+                collisionBox = CGRect(
+                    x: nodeScenePosition.x - scaledCollisionSize.width / 2,
+                    y: nodeScenePosition.y - scaledCollisionSize.height / 2,
+                    width: scaledCollisionSize.width,
+                    height: scaledCollisionSize.height
+                )
+                print("📦 getChestCollisionBox: Using node position fallback - collisionBox=\(collisionBox)")
+            }
+        }
+        
+        // Cache the result
+        chestCollisionBoxCache[node] = collisionBox
         
         return collisionBox
     }

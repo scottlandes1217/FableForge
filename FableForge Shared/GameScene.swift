@@ -29,6 +29,7 @@ class GameScene: SKScene {
     var chestSprites: [SKNode: (entityKey: EntityKey, prefabId: String, position: CGPoint)] = [:]  // Map of chest sprite nodes to entity data
     var chestContents: [EntityKey: [Item]] = [:]  // Map of chest entity keys to their contents
     var lastOpenedChestNode: SKNode? = nil  // Track last chest we tried to open to prevent spam
+    var chestCollisionBoxCache: [SKNode: CGRect] = [:]  // Cache collision boxes to avoid recalculating every frame
     
     // Generic auto-walk system (reusable for chests, NPCs, enemies, items, etc.)
     var autoWalkTarget: CGPoint?  // Target position for auto-walking
@@ -114,6 +115,8 @@ class GameScene: SKScene {
     let animationFrameDuration: TimeInterval = 0.15 // 150ms per frame
     var lastFacingDirection: String = "south" // Track last facing direction for idle state
     var playerSpriteSize: CGSize = CGSize(width: 96, height: 96) // Store sprite size
+    var playerSpriteScale: CGFloat = 1.5 // Slight visual scale to match prefabs
+    var playerCollisionYOffset: CGFloat = 30.0 // Move collision box toward feet (pre-scale)
     
     // Track last animation state to only update when it changes
     var lastAnimationFrame: Int = -1
@@ -213,35 +216,11 @@ class GameScene: SKScene {
         // This gives us access to all the tileset images even when generating procedurally
         let parsedTiledMap = loadTilesetsFromTMX(fileName: tiledMapFileName)
         
-        // Check if TMX map has a property to enable procedural world
-        // If the map has "useProceduralWorld" property set to "true", use procedural generation
-        if let tiledMap = parsedTiledMap {
-            // Debug: Print all map properties
-            if !tiledMap.properties.isEmpty {
-                print("🔍 TMX Map properties found: \(tiledMap.properties)")
-            } else {
-                print("⚠️ No map properties found in TMX (property must be on the MAP, not a layer)")
-            }
-            
-            // Check for useProceduralWorld property
-            let useProcedural = tiledMap.boolProperty("useProceduralWorld", default: false)
-            print("🔍 useProceduralWorld property value: \(useProcedural)")
-            
-            if useProcedural {
-                print("🌍 TMX map property 'useProceduralWorld' is true - using procedural world")
-                useTiledMap = false
-            } else {
-                print("📍 Using Tiled map (useProceduralWorld=false or not set)")
-            }
-        }
+        // Determine which world mode to load (same logic as reload)
+        configureMapMode(from: parsedTiledMap)
         
         // Load and render Tiled map (or use chunk-based procedural world)
-        if useTiledMap {
-            loadAndRenderTiledMap(fileName: tiledMapFileName, preParsedMap: parsedTiledMap)
-        } else {
-            // Initialize hybrid world system (chunk-based procedural)
-            setupHybridWorldSystem()
-        }
+        loadMapFromCurrentMode(preParsedMap: parsedTiledMap)
         
         // Update GameState with initial map information
         if let gameState = gameState {

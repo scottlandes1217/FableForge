@@ -11,6 +11,20 @@ extension GameScene {
     
     // MARK: - Object Interaction
     
+    /// Clear all auto-walk state to prevent unwanted movement
+    private func clearAutoWalkState() {
+        isAutoWalking = false
+        autoWalkTarget = nil
+        autoWalkTargetNode = nil
+        autoWalkCompletion = nil
+        autoWalkLastPosition = nil
+        autoWalkStuckCounter = 0
+        autoWalkLastDirection = CGPoint.zero
+        autoWalkObstacleAvoidance = nil
+        currentMovementDirection = CGPoint.zero
+        isMoving = false
+    }
+    
     #if os(iOS) || os(tvOS)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
@@ -77,7 +91,7 @@ extension GameScene {
         
         // Check for chests even if paused (so we can detect them)
         // Search ALL descendants of the touched nodes to find ALL chest containers
-        // Then check which ones have the click within their collision box
+        // Then check which ones have the click within their bounding box or collision box
         var foundChests: [(container: SKNode, distance: CGFloat)] = []
         var checkedContainers = Set<SKNode>()
         
@@ -89,21 +103,171 @@ extension GameScene {
                 if !checkedContainers.contains(node) {
                     checkedContainers.insert(node)
                     
-                    // Get the chest's collision box to verify the click is actually on this chest
-                    guard let collisionBox = getChestCollisionBox(node: node) else {
-                        return
+                    // Check if click is on any of the chest's visual tiles (sprites)
+                    var clickOnChest = false
+                    
+                    // PRIORITY 1: Use nodes(at:) FIRST - this is the most reliable way to detect clicks on sprites
+                    // Note: nodes(at:) works even if sprites don't have isUserInteractionEnabled
+                    // This directly checks if any sprite at the click location belongs to this chest
+                    let nodesAtClick = self.nodes(at: location)
+                    print("🔍 Checking \(nodesAtClick.count) nodes at click location for chest '\(name)'")
+                    for clickedNode in nodesAtClick {
+                        // Walk up the parent chain to see if this node belongs to the chest container
+                        var currentNode: SKNode? = clickedNode
+                        var depth = 0
+                        while let current = currentNode, depth < 10 {
+                            if current == node {
+                                // Found the chest container in the parent chain - this node belongs to the chest!
+                                clickOnChest = true
+                                print("✅ Click detected via nodes(at:) for chest '\(name)': clickedNode=\(clickedNode.name ?? "unnamed"), type=\(type(of: clickedNode)), found container at depth \(depth), click=\(location)")
+                                break
+                            }
+                            // Also check if current is a child of the chest container by checking all children
+                            if node.children.contains(current) {
+                                clickOnChest = true
+                                print("✅ Click detected via nodes(at:) for chest '\(name)': clickedNode=\(clickedNode.name ?? "unnamed"), type=\(type(of: clickedNode)), is child of container at depth \(depth), click=\(location)")
+                                break
+                            }
+                            currentNode = current.parent
+                            depth += 1
+                        }
+                        if clickOnChest { break }
                     }
                     
-                    // Add padding to collision box for easier clicking (20 pixels on all sides)
-                    let paddedBox = collisionBox.insetBy(dx: -20, dy: -20)
+                    // Also print what nodes were found for debugging
+                    if !clickOnChest && nodesAtClick.count > 0 {
+                        print("🔍 Nodes at click location (not matching chest '\(name)'):")
+                        for (index, clickedNode) in nodesAtClick.enumerated() {
+                            var currentNode: SKNode? = clickedNode
+                            var depth = 0
+                            var parentChain = ""
+                            while let current = currentNode, depth < 5 {
+                                parentChain += "[\(depth)]\(current.name ?? "nil")(\(type(of: current)))"
+                                if current == node {
+                                    parentChain += "<--CHEST_CONTAINER"
+                                }
+                                parentChain += " -> "
+                                currentNode = current.parent
+                                depth += 1
+                            }
+                            print("   Node \(index): name=\(clickedNode.name ?? "nil"), type=\(type(of: clickedNode)), chain=\(parentChain)")
+                        }
+                    }
                     
-                    // CRITICAL: Only use this chest if the click is actually within its padded collision box
-                    if paddedBox.contains(location) {
+                    // PRIORITY 2: Check visual bounding box (all sprites combined) in SCENE coordinates
+                    // Calculate bounding box by converting all sprite positions to scene coordinates
+                    // This is more reliable than using calculateAccumulatedFrame() with coordinate conversion
+                    if !clickOnChest {
+                        // Get all visual sprites (exclude physics nodes)
+                        let visualSprites = node.children.compactMap { child -> SKSpriteNode? in
+                            guard child.physicsBody == nil, let sprite = child as? SKSpriteNode else { return nil }
+                            return sprite
+                        }
+                        
+                        if !visualSprites.isEmpty {
+                            // Calculate bounding box from all sprites in SCENE coordinates
+                            var minX = CGFloat.greatestFiniteMagnitude
+                            var maxX = CGFloat(-CGFloat.greatestFiniteMagnitude)
+                            var minY = CGFloat.greatestFiniteMagnitude
+                            var maxY = CGFloat(-CGFloat.greatestFiniteMagnitude)
+                            
+                            for sprite in visualSprites {
+                                // Convert sprite's position to scene coordinates
+                                // Sprites use anchorPoint (0, 1) = top-left, so we need to account for that
+                                let spriteWorldPos = sprite.convert(CGPoint.zero, to: self)
+                                let spriteSize = sprite.size
+                                
+                                // Calculate sprite bounds in scene coordinates
+                                // anchorPoint (0, 1) means: position is at top-left of sprite
+                                let spriteLeft = spriteWorldPos.x
+                                let spriteRight = spriteWorldPos.x + spriteSize.width
+                                let spriteTop = spriteWorldPos.y
+                                let spriteBottom = spriteWorldPos.y - spriteSize.height
+                                
+                                minX = min(minX, spriteLeft)
+                                maxX = max(maxX, spriteRight)
+                                minY = min(minY, spriteBottom)
+                                maxY = max(maxY, spriteTop)
+                            }
+                            
+                            // Create bounding box in scene coordinates
+                            let visualBoundingBox = CGRect(
+                                x: minX,
+                                y: minY,
+                                width: maxX - minX,
+                                height: maxY - minY
+                            )
+                            
+                            // Check if click (already in scene coordinates) is within the box
+                            // Use padding (expand by 10pt each side) so clicks just outside still register
+                            let paddedVisualBox = visualBoundingBox.insetBy(dx: -10, dy: -10)
+                            let contains = paddedVisualBox.contains(location)
+                            print("🔍 Visual bounding box check for chest '\(name)': visualBox=\(visualBoundingBox) padded=\(paddedVisualBox), click=\(location), contains=\(contains)")
+                            if contains {
+                                clickOnChest = true
+                                print("✅ Click within visual bounding box for chest '\(name)': visualBox=\(visualBoundingBox), click=\(location)")
+                            }
+                        }
+                    }
+                    
+                    // PRIORITY 3: Check individual sprites using their world positions
+                    // Fallback if bounding box check fails (shouldn't happen, but just in case)
+                    if !clickOnChest {
+                        print("🔍 Checking \(node.children.count) children of chest '\(name)' for sprite frame matches")
+                        for child in node.children {
+                            // Skip physics nodes - we only want visual sprites
+                            if child.physicsBody != nil { continue }
+                            
+                            if let sprite = child as? SKSpriteNode {
+                                // Convert sprite's position to scene coordinates
+                                let spriteWorldPos = sprite.convert(CGPoint.zero, to: self)
+                                let spriteSize = sprite.size
+                                
+                                // Calculate sprite bounds in scene coordinates (anchorPoint 0,1 = top-left)
+                                let spriteFrame = CGRect(
+                                    x: spriteWorldPos.x,
+                                    y: spriteWorldPos.y - spriteSize.height,
+                                    width: spriteSize.width,
+                                    height: spriteSize.height
+                                )
+                                
+                                // Check if click (in scene coordinates) is within sprite frame (with padding)
+                                let paddedFrame = spriteFrame.insetBy(dx: -8, dy: -8)
+                                let contains = paddedFrame.contains(location)
+                                print("   Sprite '\(sprite.name ?? "unnamed")': spriteFrame=\(spriteFrame) (in scene space), click=\(location), contains=\(contains)")
+                                if contains {
+                                    clickOnChest = true
+                                    print("✅ Click detected on sprite child of chest '\(name)': sprite=\(sprite.name ?? "unnamed"), frame=\(spriteFrame), click=\(location)")
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    
+                    // PRIORITY 4: Check collision box (same as used for movement detection)
+                    // Use the EXACT same collision box calculation as movement - this is a fallback
+                    // The collision box is smaller than the visual area, so this should only trigger if visual detection fails
+                    // Use padding (expand by 10pt each side) so clicks just outside still register
+                    if !clickOnChest {
+                        if let collisionBox = getChestCollisionBox(node: node) {
+                            let paddedCollisionBox = collisionBox.insetBy(dx: -10, dy: -10)
+                            let contains = paddedCollisionBox.contains(location)
+                            print("🔍 Collision box check for chest '\(name)': collisionBox=\(collisionBox), padded=\(paddedCollisionBox), click=\(location), contains=\(contains)")
+                            if contains {
+                                clickOnChest = true
+                                print("✅ Click within collision box for chest '\(name)': collisionBox=\(collisionBox), click=\(location)")
+                            }
+                        } else {
+                            print("⚠️ getChestCollisionBox returned nil for chest '\(name)'")
+                        }
+                    }
+                    
+                    if clickOnChest {
                         // Get the chest's world position to calculate distance
                         let chestWorldPos: CGPoint
                         if let positionValue = userData["position"] as? NSValue {
                             chestWorldPos = positionValue.pointValue
-                            } else {
+                        } else {
                             chestWorldPos = node.convert(CGPoint.zero, to: self)
                         }
                         
@@ -126,9 +290,9 @@ extension GameScene {
             findAllChestContainers(in: node)
         }
         
-        // If we found chests with the click in their collision box, use the closest one
+        // If we found chests with the click on their tiles, use the closest one
         if let closestChest = foundChests.min(by: { $0.distance < $1.distance }) {
-            print("✅ GameScene: Found \(foundChests.count) chest(s) with click in collision box, using closest: \(closestChest.container.name ?? "unnamed") at distance \(Int(closestChest.distance))")
+            print("✅ GameScene: Found \(foundChests.count) chest(s) with click on tiles, using closest: \(closestChest.container.name ?? "unnamed") at distance \(Int(closestChest.distance))")
             handleChestClick(node: closestChest.container, worldPosition: location)
             return  // Don't process other UI if clicking a chest
         }
@@ -508,20 +672,158 @@ extension GameScene {
             print("   Node \(index): name=\(node.name ?? "nil"), type=\(type(of: node)), userData.entityType=\(node.userData?["entityType"] as? String ?? "nil")")
         }
         
-        // Check if clicking on a chest first (chests have priority)
-        for node in touchedNodes {
-            // Check if this is a chest entity container
-            if let name = node.name, name.hasPrefix("chest_entity_") {
-                print("✅ GameScene: Found chest node by name: \(name)")
-                // location is already in scene coordinates from touch.location(in: self)
-                handleChestClick(node: node, worldPosition: location)
-                return
+        // PRIORITY 1: Check if any clicked node is a chest container or child of one
+        // Walk up the parent chain from each clicked node to find chest containers
+        var foundChests: [(container: SKNode, distance: CGFloat)] = []
+        
+        for clickedNode in touchedNodes {
+            var currentNode: SKNode? = clickedNode
+            var depth = 0
+            
+            // Walk up the parent chain to find chest containers
+            while let current = currentNode, depth < 10 {
+                // Check if this node is a chest container
+                if let name = current.name, name.hasPrefix("chest_entity_"),
+                   let userData = current.userData, userData["position"] != nil {
+                    // Found a chest container - calculate distance from click to chest center
+                    let chestWorldPos: CGPoint
+                    if let positionValue = userData["position"] as? NSValue {
+                        chestWorldPos = positionValue.pointValue
+                    } else {
+                        chestWorldPos = current.convert(CGPoint.zero, to: self)
+                    }
+                    
+                    let distance = sqrt(pow(chestWorldPos.x - location.x, 2) + pow(chestWorldPos.y - location.y, 2))
+                    foundChests.append((container: current, distance: distance))
+                    print("✅ GameScene: Found chest container '\(name)' via parent chain at depth \(depth), distance: \(Int(distance))")
+                    break  // Found container, stop walking up this chain
+                }
+                
+                // Also check userData for chest identification
+                if let userData = current.userData, userData["entityType"] as? String == "chest" {
+                    let chestWorldPos: CGPoint
+                    if let positionValue = userData["position"] as? NSValue {
+                        chestWorldPos = positionValue.pointValue
+                    } else {
+                        chestWorldPos = current.convert(CGPoint.zero, to: self)
+                    }
+                    
+                    let distance = sqrt(pow(chestWorldPos.x - location.x, 2) + pow(chestWorldPos.y - location.y, 2))
+                    foundChests.append((container: current, distance: distance))
+                    print("✅ GameScene: Found chest container (by userData) via parent chain at depth \(depth), distance: \(Int(distance))")
+                    break  // Found container, stop walking up this chain
+                }
+                
+                currentNode = current.parent
+                depth += 1
             }
+        }
+        
+        // If we found chests, use the closest one
+        if let closestChest = foundChests.min(by: { $0.distance < $1.distance }) {
+            print("✅ GameScene: Found \(foundChests.count) chest(s), using closest: \(closestChest.container.name ?? "unnamed") at distance \(Int(closestChest.distance))")
+            handleChestClick(node: closestChest.container, worldPosition: location)
+            return
+        }
+        
+        // PRIORITY 2: Fallback to bounding box search (for cases where nodes(at:) doesn't find the sprites)
+        // This can happen if sprites don't have isUserInteractionEnabled or are in a different coordinate space
+        var checkedContainers = Set<SKNode>()
+        var foundChest: SKNode? = nil
+        
+        func findAllChestContainers(in node: SKNode) {
+            // Check if this node is a chest container
+            if let name = node.name, name.hasPrefix("chest_entity_"),
+               let userData = node.userData, userData["position"] != nil {
+                if !checkedContainers.contains(node) {
+                    checkedContainers.insert(node)
+                    
+                    // Check if click is on any of the chest's visual tiles (sprites)
+                    var clickOnChest = false
+                    
+                    // Check if click is within the bounding box of all chest tiles
+                    let chestBoundingBox = calculateBoundingBox(for: node)
+                    // Add small padding for easier clicking
+                    let paddedBox = chestBoundingBox.insetBy(dx: -10, dy: -10)
+                    if paddedBox.contains(location) {
+                        clickOnChest = true
+                        print("✅ Click within bounding box for chest: bbox=\(chestBoundingBox), padded=\(paddedBox), click=\(location)")
+                    }
+                    
+                    // Also check collision box as fallback
+                    if !clickOnChest {
+                        if let collisionBox = getChestCollisionBox(node: node) {
+                            let paddedBox = collisionBox.insetBy(dx: -20, dy: -20)
+                            if paddedBox.contains(location) {
+                                clickOnChest = true
+                                print("✅ Click within collision box for chest: collisionBox=\(collisionBox), padded=\(paddedBox), click=\(location)")
+                            }
+                        }
+                    }
+                    
+                    if clickOnChest {
+                        foundChest = node
+                        return  // Stop searching
+                    }
+                }
+                return  // Found container, don't search children
+            }
+            
             // Also check userData for chest identification
             if let userData = node.userData, userData["entityType"] as? String == "chest" {
-                print("✅ GameScene: Found chest node by userData")
-                // location is already in scene coordinates from touch.location(in: self)
-                handleChestClick(node: node, worldPosition: location)
+                if !checkedContainers.contains(node) {
+                    checkedContainers.insert(node)
+                    
+                    // Check if click is on any of the chest's visual tiles (sprites)
+                    var clickOnChest = false
+                    
+                    // PRIORITY 1: Check bounding box first (most reliable, accounts for all visual elements)
+                    let chestBoundingBox = calculateBoundingBox(for: node)
+                    if chestBoundingBox.width > 0 && chestBoundingBox.height > 0 {
+                        // Add padding for easier clicking
+                        let paddedBox = chestBoundingBox.insetBy(dx: -10, dy: -10)
+                        if paddedBox.contains(location) {
+                            clickOnChest = true
+                            print("✅ Click within bounding box for chest (by userData): bbox=\(chestBoundingBox), padded=\(paddedBox), click=\(location)")
+                        }
+                    }
+                    
+                    // PRIORITY 2: Check collision box as fallback
+                    if !clickOnChest {
+                        if let collisionBox = getChestCollisionBox(node: node) {
+                            let paddedBox = collisionBox.insetBy(dx: -20, dy: -20)
+                            if paddedBox.contains(location) {
+                                clickOnChest = true
+                                print("✅ Click within collision box for chest (by userData): collisionBox=\(collisionBox), padded=\(paddedBox), click=\(location)")
+                            }
+                        }
+                    }
+                    
+                    if clickOnChest {
+                        foundChest = node
+                        return  // Stop searching
+                    }
+                }
+                return
+            }
+            
+            // Recursively search children (only if we haven't found a chest yet)
+            if foundChest == nil {
+                for child in node.children {
+                    findAllChestContainers(in: child)
+                    if foundChest != nil {
+                        return  // Stop searching
+                    }
+                }
+            }
+        }
+        
+        // Search all touched nodes and their descendants (fallback)
+        for node in touchedNodes {
+            findAllChestContainers(in: node)
+            if let chest = foundChest {
+                print("✅ GameScene: Found chest node via bounding box search: \(chest.name ?? "unnamed")")
+                handleChestClick(node: chest, worldPosition: location)
                 return
             }
         }
@@ -752,26 +1054,40 @@ extension GameScene {
             return
         }
         
-        // Get the chest's collision box to determine the actual target position
-        // Use the center of the collision box as the target, not just the entity position
+        // Get the chest's target position for auto-walk
+        // Use the center of the bounding box (visual area) as the target, not the collision box
+        // This ensures the player walks to where they can see and interact with the chest
         let chestTargetPosition: CGPoint
-        if let collisionBox = getChestCollisionBox(node: containerNode) {
-            // Use the center of the collision box as the target
+        let chestBoundingBox = calculateBoundingBox(for: containerNode)
+        if chestBoundingBox.width > 0 && chestBoundingBox.height > 0 {
+            // Use the center of the visual bounding box
+            chestTargetPosition = CGPoint(x: chestBoundingBox.midX, y: chestBoundingBox.midY)
+        } else if let collisionBox = getChestCollisionBox(node: containerNode) {
+            // Fallback: use the center of the collision box
             chestTargetPosition = CGPoint(x: collisionBox.midX, y: collisionBox.midY)
         } else {
-            // Fallback: use entity position from userData
+            // Final fallback: use entity position from userData
             if let positionValue = userData["position"] as? NSValue {
                 chestTargetPosition = positionValue.pointValue
             } else {
-                // Final fallback: convert container node's position to scene coordinates
+                // Last resort: convert container node's position to scene coordinates
                 chestTargetPosition = containerNode.convert(CGPoint.zero, to: self)
             }
         }
         
+        // Calculate interaction radius based on chest visual size (not collision box)
+        // Use the larger dimension of the visual bounding box for more accurate sizing
+        // Smaller chests get proportionally smaller interaction distances
+        let maxVisualDimension = max(chestBoundingBox.width, chestBoundingBox.height)
+        // Use 0.8x the max visual dimension, with a minimum of 12 and maximum of 80
+        // This gives smaller chests much closer interaction distances
+        let interactionRadius = max(12.0, min(80.0, maxVisualDimension * 0.8))
+        print("📦 Chest interaction radius: visualSize=(\(chestBoundingBox.width), \(chestBoundingBox.height)), maxDim=\(maxVisualDimension), radius=\(interactionRadius)")
+        
         // Use generic auto-walk - the chest-specific logic (finding entity, getting items) 
         // will be done when we actually reach the chest (in the completion handler)
         // The targetNode ensures we stop when colliding with the chest, not when reaching the position
-        autoWalkTo(target: chestTargetPosition, targetNode: containerNode) { [weak self] in
+        autoWalkTo(target: chestTargetPosition, targetNode: containerNode, interactionRadius: interactionRadius) { [weak self] in
             guard let self = self, let chunkManager = self.chunkManager else { return }
             
             // Now that we've reached the chest, find the entity data and open it
@@ -942,6 +1258,9 @@ extension GameScene {
         for node in touchedNodes {
             if let name = node.name {
                 if name == "chestClose" {
+                    // Clear any auto-walk state before closing UI to prevent unwanted movement
+                    clearAutoWalkState()
+                    
                     chestUI.hide()
                     lastOpenedChestNode = nil  // Reset so player can open chests again
                     return
@@ -971,6 +1290,7 @@ extension GameScene {
         
         if items.isEmpty {
             showMessage("Chest is empty")
+            clearAutoWalkState()
             chestUI.hide()
             lastOpenedChestNode = nil  // Reset so player can open chests again
             return
@@ -994,6 +1314,7 @@ extension GameScene {
         }
         
         // Close chest UI
+        clearAutoWalkState()
         chestUI.hide()
         lastOpenedChestNode = nil  // Reset so player can open chests again
         
@@ -1036,6 +1357,7 @@ extension GameScene {
         
         // Refresh chest UI if there are still items, otherwise close
         if chestUI.items.isEmpty {
+            clearAutoWalkState()
             chestUI.hide()
             lastOpenedChestNode = nil  // Reset so player can open chests again
             showMessage("Took \(itemsTaken.count) item(s) from chest. Chest is now empty.")

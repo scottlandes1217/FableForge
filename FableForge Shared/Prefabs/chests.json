@@ -9,21 +9,22 @@
         {
           "layer": "low",
           "tileGrid": [
-            ["generate", "generate"],
-            ["generate", "generate"]
+            ["chest_atlas-72", "chest_atlas-73", "chest_atlas-74"],
+            ["chest_atlas-108", "chest_atlas-109", "chest_atlas-110"],
+            ["chest_atlas-144", "chest_atlas-145", "chest_atlas-146"]
           ],
-          "offset": {"x": -16, "y": -16},
-          "size": {"width": 64, "height": 64},
+          "offset": {"x": -32, "y": 32},
+          "size": {"width": 96, "height": 96},
           "zOffset": 0,
           "tileSize": 32
         }
       ],
-      "size": {"width": 64, "height": 64},
-      "zOffset": 0,
+      "size": {"width": 96, "height": 96},
+      "zOffset": -32,
       "tileSize": 32,
       "collision": {
         "type": "rectangle",
-        "size": {"width": 64, "height": 64}
+        "size": {"width": 96, "height": 32}
       },
       "zPosition": 10,
       "lootTable": [
@@ -80,7 +81,7 @@
             ["generate", "generate", "generate"],
             ["generate", "generate", "generate"]
           ],
-          "offset": {"x": -32, "y": -32},
+          "offset": {"x": -32, "y": 32},
           "size": {"width": 96, "height": 96},
           "zOffset": 0,
           "tileSize": 32

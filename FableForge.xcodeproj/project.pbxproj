@@ -106,6 +106,9 @@
 		67571A9F2F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
 		67571AA02F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
 		67571AA12F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
+		67571AA32F23430200511067 /* chests.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571AA22F2342E200511067 /* chests.tsx */; };
+		67571AA42F23430700511067 /* chests.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571AA22F2342E200511067 /* chests.tsx */; };
+		67571AA52F23430B00511067 /* chests.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571AA22F2342E200511067 /* chests.tsx */; };
 		67C26A732F1334C400C97685 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A722F1334C400C97685 /* AppDelegate.swift */; };
 		67C26A752F1334C400C97685 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A742F1334C400C97685 /* GameViewController.swift */; };
 		67C26A782F1334C400C97685 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = 67C26A772F1334C400C97685 /* Base */; };
@@ -237,6 +240,7 @@
 		67571A812F21952F00511067 /* GameScene_Camera.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_Camera.swift; sourceTree = "<group>"; };
 		67571A822F21952F00511067 /* GameScene_WorldRendering.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_WorldRendering.swift; sourceTree = "<group>"; };
 		67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_EntitySpawning.swift; sourceTree = "<group>"; };
+		67571AA22F2342E200511067 /* chests.tsx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.typescript; path = chests.tsx; sourceTree = "<group>"; };
 		67C26A672F1334C200C97685 /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
 		67C26A6A2F1334C400C97685 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		67C26A6F2F1334C400C97685 /* FableForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FableForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -347,6 +351,7 @@
 		67571A612F1F742C00511067 /* TSX */ = {
 			isa = PBXGroup;
 			children = (
+				67571AA22F2342E200511067 /* chests.tsx */,
 				67571A6B2F1F777E00511067 /* terrain1.tsx */,
 				67571A762F20953E00511067 /* outside_objects1.tsx */,
 				67571A6A2F1F777E00511067 /* water1.tsx */,
@@ -585,6 +590,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571AA32F23430200511067 /* chests.tsx in Resources */,
 				67571A792F20957300511067 /* outside_objects1.tsx in Resources */,
 				67571A6C2F1F788000511067 /* terrain1.tsx in Resources */,
 				67571A6D2F1F788000511067 /* water1.tsx in Resources */,
@@ -612,6 +618,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571AA42F23430700511067 /* chests.tsx in Resources */,
 				67571A782F20956E00511067 /* outside_objects1.tsx in Resources */,
 				67571A6E2F1F788F00511067 /* terrain1.tsx in Resources */,
 				67571A6F2F1F788F00511067 /* water1.tsx in Resources */,
@@ -639,6 +646,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571AA52F23430B00511067 /* chests.tsx in Resources */,
 				67571A772F20956300511067 /* outside_objects1.tsx in Resources */,
 				67571A702F1F789A00511067 /* terrain1.tsx in Resources */,
 				67571A712F1F789A00511067 /* water1.tsx in Resources */,

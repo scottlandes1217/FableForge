@@ -83,7 +83,6 @@
  <tile id="342" type="treecanopy_1"/>
  <tile id="343" type="treecanopy_1"/>
  <tile id="344" type="treecanopy_1"/>
- <tile id="386" type="treetrunk_1"/>
  <tile id="387" type="treetrunk_1"/>
  <tile id="388" type="treetrunk_1"/>
  <tile id="389" type="treetrunk_1"/>

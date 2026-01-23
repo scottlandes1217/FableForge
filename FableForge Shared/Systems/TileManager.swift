@@ -619,9 +619,10 @@ class TileManager {
     /// Create a sprite from a sprite atlas (e.g., "grasslands_atlas-1")
     /// Returns nil if atlas or frame not found
     func createSpriteFromAtlas(atlasName: String, frameNumber: Int, size: CGSize) -> SKSpriteNode? {
-        // Check cache first
+        // Check cache first (but skip cache if this atlas maps to a Tiled tileset image)
         let cacheKey = "\(atlasName)-\(frameNumber)"
-        if let cached = spriteAtlasCache[cacheKey] {
+        let atlasIsTiledTileset = tiledTilesets.contains(where: { $0.name == atlasName || $0.imageName == atlasName || $0.imageName.contains(atlasName) })
+        if let cached = spriteAtlasCache[cacheKey], !atlasIsTiledTileset {
             let sprite = SKSpriteNode(texture: cached, size: size)
             return sprite
         }
@@ -682,8 +683,8 @@ class TileManager {
         }
         
         // CRITICAL FIX: Check if this is actually a Tiled tileset first
-        // If a TiledTileset with this name exists, use its tile dimensions instead of inferring
-        if let tileset = tiledTilesets.first(where: { $0.name == atlasName }) {
+        // If a TiledTileset with this name or image exists, use its tile dimensions
+        if let tileset = tiledTilesets.first(where: { $0.name == atlasName || $0.imageName == atlasName || $0.imageName.contains(atlasName) }) {
             // This is a Tiled tileset, not a sprite atlas
             // The frame number is already 0-indexed (matches Tiled's convention where first tile is 0)
             // This matches PrefabFactory's behavior: gid = tileset.firstGID + index (no subtraction)
@@ -696,6 +697,46 @@ class TileManager {
             } else {
                 print("⚠️ TileManager: Failed to create sprite from Tiled tileset '\(atlasName)' frame \(frameNumber) (GID: \(gid))")
                 return nil
+            }
+        }
+        
+        // Check if there's a TSX file for this atlas that specifies columns
+        // This is important for atlases like chest_atlas which have a TSX file with columns="36"
+        // Try matching by name first, then by image name
+        // Special case: chest_atlas uses TSX file named "chests"
+        var tsxColumns: Int? = nil
+        var tsxRows: Int? = nil
+        var tsxTileWidth: Int? = nil
+        var tsxTileHeight: Int? = nil
+        let matchingTileset = tiledTilesets.first(where: { 
+            $0.name == atlasName || 
+            $0.imageName == atlasName || 
+            ($0.name == "chests" && atlasName == "chest_atlas") ||
+            ($0.imageName.contains(atlasName) && atlasName.contains("_atlas")) ||
+            (atlasName.contains($0.imageName) && $0.imageName.contains("atlas"))
+        })
+        if let tileset = matchingTileset {
+            tsxColumns = tileset.columns
+            tsxTileWidth = tileset.tileWidth
+            tsxTileHeight = tileset.tileHeight
+            if tileset.columns > 0 {
+                tsxRows = tileset.tileCount > 0
+                    ? Int(ceil(Double(tileset.tileCount) / Double(tileset.columns)))
+                    : nil
+            }
+            print("📋 TileManager: Found TSX tileset for '\(atlasName)' with \(tileset.columns) columns (tileset name: '\(tileset.name)', image: '\(tileset.imageName)')")
+        } else if atlasName == "chest_atlas" {
+            // Special fallback: if chest_atlas not found, try to find any tileset with "chest" in name
+            if let chestTileset = tiledTilesets.first(where: { $0.name.contains("chest") || $0.imageName.contains("chest") }) {
+                tsxColumns = chestTileset.columns
+                tsxTileWidth = chestTileset.tileWidth
+                tsxTileHeight = chestTileset.tileHeight
+                if chestTileset.columns > 0 {
+                    tsxRows = chestTileset.tileCount > 0
+                        ? Int(ceil(Double(chestTileset.tileCount) / Double(chestTileset.columns)))
+                        : nil
+                }
+                print("📋 TileManager: Found TSX tileset for '\(atlasName)' via fallback with \(chestTileset.columns) columns (tileset name: '\(chestTileset.name)')")
             }
         }
         
@@ -817,8 +858,33 @@ class TileManager {
                 }
             }
             
-            var calculatedTilesPerRow = atlasWidth / actualTileSize
-            var calculatedTilesPerCol = atlasHeight / actualTileSize
+            // Use TSX columns if available, otherwise calculate from dimensions
+            var calculatedTilesPerRow: Int
+            var calculatedTilesPerCol: Int
+            var calculatedTileSize = actualTileSize
+            if let tsxCols = tsxColumns {
+                // Use columns from TSX file (most accurate)
+                calculatedTilesPerRow = tsxCols
+                if let rows = tsxRows {
+                    calculatedTilesPerCol = rows
+                } else if let tsxHeight = tsxTileHeight, tsxHeight > 0 {
+                    calculatedTilesPerCol = atlasHeight / tsxHeight
+                } else {
+                    calculatedTilesPerCol = atlasHeight / actualTileSize
+                }
+                if let tsxWidth = tsxTileWidth, tsxWidth > 0 {
+                    calculatedTileSize = tsxWidth
+                }
+                print("📐 TileManager: Using TSX columns (\(tsxCols)) for '\(atlasName)' (atlas: \(atlasWidth)x\(atlasHeight), tileSize: \(calculatedTileSize), rows: \(calculatedTilesPerCol))")
+            } else {
+                // Calculate from atlas dimensions
+                calculatedTilesPerRow = atlasWidth / actualTileSize
+                calculatedTilesPerCol = atlasHeight / actualTileSize
+                if atlasName.contains("chest") {
+                    print("⚠️ TileManager: No TSX columns found for '\(atlasName)', calculated \(calculatedTilesPerRow) from dimensions (atlas: \(atlasWidth)x\(atlasHeight), tileSize: \(actualTileSize))")
+                    print("   Available tilesets: \(tiledTilesets.map { "'\($0.name)' (image: '\($0.imageName)')" }.joined(separator: ", "))")
+                }
+            }
             
             // Ensure we have valid dimensions
             if calculatedTilesPerRow == 0 {
@@ -830,17 +896,27 @@ class TileManager {
             
             tilesPerRow = calculatedTilesPerRow
             tilesPerCol = calculatedTilesPerCol
-            tileSize = actualTileSize
+            tileSize = calculatedTileSize
             
             spriteAtlasDimensionsCache[atlasName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol, tileSize: tileSize)
             
             print("📐 TileManager: Using tile size \(tileSize) for atlas '\(atlasName)' (atlas: \(atlasWidth)x\(atlasHeight), grid: \(tilesPerRow)x\(tilesPerCol))")
         }
         
-        // Convert 1-indexed frame number to 0-indexed row/col
-        // Formula: frame = row * cols + col + 1 (1-indexed)
-        // Reverse: frameIndex = frame - 1, then row = frameIndex / cols, col = frameIndex % cols
-        let frameIndex = frameNumber - 1
+        // Determine if frame numbers are 0-indexed or 1-indexed
+        // Generated atlases (like chest_atlas) use 0-indexed frame numbers (tile positions)
+        // Some other atlases might use 1-indexed
+        let isZeroIndexed = atlasName.contains("_atlas") && !atlasName.contains("grassland")
+        let frameIndex: Int
+        if isZeroIndexed {
+            // 0-indexed: frame number is already the tile position
+            frameIndex = frameNumber
+        } else {
+            // 1-indexed: convert to 0-indexed
+            // Formula: frame = row * cols + col + 1 (1-indexed)
+            // Reverse: frameIndex = frame - 1, then row = frameIndex / cols, col = frameIndex % cols
+            frameIndex = frameNumber - 1
+        }
         let row = frameIndex / tilesPerRow
         let col = frameIndex % tilesPerRow
         
@@ -854,17 +930,17 @@ class TileManager {
             return nil
         }
         
-        // Enhanced debug logging for frame calculation
-        print("🔍 TileManager: Frame calculation for '\(atlasName)' frame \(frameNumber):")
-        print("   frameIndex = \(frameNumber) - 1 = \(frameIndex)")
-        print("   row = \(frameIndex) / \(tilesPerRow) = \(row)")
-        print("   col = \(frameIndex) % \(tilesPerRow) = \(col)")
-        print("   Grid position: (\(col), \(row)) [col, row]")
-        print("   Pixel position: (\(col * tileSize), \(row * tileSize))")
-        
-        // Log successful frame access for debugging
-        if frameNumber <= 4 || frameNumber % 10 == 0 {
-            print("✅ TileManager: Accessing frame \(frameNumber) from atlas '\(atlasName)' at row \(row), col \(col)")
+        // Debug logging for frame calculation (chest atlas or first few frames)
+        if atlasName.contains("chest") || frameNumber <= 3 {
+            print("🔍 TileManager: Frame calculation for '\(atlasName)' frame \(frameNumber):")
+            if isZeroIndexed {
+                print("   Using 0-indexed: frameIndex = \(frameNumber)")
+            } else {
+                print("   Using 1-indexed: frameIndex = \(frameNumber) - 1 = \(frameIndex)")
+            }
+            print("   row = \(frameIndex) / \(tilesPerRow) = \(row)")
+            print("   col = \(frameIndex) % \(tilesPerRow) = \(col)")
+            print("   Grid position: (\(col), \(row)) [col, row]")
         }
         
         // Extract tile from atlas using normalized coordinates
@@ -883,12 +959,9 @@ class TileManager {
         let normalizedWidth = tileWidthPoints / baseWidth
         let normalizedHeight = tileHeightPoints / baseHeight
         
-        print("   📐 Tile extraction details:")
-        print("      Atlas size (points): \(baseWidth)x\(baseHeight)")
-        print("      Tile size (pixels): \(tileSize)x\(tileSize)")
-        print("      Tile size (points): \(tileWidthPoints)x\(tileHeightPoints)")
-        print("      Pixel position in atlas: (\(Int(pixelX)), \(Int(pixelY)))")
-        print("      Normalized rect: (\(String(format: "%.4f", normalizedX)), \(String(format: "%.4f", normalizedY)), \(String(format: "%.4f", normalizedWidth)), \(String(format: "%.4f", normalizedHeight)))")
+        if frameNumber <= 3 {
+            print("   📐 Tile extraction: atlas=\(Int(baseWidth))x\(Int(baseHeight)), tile=\(tileSize)px, pos=(\(Int(pixelX)), \(Int(pixelY)))")
+        }
         
         let tileRect = CGRect(x: normalizedX, y: normalizedY, width: normalizedWidth, height: normalizedHeight)
         let tileTexture = SKTexture(rect: tileRect, in: atlasTexture)
@@ -904,11 +977,8 @@ class TileManager {
         // Cache the extracted texture
         spriteAtlasCache[cacheKey] = tileTexture
         
-        // Debug: Log first few tiles to verify correct extraction
         if frameNumber <= 3 {
-            print("✅ TileManager: Created sprite from atlas '\(atlasName)' frame \(frameNumber)")
-            print("   Position: row \(row), col \(col), rect: (\(String(format: "%.3f", normalizedX)), \(String(format: "%.3f", normalizedY)), \(String(format: "%.3f", normalizedWidth)), \(String(format: "%.3f", normalizedHeight)))")
-            print("   Texture size: \(texSize.width)x\(texSize.height)")
+            print("✅ TileManager: Created sprite from '\(atlasName)' frame \(frameNumber) at row \(row), col \(col)")
         }
         
         let sprite = SKSpriteNode(texture: tileTexture, size: size)

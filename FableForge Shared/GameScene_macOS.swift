@@ -60,6 +60,21 @@ extension GameScene {
             direction.x -= 1.0
         }
         
+        // If any movement key is pressed, cancel auto-walk
+        if direction.x != 0 || direction.y != 0 {
+            if isAutoWalking {
+                print("🚶‍♂️ Auto-walk cancelled by arrow key input")
+                isAutoWalking = false
+                autoWalkTarget = nil
+                autoWalkTargetNode = nil
+                autoWalkLastPosition = nil
+                autoWalkStuckCounter = 0
+                autoWalkLastDirection = CGPoint.zero
+                autoWalkObstacleAvoidance = nil
+                autoWalkCompletion = nil
+            }
+        }
+        
         // Normalize direction if diagonal
         let length = sqrt(direction.x * direction.x + direction.y * direction.y)
         if length > 0 {

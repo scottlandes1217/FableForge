@@ -640,6 +640,7 @@ class PrefabFactory {
         let description: String?  // Description for AI parsing and map building
         let parts: [PrefabPart]  // Multi-part entities (low layer + high layer)
         let collision: CollisionSpec  // Collision specification
+        let collisionOffset: CGPoint?  // Optional offset for collision box
         let zPosition: CGFloat  // Base z-position (entitiesBelow vs entitiesAbove handled separately)
         
         // Convert to internal CollisionShape enum
@@ -693,6 +694,18 @@ class PrefabFactory {
     private var currentPrefabsFile: String = "prefabs_grassland"  // Default to grassland map (without .json extension)
     
     private init() {
+        // Load chests TSX file to get column information for chest_atlas
+        // This is critical for correct frame number calculation (chest_atlas has 36 columns)
+        // Try multiple locations for the TSX file
+        let tsxLoaded = TileManager.shared.loadStandaloneTileset(fileName: "chests", firstGID: 40000)
+        if !tsxLoaded {
+            // Try with path
+            if let url = Bundle.main.url(forResource: "chests", withExtension: "tsx", subdirectory: "Prefabs/Maps/TSX") {
+                // Try to load manually if loadStandaloneTileset failed
+                print("💡 PrefabFactory: Found chests.tsx at \(url.path), but loadStandaloneTileset failed")
+            }
+        }
+        
         // Try to load default map prefabs from Maps/ subdirectory
         var loaded = false
         
@@ -1163,12 +1176,28 @@ class PrefabFactory {
                     }
                     
                     guard let sprite = sprite else {
-                        print("⚠️ PrefabFactory: Failed to create sprite for GID spec '\(gidSpec)'")
+                        print("⚠️ PrefabFactory: Failed to create sprite for GID spec '\(gidSpec)' at grid position (\(rowIndex), \(colIndex))")
                         continue
                     }
                     
-                    // Calculate position for this tile - use tileSize for spacing since sprites are scaled
+                    // Debug logging for chest tiles
+                    if gidSpec.contains("chest_atlas") {
+                        // Extract frame number for debugging
+                        if let dashIndex = gidSpec.firstIndex(of: "-"),
+                           let frameNum = Int(String(gidSpec[gidSpec.index(after: dashIndex)...])) {
+                            let actualHeight = sprite.size.height * abs(sprite.yScale)
+                            let calculatedY = position.y + part.offset.y + (-CGFloat(rowIndex) * actualHeight)
+                            print("📦 Chest tile '\(gidSpec)' (frame \(frameNum)): row=\(rowIndex), size=\(sprite.size), scale=(\(sprite.xScale), \(sprite.yScale)), actualHeight=\(actualHeight), tileOffsetY=\(-CGFloat(rowIndex) * actualHeight), finalY=\(calculatedY)")
+                        }
+                    }
+                    
+                    // Calculate position for this tile - use actual scaled sprite size for spacing
+                    // The sprite size after scaling is sourceTileSize * scaleFactor = tileSize
+                    // But use the actual sprite size to ensure perfect alignment
+                    // Use world tileSize for layout so tiles always align to the grid
                     let tileOffsetX = CGFloat(colIndex) * tileSize
+                    // For Y: row 0 (first in JSON array) should be at the TOP, row N-1 at bottom.
+                    // With anchorPoint (0, 1) = top-left, we move DOWN as rowIndex increases.
                     let tileOffsetY = -CGFloat(rowIndex) * tileSize
                     
                     sprite.position = CGPoint(
@@ -1236,12 +1265,43 @@ class PrefabFactory {
         // (e.g., trunk and canopy should align to the same column)
         var sharedStartingColumn: Int? = nil
         
+        // Compute optional alignment for low layer based on high layer height
+        var lowLayerOverrideOffsetX: CGFloat? = nil
+        var lowLayerOverrideOffsetY: CGFloat? = nil
+        var highLayerOverrideOffsetX: CGFloat? = nil
+        var highLayerOverrideOffsetY: CGFloat? = nil
+        if let highPart = prefab.parts.first(where: { $0.layer == "high" }),
+           let lowPart = prefab.parts.first(where: { $0.layer == "low" }) {
+            let highBounds = getContentBounds(for: highPart)
+            let lowBounds = getContentBounds(for: lowPart)
+
+            // Center both layers on X based on their content bounds.
+            highLayerOverrideOffsetX = -CGFloat(highBounds.minCol + highBounds.maxCol + 1) * tileSize / 2.0
+            lowLayerOverrideOffsetX = -CGFloat(lowBounds.minCol + lowBounds.maxCol + 1) * tileSize / 2.0
+
+            // Anchor low content bottom at the entity position (y = 0).
+            lowLayerOverrideOffsetY = CGFloat(lowBounds.maxRow + 1) * tileSize
+
+            // Attach high content bottom to low content top.
+            let lowContentTop = (lowLayerOverrideOffsetY ?? 0) - CGFloat(lowBounds.minRow) * tileSize
+            highLayerOverrideOffsetY = lowContentTop + CGFloat(highBounds.maxRow + 1) * tileSize
+        }
+
         // Always render all parts and separate them by their actual layer
         // This ensures that entities with both low and high parts are properly split
         // regardless of which container they're being rendered in
         for part in prefab.parts {
             // Pass shared starting column to ensure parts align vertically
-            let (partSprites, usedColumn) = createSpritesForPartWithColumn(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn)
+            let overrideX: CGFloat?
+            let overrideY: CGFloat?
+            if part.layer == "high" {
+                overrideX = highLayerOverrideOffsetX
+                overrideY = highLayerOverrideOffsetY
+            } else {
+                overrideX = lowLayerOverrideOffsetX
+                overrideY = lowLayerOverrideOffsetY
+            }
+            let (partSprites, usedColumn) = createSpritesForPartWithColumn(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn, overrideOffsetX: overrideX, overrideOffsetY: overrideY)
             
             // Store the starting column from first part for subsequent parts
             if sharedStartingColumn == nil, let column = usedColumn {
@@ -1249,13 +1309,40 @@ class PrefabFactory {
             }
             
             // Separate by actual part layer
-            // CORRECT: "low" = bottom/trunk parts → go to entitiesAbove (zPosition 110, IN FRONT of player)
-            //          "high" = top/canopy parts → go to entitiesBelow (zPosition 40, BEHIND player)
+            // CORRECT: "low" = bottom/trunk parts → go to lowSprites → entitiesBelow (zPosition 40, BEHIND player)
+            //          "high" = top/canopy parts → go to highSprites → entitiesAbove (zPosition 110, IN FRONT of player)
             if part.layer == "high" {
                 highSprites.append(contentsOf: partSprites)
             } else {
                 // Default to low for "low" layer or any other value
                 lowSprites.append(contentsOf: partSprites)
+            }
+        }
+
+        // Final alignment pass: ensure low layer attaches to high layer for trees.
+        if entity.type == .tree, !lowSprites.isEmpty, !highSprites.isEmpty {
+            if let highTiled = getTiledBounds(for: prefab.parts.first(where: { $0.layer == "high" })),
+               let lowTiled = getTiledBounds(for: prefab.parts.first(where: { $0.layer == "low" })) {
+                let highCenterCol = (CGFloat(highTiled.minCol + highTiled.maxCol + 1)) / 2.0
+                let lowCenterCol = (CGFloat(lowTiled.minCol + lowTiled.maxCol + 1)) / 2.0
+                let deltaX = round((lowCenterCol - highCenterCol)) * tileSize
+                let deltaY = round(CGFloat(highTiled.maxRow + 1 - lowTiled.minRow)) * tileSize
+                print("🌳 Tree align (tiled): highCols=\(highTiled.minCol)-\(highTiled.maxCol) lowCols=\(lowTiled.minCol)-\(lowTiled.maxCol) deltaX=\(deltaX) deltaY=\(deltaY)")
+                if deltaX != 0 || deltaY != 0 {
+                    for sprite in lowSprites {
+                        sprite.position = CGPoint(x: sprite.position.x + deltaX, y: sprite.position.y + deltaY)
+                    }
+                }
+            } else if let lowBounds = getSpriteBounds(lowSprites), let highBounds = getSpriteBounds(highSprites) {
+                let rawDeltaX = highBounds.centerX - lowBounds.centerX
+                let rawDeltaY = highBounds.minY - lowBounds.maxY
+                let deltaX = round(rawDeltaX / tileSize) * tileSize
+                let deltaY = round(rawDeltaY / tileSize) * tileSize
+                if deltaX != 0 || deltaY != 0 {
+                    for sprite in lowSprites {
+                        sprite.position = CGPoint(x: sprite.position.x + deltaX, y: sprite.position.y + deltaY)
+                    }
+                }
             }
         }
         
@@ -1280,14 +1367,14 @@ class PrefabFactory {
     
     /// Helper to create sprites for a single part with column alignment support
     /// Returns (sprites, startingColumnUsed)
-    private func createSpritesForPartWithColumn(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int?) -> ([SKSpriteNode], Int?) {
-        let (sprites, usedColumn) = createSpritesForPart(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn)
+    private func createSpritesForPartWithColumn(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int?, overrideOffsetX: CGFloat? = nil, overrideOffsetY: CGFloat? = nil) -> ([SKSpriteNode], Int?) {
+        let (sprites, usedColumn) = createSpritesForPart(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn, overrideOffsetX: overrideOffsetX, overrideOffsetY: overrideOffsetY)
         return (sprites, usedColumn)
     }
     
     /// Helper to create sprites for a single part (PrefabPart version for map prefabs)
     /// Returns (sprites, startingColumnUsed)
-    private func createSpritesForPart(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int? = nil) -> ([SKSpriteNode], Int?) {
+    private func createSpritesForPart(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int? = nil, overrideOffsetX: CGFloat? = nil, overrideOffsetY: CGFloat? = nil) -> ([SKSpriteNode], Int?) {
         var sprites: [SKSpriteNode] = []
         
         // Determine tile size for this part - use part's tileSize if specified, otherwise use world tileSize
@@ -1296,31 +1383,67 @@ class PrefabFactory {
         // For tilesets with 16x16 tiles, we need to scale them to match world tile size (32x32)
         let scaleFactor = tileSize / sourceTileSize
         
-        // AUTO-EXPAND: If tileGrid has only one entry and it's a class name, automatically expand it to fill the size
-        // The existing loop below will handle sequential tile selection from the class
+        // AUTO-EXPAND: If tileGrid has only one entry and it's a class name, use the TSX layout
+        // Otherwise, if it needs multiple tiles based on size, expand it
         var grid = part.tileGrid
         let gridHeight = grid.count
         let gridWidth = grid.first?.count ?? 0
+        var layoutGridOffset: (minRow: Int, minCol: Int)? = nil  // Track offset for TSX layout grids
+        var layoutGridFirstTile: (row: Int, col: Int)? = nil  // Track first actual tile position for initialization
         
         // Check if we should auto-expand: single entry that needs multiple tiles based on size
-        // For class names, we'll expand them and let the tile selection logic pick appropriate tiles from different rows
         if gridHeight == 1 && gridWidth == 1, let singleEntry = grid[0][0] {
-            let requiredCols = Int(part.size.width / partTileSize)
-            let requiredRows = Int(part.size.height / partTileSize)
-            
-            if requiredCols > 1 || requiredRows > 1 {
-                // Auto-expand: fill grid with the class name or GID spec
-                // The tile selection logic will pick appropriate tiles based on position
-                var expandedGrid: [[String?]] = []
-                for _ in 0..<requiredRows {
-                    var rowEntries: [String?] = []
-                    for _ in 0..<requiredCols {
-                        rowEntries.append(singleEntry)
+            // First, check if it's a class name - if so, get the layout from TSX
+            if isClassSpec(singleEntry) {
+                if let (layoutGrid, offset, firstTile) = getLayoutGridFromClassNameWithOffset(singleEntry) {
+                    // Use the full TSX layout for class-based tiles so rows/columns match the tileset.
+                    grid = layoutGrid
+                    layoutGridOffset = offset
+                    layoutGridFirstTile = firstTile
+                    let layoutRows = layoutGrid.count
+                    let layoutCols = layoutGrid.first?.count ?? 0
+                    print("🌳 PrefabFactory: Using TSX layout for class '\(singleEntry)': \(layoutRows) rows × \(layoutCols) cols (offset: row \(offset.minRow), col \(offset.minCol), firstTile: row \(firstTile.row), col \(firstTile.col))")
+                } else {
+                    // Class name not found or has no tiles - fall back to size-based expansion
+                    print("⚠️ PrefabFactory: Class '\(singleEntry)' not found or has no tiles, falling back to size-based expansion")
+                    print("   Part size: \(part.size.width)x\(part.size.height), tileSize: \(partTileSize)")
+                    let requiredCols = Int(part.size.width / partTileSize)
+                    let requiredRows = Int(part.size.height / partTileSize)
+                    
+                    // Always expand based on size when TSX layout lookup fails
+                    // This ensures multi-tile objects (like tree canopies) expand correctly
+                    if requiredCols > 1 || requiredRows > 1 {
+                        var expandedGrid: [[String?]] = []
+                        for _ in 0..<requiredRows {
+                            var rowEntries: [String?] = []
+                            for _ in 0..<requiredCols {
+                                rowEntries.append(singleEntry)
+                            }
+                            expandedGrid.append(rowEntries)
+                        }
+                        grid = expandedGrid
+                        print("   Expanded to \(requiredRows)x\(requiredCols) grid based on size")
+                    } else {
+                        print("   Keeping as 1x1 grid (size indicates single tile)")
                     }
-                    expandedGrid.append(rowEntries)
                 }
+            } else {
+                // Not a class name - expand based on size if needed
+                let requiredCols = Int(part.size.width / partTileSize)
+                let requiredRows = Int(part.size.height / partTileSize)
                 
-                grid = expandedGrid
+                if requiredCols > 1 || requiredRows > 1 {
+                    // Auto-expand: fill grid with the GID spec
+                    var expandedGrid: [[String?]] = []
+                    for _ in 0..<requiredRows {
+                        var rowEntries: [String?] = []
+                        for _ in 0..<requiredCols {
+                            rowEntries.append(singleEntry)
+                        }
+                        expandedGrid.append(rowEntries)
+                    }
+                    grid = expandedGrid
+                }
             }
         }
         
@@ -1329,6 +1452,10 @@ class PrefabFactory {
         guard finalGridHeight > 0 else { return ([], nil) }
         let finalGridWidth = grid.first?.count ?? 0
         guard finalGridWidth > 0 else { return ([], nil) }
+        
+        if part.layer == "low" {
+            print("🌳 Part '\(part.layer)' starting to render grid: \(finalGridHeight) rows × \(finalGridWidth) cols, layoutGridOffset=\(layoutGridOffset != nil ? "row \(layoutGridOffset!.minRow), col \(layoutGridOffset!.minCol)" : "nil")")
+        }
         
         // Track last used tile info for class name continuity (same tileset, sequential tiles)
         var lastUsedTilesetName: String? = nil
@@ -1339,9 +1466,27 @@ class PrefabFactory {
         var startingRow: Int? = nil  // Track starting row for proper row mapping
         var rng = SeededRandomNumberGenerator(seed: UInt64(Date().timeIntervalSince1970))
         
+        // Find the first non-nil tile in the grid to use as the starting point
+        var firstTileRow: Int? = nil
+        var firstTileCol: Int? = nil
+        var foundFirstTile = false
+        
         for (rowIndex, row) in grid.enumerated() {
             for (colIndex, gid) in row.enumerated() {
+                if part.layer == "low" && rowIndex == 0 && colIndex == 0 {
+                    print("🌳 Part '\(part.layer)' processing first tile at (0,0): gid=\(gid?.description ?? "nil")")
+                }
                 guard let gidSpec = gid else { continue }  // Skip nil tiles
+                
+                // Track the first non-nil tile we encounter
+                if !foundFirstTile {
+                    firstTileRow = rowIndex
+                    firstTileCol = colIndex
+                    foundFirstTile = true
+                    if part.layer == "low" {
+                        print("🌳 Part '\(part.layer)' found first non-nil tile at (\(rowIndex), \(colIndex)): gid=\(gidSpec)")
+                    }
+                }
                 
                 // Handle "generate" as a special placeholder value
                 let sprite: SKSpriteNode
@@ -1387,11 +1532,65 @@ class PrefabFactory {
                         
                         // Resolve class name with row and column alignment
                         var resolvedSpec: String?
+
+                        // If we have a TSX layout grid, map directly by row/col to preserve layout
+                        if let offset = layoutGridOffset,
+                           let tileIDs = tileset.classNames[className] {
+                            let targetRow = offset.minRow + rowIndex
+                            let targetCol = offset.minCol + colIndex
+                            let expectedTileID = targetRow * tileset.columns + targetCol
+                            if tileIDs.contains(expectedTileID) {
+                                resolvedSpec = "\(tilesetName)-\(expectedTileID)"
+                                lastUsedTileID = expectedTileID
+                                if startingRow == nil || startingColumn == nil {
+                                    startingRow = targetRow
+                                    startingColumn = targetCol
+                                    firstTileID = expectedTileID
+                                    lastUsedTilesetName = tilesetName
+                                }
+                            } else {
+                                // No tile at this TSX position for this class
+                                continue
+                            }
+                        } else {
                         
-                        // If we're at the start (row 0, col 0), pick a starting tile and remember its column and row
-                        // Use shared column if provided, otherwise calculate from first tile
-                        if rowIndex == 0 && colIndex == 0 {
-                            if let sharedCol = startingColumn {
+                        // If we're at the first non-nil tile, pick a starting tile and remember its column and row
+                        // Use shared column if provided, otherwise use layout grid offset if available, otherwise calculate from first tile
+                        if let firstRow = firstTileRow, let firstCol = firstTileCol, rowIndex == firstRow && colIndex == firstCol {
+                            print("🌳 Part '\(part.layer)' at (0,0): startingColumn=\(startingColumn?.description ?? "nil"), layoutGridOffset=\(layoutGridOffset != nil ? "row \(layoutGridOffset!.minRow), col \(layoutGridOffset!.minCol)" : "nil")")
+                            if let offset = layoutGridOffset, let firstTile = layoutGridFirstTile {
+                                print("🌳 Part '\(part.layer)' checking layout grid offset: row \(offset.minRow), col \(offset.minCol), firstTile: row \(firstTile.row), col \(firstTile.col)")
+                                // Use the first actual tile position - this ensures we start at a valid tile
+                                let targetRow = firstTile.row
+                                let targetCol = firstTile.col
+                                let expectedTileID = targetRow * tileset.columns + targetCol
+                                
+                                // Check if this tile exists in the class (it should, since it's the first tile)
+                                if let tileIDs = tileset.classNames[className], tileIDs.contains(expectedTileID) {
+                                    resolvedSpec = "\(tilesetName)-\(expectedTileID)"
+                                    startingColumn = targetCol
+                                    startingRow = targetRow
+                                    lastUsedTileID = expectedTileID
+                                    firstTileID = expectedTileID
+                                    lastUsedTilesetName = tilesetName
+                                    print("🌳 Part '\(part.layer)' using first tile position: row \(targetRow), column \(targetCol) (tile ID \(expectedTileID))")
+                                } else {
+                                    // Fallback: find first tile in the class
+                                    resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, targetRow: targetRow, targetColumn: targetCol, using: &rng)
+                                    if let resolved = resolvedSpec,
+                                       let dashIndex = resolved.firstIndex(of: "-"),
+                                       let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                        let calculatedColumn = tileID % tileset.columns
+                                        let calculatedRow = tileID / tileset.columns
+                                        startingColumn = calculatedColumn
+                                        startingRow = calculatedRow
+                                        lastUsedTileID = tileID
+                                        firstTileID = tileID
+                                        lastUsedTilesetName = tilesetName
+                                        print("🌳 Part '\(part.layer)' fallback: row \(calculatedRow), column \(calculatedColumn) from tile ID \(tileID)")
+                                    }
+                                }
+                            } else if let sharedCol = startingColumn {
                                 // Use shared column from another part (e.g., canopy uses trunk's column)
                                 print("🌳 Part '\(part.layer)' using shared column: \(sharedCol) from previous part")
                                 resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, targetRow: nil, targetColumn: sharedCol, using: &rng)
@@ -1427,8 +1626,37 @@ class PrefabFactory {
                             }
                         } else if let startCol = startingColumn, let startRow = startingRow, let baseTileID = firstTileID {
                             // We have a starting column, row, and tile ID - use simple arithmetic to maintain position
-                            // Calculate the expected tile ID based on grid position
-                            let expectedTileID = baseTileID + (rowIndex * tileset.columns) + colIndex
+                            // If we have a layout grid offset, use it to calculate the correct position
+                            let targetRow: Int
+                            let targetCol: Int
+                            
+                            // Map clipped grid position back to TSX layout position
+                            // The clipped grid starts at (offset.minRow + startRow, offset.minCol + startCol) in TSX
+                            // So grid position (rowIndex, colIndex) maps to TSX position (offset.minRow + startRow + rowIndex, offset.minCol + startCol + colIndex)
+                            if let offset = layoutGridOffset {
+                                // Direct mapping: clipped grid position + clipping start = TSX position
+                                // offset.minRow is already (originalOffset.minRow + startRow), so we just add rowIndex
+                                targetRow = offset.minRow + rowIndex
+                                targetCol = offset.minCol + colIndex
+                                if part.layer == "low" {
+                                    print("🌳 Part '\(part.layer)' at grid(\(rowIndex),\(colIndex)) -> TSX(\(targetRow),\(targetCol)), offset.minRow=\(offset.minRow), offset.minCol=\(offset.minCol)")
+                                }
+                            } else {
+                                // No offset available - shouldn't happen after clipping, but fallback
+                                if let firstRow = firstTileRow, let firstCol = firstTileCol {
+                                    let rowOffset = rowIndex - firstRow
+                                    let colOffset = colIndex - firstCol
+                                    targetRow = startRow + rowOffset
+                                    targetCol = startCol + colOffset
+                                } else {
+                                    // Fallback: use grid position directly
+                                    targetRow = startRow + rowIndex
+                                    targetCol = startCol + colIndex
+                                }
+                            }
+                            
+                            // Calculate the expected tile ID based on target position
+                            let expectedTileID = targetRow * tileset.columns + targetCol
                             
                             // Check if this expected tile ID exists in the class
                             if let tileIDs = tileset.classNames[className], tileIDs.contains(expectedTileID) {
@@ -1437,8 +1665,7 @@ class PrefabFactory {
                                 lastUsedTileID = expectedTileID
                             } else {
                                 // Fallback: try to find a tile in the same row and column
-                                let targetRow = startRow + rowIndex
-                                let targetCol = startCol + colIndex
+                                // targetRow and targetCol are already calculated above
                                 // Find any tile that matches the target row and column
                                 if let tileIDs = tileset.classNames[className] {
                                     let matchingTiles = tileIDs.filter { tileID in
@@ -1467,6 +1694,7 @@ class PrefabFactory {
                         } else {
                             // No starting info yet - shouldn't happen, but handle gracefully
                             resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: lastUsedTileID, targetRow: nil, targetColumn: nil, using: &rng)
+                        }
                         }
                         
                         if let resolved = resolvedSpec {
@@ -1502,6 +1730,13 @@ class PrefabFactory {
                                 sprite.isHidden = false
                                 sprite.colorBlendFactor = 0.0
                                 sprite.color = .white
+                                if part.layer == "low" {
+                                    if let firstRow = firstTileRow, let firstCol = firstTileCol, rowIndex == firstRow && colIndex == firstCol {
+                                        print("🌳 Part '\(part.layer)' created FIRST sprite from '\(resolved)' at grid(\(rowIndex),\(colIndex)): texture=\(sprite.texture != nil ? "present" : "nil"), size=\(sprite.size), alpha=\(sprite.alpha), hidden=\(sprite.isHidden)")
+                                    } else if rowIndex < 2 && colIndex < 3 {
+                                        print("🌳 Part '\(part.layer)' created sprite from '\(resolved)' at grid(\(rowIndex),\(colIndex)): texture=\(sprite.texture != nil ? "present" : "nil")")
+                                    }
+                                }
                             } else {
                                 // Try as regular GID spec as fallback
                                 if let assetName = part.assetName {
@@ -1565,21 +1800,25 @@ class PrefabFactory {
                     }
                 }
                 
-                // Calculate position for this tile in the grid - use tileSize for spacing since sprites are scaled
+                // Calculate position for this tile in the grid using world tileSize
+                // This keeps tiles aligned to the world grid regardless of sprite scaling.
                 let tileOffsetX = CGFloat(colIndex) * tileSize
+                // For Y: row 0 is the top; move down as rowIndex increases.
                 let tileOffsetY = -CGFloat(rowIndex) * tileSize  // Negative because Y increases up in SpriteKit
                 
                 // Position relative to entity center + part offset + tile offset
                 // CRITICAL: part.offset is already in world units, do NOT scale it
-                let offsetX = part.offset.x
-                let offsetY = part.offset.y
+                let offsetX = overrideOffsetX ?? part.offset.x
+                let offsetY = overrideOffsetY ?? part.offset.y
                 
                 sprite.position = CGPoint(
                     x: entity.position.x + offsetX + tileOffsetX,
                     y: entity.position.y + offsetY + tileOffsetY
                 )
-                // Sprite zPosition is always 0 - layering is handled by container zPosition
-                sprite.zPosition = 0
+                // Apply part.zOffset for fine-grained layering within the container
+                // Container zPosition handles main layering (entitiesBelow=40, entitiesAbove=110)
+                // part.zOffset handles sub-layering within the container (e.g., trunk zOffset=21)
+                sprite.zPosition = CGFloat(part.zOffset)
                 sprite.anchorPoint = CGPoint(x: 0, y: 1)  // Top-left anchor for tile grid alignment
                 sprite.zRotation = entity.rotation
                 
@@ -1593,6 +1832,188 @@ class PrefabFactory {
         }
         
         return (sprites, startingColumn)
+    }
+
+    /// Determine how many rows a part's grid should render (for alignment).
+    private func getPartGridRows(_ part: PrefabPart, worldTileSize: CGFloat) -> Int {
+        let sourceTileSize = part.tileSize > 0 ? part.tileSize : worldTileSize
+        let gridHeight = part.tileGrid.count
+        let gridWidth = part.tileGrid.first?.count ?? 0
+
+        if gridHeight == 1 && gridWidth == 1, let singleEntry = part.tileGrid.first?.first, let entry = singleEntry {
+            if isClassSpec(entry),
+               let (layoutGrid, _, _) = getLayoutGridFromClassNameWithOffset(entry) {
+                return layoutGrid.count
+            }
+
+            let requiredRows = Int(part.size.height / sourceTileSize)
+            if requiredRows > 0 {
+                return requiredRows
+            }
+        }
+
+        return max(1, gridHeight)
+    }
+
+    /// Infer tile size from a tile grid using loaded tilesets.
+    private func inferTileSize(from grid: [[String?]]) -> CGFloat {
+        for row in grid {
+            for spec in row {
+                guard let spec = spec, !spec.isEmpty else { continue }
+                if let inferred = inferTileSize(from: spec) {
+                    return inferred
+                }
+            }
+        }
+        return 0
+    }
+
+    /// Infer tile size for a single tile spec using tileset metadata.
+    private func inferTileSize(from spec: String) -> CGFloat? {
+        let tilesets = TileManager.shared.getTiledTilesets()
+        if isClassSpec(spec) {
+            if let dashIndex = spec.firstIndex(of: "-") {
+                let tilesetName = String(spec[..<dashIndex])
+                if let tileset = tilesets.first(where: { $0.name == tilesetName }) {
+                    return CGFloat(tileset.tileWidth)
+                }
+            } else if let tileset = tilesets.first(where: { $0.classNames[spec] != nil }) {
+                return CGFloat(tileset.tileWidth)
+            }
+            return nil
+        }
+
+        if let dashIndex = spec.firstIndex(of: "-") {
+            let tilesetName = String(spec[..<dashIndex])
+            if let tileset = tilesets.first(where: { $0.name == tilesetName }) {
+                return CGFloat(tileset.tileWidth)
+            }
+        }
+        return nil
+    }
+
+    /// Infer grid size (rows/cols) for a tile grid, expanding class layouts when needed.
+    private func inferGridSize(from grid: [[String?]]) -> (rows: Int, cols: Int) {
+        let gridHeight = grid.count
+        let gridWidth = grid.first?.count ?? 0
+        if gridHeight == 1 && gridWidth == 1, let singleEntry = grid.first?.first, let entry = singleEntry {
+            if isClassSpec(entry),
+               let (layoutGrid, _, _) = getLayoutGridFromClassNameWithOffset(entry) {
+                return (rows: layoutGrid.count, cols: layoutGrid.first?.count ?? 0)
+            }
+        }
+        return (rows: gridHeight, cols: gridWidth)
+    }
+
+    private func getContentBounds(for part: PrefabPart) -> (rows: Int, cols: Int, minRow: Int, maxRow: Int, minCol: Int, maxCol: Int) {
+        let grid: [[String?]]
+        if part.tileGrid.count == 1,
+           part.tileGrid.first?.count == 1,
+           let singleEntry = part.tileGrid.first?.first,
+           let entry = singleEntry,
+           isClassSpec(entry),
+           let (layoutGrid, _, _) = getLayoutGridFromClassNameWithOffset(entry) {
+            grid = layoutGrid
+        } else {
+            grid = part.tileGrid
+        }
+
+        let rows = grid.count
+        let cols = grid.first?.count ?? 0
+        var minRow = rows
+        var maxRow = -1
+        var minCol = cols
+        var maxCol = -1
+
+        for (r, row) in grid.enumerated() {
+            for (c, value) in row.enumerated() {
+                if value != nil {
+                    minRow = min(minRow, r)
+                    maxRow = max(maxRow, r)
+                    minCol = min(minCol, c)
+                    maxCol = max(maxCol, c)
+                }
+            }
+        }
+
+        if maxRow < 0 || maxCol < 0 {
+            // No non-nil tiles; fall back to full grid bounds.
+            return (rows: rows, cols: cols, minRow: 0, maxRow: max(0, rows - 1), minCol: 0, maxCol: max(0, cols - 1))
+        }
+
+        return (rows: rows, cols: cols, minRow: minRow, maxRow: maxRow, minCol: minCol, maxCol: maxCol)
+    }
+
+    private func isNearlyEqual(_ a: CGPoint, _ b: CGPoint, epsilon: CGFloat = 0.5) -> Bool {
+        return abs(a.x - b.x) <= epsilon && abs(a.y - b.y) <= epsilon
+    }
+
+    private func getSpriteBounds(_ sprites: [SKSpriteNode]) -> (minX: CGFloat, maxX: CGFloat, minY: CGFloat, maxY: CGFloat, centerX: CGFloat)? {
+        guard !sprites.isEmpty else { return nil }
+        var minX = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+
+        for sprite in sprites {
+            let width = sprite.size.width * abs(sprite.xScale)
+            let height = sprite.size.height * abs(sprite.yScale)
+            let left = sprite.position.x
+            let right = sprite.position.x + width
+            let top = sprite.position.y
+            let bottom = sprite.position.y - height
+            minX = min(minX, left)
+            maxX = max(maxX, right)
+            minY = min(minY, bottom)
+            maxY = max(maxY, top)
+        }
+
+        let centerX = (minX + maxX) / 2.0
+        return (minX: minX, maxX: maxX, minY: minY, maxY: maxY, centerX: centerX)
+    }
+
+    private func getTiledBounds(for part: PrefabPart?) -> (minRow: Int, maxRow: Int, minCol: Int, maxCol: Int)? {
+        guard let part = part else { return nil }
+        let grid: [[String?]]
+        let offset: (minRow: Int, minCol: Int)?
+        if part.tileGrid.count == 1,
+           part.tileGrid.first?.count == 1,
+           let singleEntry = part.tileGrid.first?.first,
+           let entry = singleEntry,
+           isClassSpec(entry),
+           let (layoutGrid, layoutOffset, _) = getLayoutGridFromClassNameWithOffset(entry) {
+            grid = layoutGrid
+            offset = layoutOffset
+        } else {
+            grid = part.tileGrid
+            offset = nil
+        }
+
+        var minRow = Int.max
+        var maxRow = Int.min
+        var minCol = Int.max
+        var maxCol = Int.min
+
+        for (r, row) in grid.enumerated() {
+            for (c, value) in row.enumerated() {
+                if value != nil {
+                    minRow = min(minRow, r)
+                    maxRow = max(maxRow, r)
+                    minCol = min(minCol, c)
+                    maxCol = max(maxCol, c)
+                }
+            }
+        }
+
+        guard minRow != Int.max else { return nil }
+        let rowOffset = offset?.minRow ?? 0
+        let colOffset = offset?.minCol ?? 0
+        return (
+            minRow: minRow + rowOffset,
+            maxRow: maxRow + rowOffset,
+            minCol: minCol + colOffset,
+            maxCol: maxCol + colOffset
+        )
     }
     
     /// Check if a spec is a class name (not a direct GID or tileset-localIndex)
@@ -1611,6 +2032,87 @@ class PrefabFactory {
         
         // No dash and not a number = class name (e.g., "grass_full")
         return true
+    }
+    
+    /// Get the layout grid from a class name based on how tiles are arranged in the TSX tileset
+    /// Returns a 2D grid matching the TSX layout, with the class name in each cell, and the offset (minRow, minCol)
+    /// Also returns the first actual tile position (firstRow, firstCol) for proper initialization
+    /// Returns nil if the class name cannot be resolved or has no tiles
+    private func getLayoutGridFromClassNameWithOffset(_ classSpec: String) -> (grid: [[String?]], offset: (minRow: Int, minCol: Int), firstTile: (row: Int, col: Int))? {
+        // Parse tileset name and class name
+        let tilesetName: String
+        let className: String
+        if let dashIndex = classSpec.firstIndex(of: "-") {
+            tilesetName = String(classSpec[..<dashIndex])
+            className = String(classSpec[classSpec.index(after: dashIndex)...])
+        } else {
+            // If no tileset specified, find first tileset with this class
+            guard let firstTileset = TileManager.shared.getTiledTilesets().first(where: { $0.classNames[classSpec] != nil }) else {
+                return nil
+            }
+            tilesetName = firstTileset.name
+            className = classSpec
+        }
+        
+        // Get the tileset
+        guard let tileset = TileManager.shared.getTiledTilesets().first(where: { $0.name == tilesetName }),
+              let tileIDs = tileset.classNames[className], !tileIDs.isEmpty else {
+            return nil
+        }
+        
+        // Calculate bounding box of all tiles with this class
+        var minRow = Int.max
+        var maxRow = Int.min
+        var minCol = Int.max
+        var maxCol = Int.min
+        var firstTileRow: Int? = nil
+        var firstTileCol: Int? = nil
+        
+        // Sort tile IDs to get the first one (top-left most)
+        let sortedTileIDs = tileIDs.sorted()
+        if let firstTileID = sortedTileIDs.first {
+            firstTileRow = firstTileID / tileset.columns
+            firstTileCol = firstTileID % tileset.columns
+        }
+        
+        for tileID in tileIDs {
+            let row = tileID / tileset.columns
+            let col = tileID % tileset.columns
+            minRow = min(minRow, row)
+            maxRow = max(maxRow, row)
+            minCol = min(minCol, col)
+            maxCol = max(maxCol, col)
+        }
+        
+        // Create grid matching the TSX layout
+        let gridRows = maxRow - minRow + 1
+        let gridCols = maxCol - minCol + 1
+        
+        var grid: [[String?]] = []
+        for row in 0..<gridRows {
+            var gridRow: [String?] = []
+            for col in 0..<gridCols {
+                let actualRow = minRow + row
+                let actualCol = minCol + col
+                let expectedTileID = actualRow * tileset.columns + actualCol
+                
+                // Check if there's a tile with this class at this position
+                if tileIDs.contains(expectedTileID) {
+                    // Use the class name - the resolution logic will pick the right tile
+                    gridRow.append(classSpec)
+                } else {
+                    // No tile at this position in the TSX layout
+                    gridRow.append(nil)
+                }
+            }
+            grid.append(gridRow)
+        }
+        
+        // Return the first tile position (or minRow/minCol if not found)
+        let firstRow = firstTileRow ?? minRow
+        let firstCol = firstTileCol ?? minCol
+        
+        return (grid: grid, offset: (minRow: minRow, minCol: minCol), firstTile: (row: firstRow, col: firstCol))
     }
     
     /// Create sprite nodes for an entity (legacy method - returns all sprites together)
@@ -1710,6 +2212,7 @@ class PrefabFactory {
                 )
             ],
             collision: CollisionSpec(type: "rectangle", size: CGSize(width: tileSize * 0.5, height: tileSize * 0.5)),
+            collisionOffset: nil,
             zPosition: 0
         ))
         
@@ -1730,6 +2233,7 @@ class PrefabFactory {
                 )
             ],
             collision: CollisionSpec(type: "rectangle", size: CGSize(width: tileSize * 0.7, height: tileSize * 0.5)),
+            collisionOffset: nil,
             zPosition: 0
         ))
         
@@ -1765,6 +2269,7 @@ class PrefabFactory {
                 )
             ],
             collision: CollisionSpec(type: "rectangle", size: CGSize(width: tileSize * 2, height: tileSize * 2)),
+            collisionOffset: nil,
             zPosition: 0
         ))
     }
@@ -1864,14 +2369,24 @@ class PrefabFactory {
             for jsonPrefab in container.prefabs {
                 let parts = jsonPrefab.parts.map { jsonPart -> PrefabPart in
                     // tileGrid is now required (no longer optional)
+                    let inferredTileSize = inferTileSize(from: jsonPart.tileGrid)
+                    let partTileSize = (jsonPart.tileSize ?? inferredTileSize)
+                    let gridSize = inferGridSize(from: jsonPart.tileGrid)
+                    let sizeWidth = jsonPart.size?.width ?? (gridSize.cols > 0 ? CGFloat(gridSize.cols) * (partTileSize > 0 ? partTileSize : 32.0) : 32.0)
+                    let sizeHeight = jsonPart.size?.height ?? (gridSize.rows > 0 ? CGFloat(gridSize.rows) * (partTileSize > 0 ? partTileSize : 32.0) : 32.0)
+                    let defaultOffset = CGPoint(x: -sizeWidth / 2, y: sizeHeight / 2)
+                    let offsetPoint = jsonPart.offset?.point ?? defaultOffset
+                    let partZOffset = jsonPart.zOffset ?? 0
+                    let resolvedTileSize = partTileSize > 0 ? partTileSize : 32.0
+
                     return PrefabPart(
                         layer: jsonPart.layer,
                         tileGrid: jsonPart.tileGrid,
                         assetName: jsonPart.assetName,
-                        offset: jsonPart.offsetPoint,
-                        size: jsonPart.sizeSize,
-                        zOffset: jsonPart.zOffset,
-                        tileSize: jsonPart.tileSize
+                        offset: offsetPoint,
+                        size: CGSize(width: sizeWidth, height: sizeHeight),
+                        zOffset: partZOffset,
+                        tileSize: resolvedTileSize
                     )
                 }
                 
@@ -1881,6 +2396,7 @@ class PrefabFactory {
                     description: jsonPrefab.description,
                     parts: parts,
                     collision: CollisionSpec(type: jsonPrefab.collision.type, size: CGSize(width: jsonPrefab.collision.size.width, height: jsonPrefab.collision.size.height)),
+                    collisionOffset: jsonPrefab.collisionOffset?.point,
                     zPosition: jsonPrefab.zPosition
                 )
                 
@@ -2470,7 +2986,7 @@ class PrefabFactory {
                     }
                 }
                 
-                // PRIORITY 2: Try sprite atlas (e.g., "grasslands_atlas-1")
+                // PRIORITY 2: Try sprite atlas (e.g., "grasslands_atlas-1", "chest_atlas-72")
                 // Only try sprite atlas if it's not a Tiled tileset
                 if let sprite = TileManager.shared.createSpriteFromAtlas(atlasName: name, frameNumber: index, size: size) {
                     return sprite
@@ -2479,7 +2995,8 @@ class PrefabFactory {
                 // If both fail, check if it's a known sprite atlas pattern
                 if name.hasSuffix("_atlas") {
                     // This is definitely a sprite atlas, but lookup failed
-                    print("⚠️ PrefabFactory: Failed to load sprite from atlas '\(name)' frame \(index)")
+                    print("⚠️ PrefabFactory: Failed to load sprite from atlas '\(name)' frame \(index) (size: \(size.width)x\(size.height))")
+                    print("   This might indicate the atlas doesn't exist, frame number is out of range, or tile size is incorrect")
                     return nil
                 }
                 
@@ -2533,12 +3050,13 @@ fileprivate struct CGPointSizeDict: Codable {
 }
 
 // Temporary JSON structure that matches the JSON file format
-private struct PrefabDefinitionJSON: Codable {
+    private struct PrefabDefinitionJSON: Codable {
     let id: String
     let type: ProceduralEntityType
     let description: String?
     let parts: [PrefabPartJSON]
     let collision: CollisionSpecJSON
+        let collisionOffset: CGPointDict?
     let zPosition: CGFloat
 }
 
@@ -2546,17 +3064,19 @@ private struct PrefabPartJSON: Codable {
     let layer: String
     let tileGrid: [[String?]]
     let assetName: String?
-    let offset: CGPointDict
-    let size: CGSizeDict
-    let zOffset: CGFloat
-    let tileSize: CGFloat
+    let offset: CGPointDict?
+    let size: CGSizeDict?
+    let zOffset: CGFloat?
+    let tileSize: CGFloat?
     
     // Convert to CGPoint/CGSize after decoding
-    var offsetPoint: CGPoint {
+    var offsetPoint: CGPoint? {
+        guard let offset = offset else { return nil }
         return CGPoint(x: offset.x, y: offset.y)
     }
     
-    var sizeSize: CGSize {
+    var sizeSize: CGSize? {
+        guard let size = size else { return nil }
         return CGSize(width: size.width, height: size.height)
     }
 }
@@ -2564,6 +3084,10 @@ private struct PrefabPartJSON: Codable {
 fileprivate struct CGPointDict: Codable {
     let x: CGFloat
     let y: CGFloat
+
+    var point: CGPoint {
+        return CGPoint(x: x, y: y)
+    }
 }
 
 fileprivate struct CGSizeDict: Codable {

@@ -9,6 +9,35 @@ import SpriteKit
 
 extension GameScene {
     
+    func configureMapMode(from tiledMap: TiledMap?) {
+        guard let tiledMap = tiledMap else { return }
+        // Debug: Print all map properties
+        if !tiledMap.properties.isEmpty {
+            print("🔍 TMX Map properties found: \(tiledMap.properties)")
+        } else {
+            print("⚠️ No map properties found in TMX (property must be on the MAP, not a layer)")
+        }
+        
+        // Check for useProceduralWorld property
+        let useProcedural = tiledMap.boolProperty("useProceduralWorld", default: false)
+        print("🔍 useProceduralWorld property value: \(useProcedural)")
+        
+        if useProcedural {
+            print("🌍 TMX map property 'useProceduralWorld' is true - using procedural world")
+            useTiledMap = false
+        } else {
+            print("📍 Using Tiled map (useProceduralWorld=false or not set)")
+        }
+    }
+    
+    func loadMapFromCurrentMode(preParsedMap: TiledMap? = nil) {
+        if useTiledMap {
+            loadAndRenderTiledMap(fileName: tiledMapFileName, preParsedMap: preParsedMap)
+        } else {
+            setupHybridWorldSystem()
+        }
+    }
+    
     func setupHybridWorldSystem() {
         print("🌍 Setting up hybrid world system (chunk-based)")
         
@@ -1780,12 +1809,14 @@ extension GameScene {
             _ = loadTilesetsFromTMX(fileName: tiledMapFileName)
         }
         
-        // Render the new map
-        if useTiledMap {
-            loadAndRenderTiledMap(fileName: tiledMapFileName, preParsedMap: parsedTiledMap)
-        } else {
-            renderWorld()
+        // Determine which world mode to load (same logic as initial setup)
+        configureMapMode(from: parsedTiledMap)
+        if !useTiledMap {
+            chestCollisionBoxCache.removeAll()
         }
+        
+        // Render the new map using the same path as initial load
+        loadMapFromCurrentMode(preParsedMap: parsedTiledMap)
         
         // Recreate player sprite
         createPlayerSprite()
@@ -2147,29 +2178,34 @@ extension GameScene {
             // Check if we've reached the target
             var reachedTarget = false
             
-            // If we have a target node (e.g., chest), check collision intersection
+            // If we have a target node (e.g., chest), check if we're colliding with it
+            // Use the EXACT same collision box calculation as canMoveToProceduralWorld
+            // The collision check in canMoveToProceduralWorld should handle this, but we also check here
+            // as a backup in case the player is already at the chest when auto-walk starts
             if let targetNode = autoWalkTargetNode {
-                // CRITICAL: Check if player's collision frame intersects with chest's collision box
-                // This is more reliable than distance checks
+                // Check if player's collision frame intersects with chest's collision box
+                // Use the EXACT same functions as movement detection
                 let playerFrame = getPlayerCollisionFrame(at: player.position)
                 
-                // Get chest collision box using the same method as click detection
                 if let chestCollisionBox = getChestCollisionBox(node: targetNode) {
-                    if playerFrame.intersects(chestCollisionBox) {
+                    let intersects = playerFrame.intersects(chestCollisionBox)
+                    
+                    if intersects {
                         reachedTarget = true
-                        print("✅ Auto-walk: Player collision with chest detected - opening chest")
+                        print("✅ Auto-walk: Player collision frame intersects chest collision box - opening chest")
                     }
                 } else {
-                    // Fallback: use bounding box check
+                    // Fallback: use bounding box check (shouldn't happen if collision box is calculated correctly)
                     let targetBoundingBox = calculateBoundingBox(for: targetNode)
-                    if playerFrame.intersects(targetBoundingBox) {
+                    let intersects = playerFrame.intersects(targetBoundingBox)
+                    if intersects {
                         reachedTarget = true
-                        print("✅ Auto-walk: Player collision with target detected (fallback)")
+                        print("✅ Auto-walk: Player collision frame intersects target bounding box")
                     }
                 }
             } else {
-                // Fallback to distance check if no target node
-            let distance = sqrt(pow(targetPos.x - player.position.x, 2) + pow(targetPos.y - player.position.y, 2))
+                // Fallback to distance check if no target node (shouldn't happen for chests)
+                let distance = sqrt(pow(targetPos.x - player.position.x, 2) + pow(targetPos.y - player.position.y, 2))
                 if distance <= autoWalkInteractionRadius {
                     reachedTarget = true
                 }
@@ -2212,200 +2248,149 @@ extension GameScene {
                 let desiredDir = CGPoint(x: dx / distance, y: dy / distance)
                 
                 // Determine movement direction (with obstacle avoidance if needed)
-                var movementDir: CGPoint
+                // Initialize with desired direction as default
+                var movementDir: CGPoint = desiredDir
                 
-                // If we have an obstacle avoidance direction, use it temporarily
-                if let avoidance = autoWalkObstacleAvoidance {
-                    movementDir = avoidance
-                    // Check if we can move in the desired direction again (we've cleared the obstacle)
-                    let testPos = CGPoint(
-                        x: player.position.x + desiredDir.x * movementSpeed,
-                        y: player.position.y + desiredDir.y * movementSpeed
-                    )
-                    let canMoveDirect = useTiledMap ? canMoveToTiledMap(position: testPos) : canMoveToProceduralWorld(position: testPos)
-                    
-                    if canMoveDirect {
-                        // Clear obstacle avoidance - we can go direct again
-                        autoWalkObstacleAvoidance = nil
-                        movementDir = desiredDir
+                // Helper function to normalize a direction vector
+                func normalize(_ dir: CGPoint) -> CGPoint {
+                    let len = sqrt(dir.x * dir.x + dir.y * dir.y)
+                    if len > 0.001 {
+                        return CGPoint(x: dir.x / len, y: dir.y / len)
                     }
-                } else {
-                    // Try direct path first
-                    let testPos = CGPoint(
-                        x: player.position.x + desiredDir.x * movementSpeed,
-                        y: player.position.y + desiredDir.y * movementSpeed
-                    )
-                    let canMoveDirect = useTiledMap ? canMoveToTiledMap(position: testPos) : canMoveToProceduralWorld(position: testPos)
+                    return dir
+                }
+                
+                // Helper function to check if we can move in a direction (with look-ahead)
+                func canMoveInDirection(_ dir: CGPoint, lookAheadSteps: Int = 1) -> Bool {
+                    let normalizedDir = normalize(dir)
+                    for step in 1...lookAheadSteps {
+                        let testPos = CGPoint(
+                            x: player.position.x + normalizedDir.x * movementSpeed * CGFloat(step),
+                            y: player.position.y + normalizedDir.y * movementSpeed * CGFloat(step)
+                        )
+                        let canMove = useTiledMap ? canMoveToTiledMap(position: testPos) : canMoveToProceduralWorld(position: testPos)
+                        if !canMove {
+                            return false
+                        }
+                    }
+                    return true
+                }
+                
+                // If we have an obstacle avoidance direction, prefer continuing in it for smoother movement
+                if let currentAvoidance = autoWalkObstacleAvoidance {
+                    let avoidanceNormalized = normalize(currentAvoidance)
                     
-                    if canMoveDirect {
+                    // Check if we can continue in the current avoidance direction (with look-ahead for smoother movement)
+                    if canMoveInDirection(avoidanceNormalized, lookAheadSteps: 2) {
+                        // Continue in current avoidance direction - this prevents jittery direction changes
+                        movementDir = avoidanceNormalized
+                        
+                        // Check if we can now move directly toward target (we've cleared the obstacle)
+                        if canMoveInDirection(desiredDir, lookAheadSteps: 1) {
+                            // Check if continuing in avoidance direction is taking us away from target
+                            // If we're moving away, try to transition back to desired direction
+                            let avoidanceDot = avoidanceNormalized.x * desiredDir.x + avoidanceNormalized.y * desiredDir.y
+                            if avoidanceDot < -0.3 {
+                                // Moving away from target - try to transition back
+                                if canMoveInDirection(desiredDir, lookAheadSteps: 1) {
+                                    autoWalkObstacleAvoidance = nil
+                                    movementDir = desiredDir
+                                }
+                            }
+                        }
+                    } else {
+                        // Current avoidance direction is blocked - need to find new direction
+                        autoWalkObstacleAvoidance = nil
+                        // Fall through to obstacle avoidance logic below
+                    }
+                }
+                
+                // If no avoidance direction or it's blocked, try direct path first
+                if autoWalkObstacleAvoidance == nil {
+                    if canMoveInDirection(desiredDir, lookAheadSteps: 1) {
                         movementDir = desiredDir
                     } else {
-                        // Direct path blocked - try obstacle avoidance with smoother pathfinding
-                        // First, try to find the best perpendicular direction that gets us closer to target
+                        // Direct path blocked - find best avoidance direction
                         let perpendicular1 = CGPoint(x: -desiredDir.y, y: desiredDir.x)  // 90 degrees left
                         let perpendicular2 = CGPoint(x: desiredDir.y, y: -desiredDir.x)   // 90 degrees right
                         
-                        // Test both perpendicular directions
-                        let testPos1 = CGPoint(
-                            x: player.position.x + perpendicular1.x * movementSpeed,
-                            y: player.position.y + perpendicular1.y * movementSpeed
-                        )
-                        let testPos2 = CGPoint(
-                            x: player.position.x + perpendicular2.x * movementSpeed,
-                            y: player.position.y + perpendicular2.y * movementSpeed
-                        )
+                        // Test both perpendicular directions with look-ahead
+                        let canMove1 = canMoveInDirection(perpendicular1, lookAheadSteps: 2)
+                        let canMove2 = canMoveInDirection(perpendicular2, lookAheadSteps: 2)
                         
-                        let canMove1 = useTiledMap ? canMoveToTiledMap(position: testPos1) : canMoveToProceduralWorld(position: testPos1)
-                        let canMove2 = useTiledMap ? canMoveToTiledMap(position: testPos2) : canMoveToProceduralWorld(position: testPos2)
-                        
-                        // If we're already avoiding an obstacle, continue in that direction if possible
-                        if let currentAvoidance = autoWalkObstacleAvoidance {
-                            let avoidanceLength = sqrt(currentAvoidance.x * currentAvoidance.x + currentAvoidance.y * currentAvoidance.y)
-                            if avoidanceLength > 0.001 {
-                                let currentAvoidanceNormalized = CGPoint(
-                                    x: currentAvoidance.x / avoidanceLength,
-                                    y: currentAvoidance.y / avoidanceLength
-                                )
-                                
-                                // Check if current avoidance direction is still valid
-                                let testCurrentAvoidance = CGPoint(
-                                    x: player.position.x + currentAvoidanceNormalized.x * movementSpeed,
-                                    y: player.position.y + currentAvoidanceNormalized.y * movementSpeed
-                                )
-                                let canMoveCurrent = useTiledMap ? canMoveToTiledMap(position: testCurrentAvoidance) : canMoveToProceduralWorld(position: testCurrentAvoidance)
-                                
-                                if canMoveCurrent {
-                                    // Continue in current avoidance direction for smoother movement
-                                    movementDir = currentAvoidanceNormalized
-                                } else if canMove1 {
-                                    // Switch to perpendicular1
-                                    movementDir = perpendicular1
-                                    autoWalkObstacleAvoidance = perpendicular1
-                                } else if canMove2 {
-                                    // Switch to perpendicular2
-                                    movementDir = perpendicular2
-                                    autoWalkObstacleAvoidance = perpendicular2
-                                } else {
-                                    // Try diagonal directions (combinations of perpendicular and desired)
-                                    let diagonal1 = CGPoint(
-                                        x: (perpendicular1.x + desiredDir.x) / 2,
-                                        y: (perpendicular1.y + desiredDir.y) / 2
-                                    )
-                                    let diagonal2 = CGPoint(
-                                        x: (perpendicular2.x + desiredDir.x) / 2,
-                                        y: (perpendicular2.y + desiredDir.y) / 2
-                                    )
-                                    
-                                    let testDiag1 = CGPoint(
-                                        x: player.position.x + diagonal1.x * movementSpeed,
-                                        y: player.position.y + diagonal1.y * movementSpeed
-                                    )
-                                    let testDiag2 = CGPoint(
-                                        x: player.position.x + diagonal2.x * movementSpeed,
-                                        y: player.position.y + diagonal2.y * movementSpeed
-                                    )
-                                    
-                                    let canMoveDiag1 = useTiledMap ? canMoveToTiledMap(position: testDiag1) : canMoveToProceduralWorld(position: testDiag1)
-                                    let canMoveDiag2 = useTiledMap ? canMoveToTiledMap(position: testDiag2) : canMoveToProceduralWorld(position: testDiag2)
-                                    
-                                    if canMoveDiag1 {
-                                        movementDir = diagonal1
-                                        autoWalkObstacleAvoidance = diagonal1
-                                    } else if canMoveDiag2 {
-                                        movementDir = diagonal2
-                                        autoWalkObstacleAvoidance = diagonal2
-                                    } else {
-                                        // Completely stuck - try going backward slightly
-                                        let backwardDir = CGPoint(x: -desiredDir.x, y: -desiredDir.y)
-                                        let testPosBack = CGPoint(
-                                            x: player.position.x + backwardDir.x * movementSpeed * 0.5,
-                                            y: player.position.y + backwardDir.y * movementSpeed * 0.5
-                                        )
-                                        let canMoveBack = useTiledMap ? canMoveToTiledMap(position: testPosBack) : canMoveToProceduralWorld(position: testPosBack)
-                                        
-                                        if canMoveBack && autoWalkStuckCounter < 10 {
-                                            // Back up slightly to try a different angle
-                                            movementDir = backwardDir
-                                            autoWalkObstacleAvoidance = backwardDir
-                                        } else {
-                                            // Completely stuck - just try to move in desired direction anyway
-                                            movementDir = desiredDir
-                                            autoWalkObstacleAvoidance = nil
-                                            if autoWalkStuckCounter > 30 {
-                                                // Been stuck too long - cancel auto-walk
-                                                print("⚠️ Auto-walk stuck for too long, cancelling")
-                                                isAutoWalking = false
-                                                autoWalkTarget = nil
-                                                autoWalkLastPosition = nil
-                                                autoWalkStuckCounter = 0
-                                                autoWalkLastDirection = CGPoint.zero
-                                                autoWalkObstacleAvoidance = nil
-                                                currentMovementDirection = CGPoint.zero
-                                                isMoving = false
-                                            }
-                                        }
-                                    }
-                                }
+                        if canMove1 && canMove2 {
+                            // Both work - choose the one that gets us closer to target after moving
+                            let testPos1 = CGPoint(
+                                x: player.position.x + perpendicular1.x * movementSpeed * 2,
+                                y: player.position.y + perpendicular1.y * movementSpeed * 2
+                            )
+                            let testPos2 = CGPoint(
+                                x: player.position.x + perpendicular2.x * movementSpeed * 2,
+                                y: player.position.y + perpendicular2.y * movementSpeed * 2
+                            )
+                            let dist1 = sqrt(pow(testPos1.x - targetPos.x, 2) + pow(testPos1.y - targetPos.y, 2))
+                            let dist2 = sqrt(pow(testPos2.x - targetPos.x, 2) + pow(testPos2.y - targetPos.y, 2))
+                            if dist1 < dist2 {
+                                movementDir = perpendicular1
+                                autoWalkObstacleAvoidance = perpendicular1
                             } else {
-                                // Avoidance vector is too small, reset it and try perpendicular directions
-                        if canMove1 {
-                                    movementDir = perpendicular1
-                                    autoWalkObstacleAvoidance = perpendicular1
-                                } else if canMove2 {
-                                    movementDir = perpendicular2
-                                    autoWalkObstacleAvoidance = perpendicular2
-                                } else {
-                                    movementDir = desiredDir
-                                    autoWalkObstacleAvoidance = nil
-                                }
+                                movementDir = perpendicular2
+                                autoWalkObstacleAvoidance = perpendicular2
                             }
-                        } else {
-                            // No current avoidance - choose best perpendicular direction
-                            if canMove1 && canMove2 {
-                                // Both work - choose the one that gets us closer to target
-                                let dist1 = sqrt(pow(testPos1.x - targetPos.x, 2) + pow(testPos1.y - targetPos.y, 2))
-                                let dist2 = sqrt(pow(testPos2.x - targetPos.x, 2) + pow(testPos2.y - targetPos.y, 2))
-                                if dist1 < dist2 {
-                                    movementDir = perpendicular1
-                                    autoWalkObstacleAvoidance = perpendicular1
-                                } else {
-                                    movementDir = perpendicular2
-                                    autoWalkObstacleAvoidance = perpendicular2
-                                }
-                            } else if canMove1 {
+                        } else if canMove1 {
                             movementDir = perpendicular1
                             autoWalkObstacleAvoidance = perpendicular1
                         } else if canMove2 {
                             movementDir = perpendicular2
                             autoWalkObstacleAvoidance = perpendicular2
                         } else {
-                            // Both perpendicular directions blocked - try going backward slightly
-                            let backwardDir = CGPoint(x: -desiredDir.x, y: -desiredDir.y)
-                            let testPosBack = CGPoint(
-                                x: player.position.x + backwardDir.x * movementSpeed * 0.5,
-                                y: player.position.y + backwardDir.y * movementSpeed * 0.5
-                            )
-                            let canMoveBack = useTiledMap ? canMoveToTiledMap(position: testPosBack) : canMoveToProceduralWorld(position: testPosBack)
+                            // Both perpendicular directions blocked - try diagonal directions
+                            let diagonal1 = normalize(CGPoint(
+                                x: (perpendicular1.x + desiredDir.x),
+                                y: (perpendicular1.y + desiredDir.y)
+                            ))
+                            let diagonal2 = normalize(CGPoint(
+                                x: (perpendicular2.x + desiredDir.x),
+                                y: (perpendicular2.y + desiredDir.y)
+                            ))
                             
-                            if canMoveBack && autoWalkStuckCounter < 10 {
-                                // Back up slightly to try a different angle
-                                movementDir = backwardDir
-                                autoWalkObstacleAvoidance = backwardDir
+                            let canMoveDiag1 = canMoveInDirection(diagonal1, lookAheadSteps: 1)
+                            let canMoveDiag2 = canMoveInDirection(diagonal2, lookAheadSteps: 1)
+                            
+                            if canMoveDiag1 {
+                                movementDir = diagonal1
+                                autoWalkObstacleAvoidance = diagonal1
+                            } else if canMoveDiag2 {
+                                movementDir = diagonal2
+                                autoWalkObstacleAvoidance = diagonal2
                             } else {
-                                // Completely stuck - just try to move in desired direction anyway
-                                movementDir = desiredDir
-                                autoWalkObstacleAvoidance = nil
-                                if autoWalkStuckCounter > 30 {
-                                    // Been stuck too long - cancel auto-walk
-                                    print("⚠️ Auto-walk stuck for too long, cancelling")
-                                    isAutoWalking = false
-                                    autoWalkTarget = nil
-                                    autoWalkLastPosition = nil
-                                    autoWalkStuckCounter = 0
-                                    autoWalkLastDirection = CGPoint.zero
+                                // Completely stuck - try going backward slightly
+                                let backwardDir = CGPoint(x: -desiredDir.x, y: -desiredDir.y)
+                                let testPosBack = CGPoint(
+                                    x: player.position.x + backwardDir.x * movementSpeed * 0.5,
+                                    y: player.position.y + backwardDir.y * movementSpeed * 0.5
+                                )
+                                let canMoveBack = useTiledMap ? canMoveToTiledMap(position: testPosBack) : canMoveToProceduralWorld(position: testPosBack)
+                                
+                                if canMoveBack && autoWalkStuckCounter < 10 {
+                                    // Back up slightly to try a different angle
+                                    movementDir = normalize(backwardDir)
+                                    autoWalkObstacleAvoidance = movementDir
+                                } else {
+                                    // Completely stuck - just try to move in desired direction anyway
+                                    movementDir = desiredDir
                                     autoWalkObstacleAvoidance = nil
-                                    currentMovementDirection = CGPoint.zero
-                                    isMoving = false
+                                    if autoWalkStuckCounter > 30 {
+                                        // Been stuck too long - cancel auto-walk
+                                        print("⚠️ Auto-walk stuck for too long, cancelling")
+                                        isAutoWalking = false
+                                        autoWalkTarget = nil
+                                        autoWalkLastPosition = nil
+                                        autoWalkStuckCounter = 0
+                                        autoWalkLastDirection = CGPoint.zero
+                                        autoWalkObstacleAvoidance = nil
+                                        currentMovementDirection = CGPoint.zero
+                                        isMoving = false
                                     }
                                 }
                             }
