@@ -253,7 +253,7 @@ class Consumable: Item {
                 player.hitPoints = min(player.maxHitPoints, player.hitPoints + amount)
                 quantity -= 1
                 return true
-            case .restoreMana(let amount):
+            case .restoreMana(_):
                 // Implement if you add mana system
                 quantity -= 1
                 return true

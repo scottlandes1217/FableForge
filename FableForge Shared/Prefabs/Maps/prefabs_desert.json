@@ -22,24 +22,30 @@
       "chests": [
         {
           "chestId": "chest_wooden_01",
-          "count": 3
+          "count": 3,
+          "blockedTerrainTypes": ["water"]
         },
         {
           "chestId": "chest_treasure_01",
-          "count": 1
+          "count": 1,
+          "blockedTerrainTypes": ["water"]
         }
-      ]
+      ],
+      "treeBlockedTerrainTypes": ["water", "stone"],
+      "rockBlockedTerrainTypes": ["water"]
     },
     "enemies": {
       "spawnRate": 0.001,
       "types": ["Goblin", "Orc", "Bandit", "Wild Beast"],
       "minLevel": 1,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "blockedTerrainTypes": ["water"]
     },
     "animals": {
       "spawnRate": 0.002,
       "types": ["deer", "rabbit", "fox", "owl"],
-      "friendlyChance": 0.7
+      "friendlyChance": 0.7,
+      "blockedTerrainTypes": ["water"]
     },
     "waterFeatures": {
       "type": "rivers",
@@ -80,7 +86,7 @@
       "parts": [
         {
           "layer": "low",
-          "tileGrid": [["exterior-4125"]],
+          "tileGrid": [["outside_objects1-treetrunk_1"]],
           "assetName": null,
           "offset": {"x": -8, "y": 0},
           "size": {"width": 16, "height": 24},
@@ -90,9 +96,7 @@
         {
           "layer": "high",
           "tileGrid": [
-            [null, "exterior-4200", null],
-            ["exterior-4201", "exterior-4202", "exterior-4203"],
-            [null, "exterior-4204", null]
+            ["outside_objects1-treecanopy_1"]
           ],
           "assetName": null,
           "offset": {"x": -48, "y": 24},

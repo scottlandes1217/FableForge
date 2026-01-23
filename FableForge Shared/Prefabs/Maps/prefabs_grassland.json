@@ -9,20 +9,125 @@
       "dirtThreshold": 0.95,
       "groundTiles": {
         "water": [
-          "exterior-257"
+          "water1-water_full"
         ],
         "grass": [
-          "exterior-257"
+          "terrain1-1",
+          {
+            "tile_id": "terrain1-0",
+            "description": "green lush grass with long grass blades"
+          }
         ],
+        "grassVariants": {
+          "base": [
+            "terrain1-grass_full"
+          ],
+          "edgeN": [
+            "terrain1-1737"
+          ],
+          "edgeS": [
+            "terrain1-44"
+          ],
+          "edgeE": [
+            "terrain1-348"
+          ],
+          "edgeW": [
+            "terrain1-356"
+          ],
+          "cornerNE": [
+            "terrain1-1267"
+          ],
+          "cornerNW": [
+            "terrain1-9"
+          ],
+          "cornerSE": [
+            "generate"
+          ],
+          "cornerSW": [
+            "generate"
+          ],
+          "innerCornerNE": [
+            "generate"
+          ],
+          "innerCornerNW": [
+            "generate"
+          ],
+          "innerCornerSE": [
+            "generate"
+          ],
+          "innerCornerSW": [
+            "generate"
+          ],
+          "transitionN": [
+            "generate"
+          ],
+          "transitionS": [
+            "generate"
+          ],
+          "transitionE": [
+            "generate"
+          ],
+          "transitionW": [
+            "generate"
+          ],
+          "transitionNE": [
+            "generate"
+          ],
+          "transitionNW": [
+            "generate"
+          ],
+          "transitionSE": [
+            "generate"
+          ],
+          "transitionSW": [
+            "generate"
+          ]
+        },
         "dirt": [
-          "exterior-357"
+          "terrain1-665",
+          "terrain1-666",
+          "terrain1-667",
+          "terrain1-668",
+          "terrain1-669",
+          "terrain1-670",
+          "terrain1-671",
+          "terrain1-672"
         ],
         "stone": [
-          "exterior-852",
-          "exterior-853",
-          "exterior-839"
+          "terrain1-857",
+          "terrain1-858",
+          "terrain1-859",
+          "terrain1-860",
+          "terrain1-861",
+          "terrain1-862",
+          "terrain1-863",
+          "terrain1-864"
         ]
-      }
+      },
+      "decorations": [
+        {
+          "terrainTypes": [
+            "grass"
+          ],
+          "tileGIDs": [
+            "generate",
+            "generate"
+          ],
+          "density": 0.05,
+          "allowOnEdges": false
+        },
+        {
+          "terrainTypes": [
+            "dirt"
+          ],
+          "tileGIDs": [
+            "generate",
+            "generate"
+          ],
+          "density": 0.05,
+          "allowOnEdges": false
+        }
+      ]
     },
     "entities": {
       "treeDensity": 0.002,
@@ -36,13 +141,17 @@
       "chests": [
         {
           "chestId": "chest_wooden_01",
-          "count": 5
+          "count": 5,
+          "blockedTerrainTypes": ["water"]
         },
         {
           "chestId": "chest_treasure_01",
-          "count": 2
+          "count": 2,
+          "blockedTerrainTypes": ["water"]
         }
-      ]
+      ],
+      "treeBlockedTerrainTypes": ["water", "stone"],
+      "rockBlockedTerrainTypes": ["water"]
     },
     "enemies": {
       "spawnRate": 0.001,
@@ -53,7 +162,8 @@
         "Wild Beast"
       ],
       "minLevel": 1,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "blockedTerrainTypes": ["water"]
     },
     "animals": {
       "spawnRate": 0.002,
@@ -63,7 +173,8 @@
         "fox",
         "owl"
       ],
-      "friendlyChance": 0.7
+      "friendlyChance": 0.7,
+      "blockedTerrainTypes": ["water"]
     },
     "waterFeatures": {
       "type": "rivers",
@@ -105,14 +216,7 @@
         {
           "layer": "low",
           "tileGrid": [
-            [
-              "grasslands_atlas-65",
-              "grasslands_atlas-66"
-            ],
-            [
-              "grasslands_atlas-67",
-              "grasslands_atlas-68"
-            ]
+            ["outside_objects1-treetrunk_1"]
           ],
           "offset": {
             "x": 32,
@@ -124,51 +228,12 @@
           },
           "zOffset": 21,
           "tileSize": 16,
-          "tileMap": "6,6,6,6,6,2,2"
+          "tileMap": 0
         },
         {
           "layer": "high",
           "tileGrid": [
-            [
-              "grasslands_atlas-35",
-              "grasslands_atlas-36",
-              "grasslands_atlas-37",
-              "grasslands_atlas-38",
-              "grasslands_atlas-39",
-              "grasslands_atlas-40"
-            ],
-            [
-              "grasslands_atlas-41",
-              "grasslands_atlas-42",
-              "grasslands_atlas-43",
-              "grasslands_atlas-44",
-              "grasslands_atlas-45",
-              "grasslands_atlas-46"
-            ],
-            [
-              "grasslands_atlas-47",
-              "grasslands_atlas-48",
-              "grasslands_atlas-49",
-              "grasslands_atlas-50",
-              "grasslands_atlas-51",
-              "grasslands_atlas-52"
-            ],
-            [
-              "grasslands_atlas-53",
-              "grasslands_atlas-54",
-              "grasslands_atlas-55",
-              "grasslands_atlas-56",
-              "grasslands_atlas-57",
-              "grasslands_atlas-58"
-            ],
-            [
-              "grasslands_atlas-59",
-              "grasslands_atlas-60",
-              "grasslands_atlas-61",
-              "grasslands_atlas-62",
-              "grasslands_atlas-63",
-              "grasslands_atlas-64"
-            ]
+            ["outside_objects1-treecanopy_1"]
           ],
           "offset": {
             "x": 0,

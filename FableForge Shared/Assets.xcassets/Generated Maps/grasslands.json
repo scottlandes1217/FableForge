@@ -1,0 +1,42 @@
+{
+  "tile_size": 16,
+  "atlas_width": 160,
+  "atlas_height": 160,
+  "cols": 10,
+  "rows": 10,
+  "tiles": {
+    "1": {
+      "x": 0,
+      "y": 0,
+      "width": 16,
+      "height": 16,
+      "col": 0,
+      "row": 0,
+      "name": "",
+      "description": "",
+      "type": "ground_tile"
+    },
+    "2": {
+      "x": 16,
+      "y": 0,
+      "width": 16,
+      "height": 16,
+      "col": 1,
+      "row": 0,
+      "name": "",
+      "description": "",
+      "type": "ground_tile"
+    },
+    "3": {
+      "x": 32,
+      "y": 0,
+      "width": 16,
+      "height": 16,
+      "col": 2,
+      "row": 0,
+      "name": "",
+      "description": "",
+      "type": "ground_tile"
+    }
+  }
+}

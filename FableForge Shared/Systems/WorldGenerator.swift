@@ -13,6 +13,7 @@ class WorldGenerator {
     let worldSeed: UInt64
     private var rng: SeededRandomNumberGenerator
     private var config: WorldConfig?
+    private static var hasLoggedGroundTiles = false  // Track if we've already logged ground tiles loading
     
     init(seed: Int, config: WorldConfig? = nil) {
         self.worldSeed = UInt64(seed)
@@ -27,13 +28,18 @@ class WorldGenerator {
     
     /// Generate a chunk's base data (before applying deltas)
     func generateChunk(_ chunkKey: ChunkKey, chunkSize: Int, tileSize: CGFloat, delta: ChunkDelta, tmxInstances: [TMXInstance]) -> ChunkData {
+        // Dictionary to store chest contents (entity key -> items)
+        var chestContents: [EntityKey: [Item]] = [:]
         // Reset RNG with chunk-specific seed for deterministic generation
         // Combine world seed with chunk coordinates
         let chunkSeed = combineSeeds(worldSeed, chunkX: Int64(chunkKey.x), chunkY: Int64(chunkKey.y))
         var chunkRNG = SeededRandomNumberGenerator(seed: chunkSeed)
         
-        // Generate ground tiles
-        let tiles = generateGroundTiles(chunkKey: chunkKey, chunkSize: chunkSize, rng: &chunkRNG)
+        // Generate ground tiles and terrain map
+        let (tiles, terrainMap) = generateGroundTiles(chunkKey: chunkKey, chunkSize: chunkSize, rng: &chunkRNG)
+        
+        // Generate terrain decorations (placed on top of ground tiles)
+        let decorations = generateDecorations(chunkKey: chunkKey, chunkSize: chunkSize, terrainMap: terrainMap, rng: &chunkRNG)
         
         // Generate procedural entities
         var entitiesBelow: [ProceduralEntity] = []
@@ -48,8 +54,10 @@ class WorldGenerator {
             chunkSize: chunkSize,
             tileSize: tileSize,
             reservedTiles: reservedTiles,
+            terrainMap: terrainMap,
             delta: delta,
-            rng: &chunkRNG
+            rng: &chunkRNG,
+            chestContents: &chestContents
         )
         
         // Separate entities by z-ordering requirements
@@ -75,17 +83,65 @@ class WorldGenerator {
             entitiesBelow.append(addedEntity)
         }
         
-        return ChunkData(chunkKey: chunkKey, tiles: tiles, entitiesBelow: entitiesBelow, entitiesAbove: entitiesAbove)
+        let chunkData = ChunkData(chunkKey: chunkKey, tiles: tiles, terrainMap: terrainMap, decorations: decorations, entitiesBelow: entitiesBelow, entitiesAbove: entitiesAbove)
+        
+        // Store chest contents in ChunkData
+        chunkData.chestContents = chestContents
+        
+        return chunkData
     }
     
-    /// Generate ground tiles for a chunk
-    private func generateGroundTiles(chunkKey: ChunkKey, chunkSize: Int, rng: inout SeededRandomNumberGenerator) -> [[Int]] {
-        var tiles: [[Int]] = []
+    /// Generate ground tiles for a chunk with autotiling support
+    /// Returns tuple: (tile specs, terrain map) where tile specs are strings (GID specs or sprite atlas specs)
+    private func generateGroundTiles(chunkKey: ChunkKey, chunkSize: Int, rng: inout SeededRandomNumberGenerator) -> ([[String]], [[TerrainType]]) {
         let origin = chunkKey.worldTileOrigin(chunkSize: chunkSize)
         
-        // Simple terrain generation: mostly grass with some variation
+        // Map noise to tile types using world config (or defaults)
+        let terrainConfig = config?.terrain
+        let waterThreshold = terrainConfig?.waterThreshold ?? 0.15
+        let grassThreshold = terrainConfig?.grassThreshold ?? 0.9
+        let dirtThreshold = terrainConfig?.dirtThreshold ?? 0.95
+        
+        // Get ground tile GIDs from config or PrefabFactory fallback
+        let groundTiles: GroundTileGIDs
+        if let configTiles = terrainConfig?.groundTiles {
+            // Use world-specific ground tiles
+            groundTiles = GroundTileGIDs(
+                water: configTiles.water ?? [],
+                grass: configTiles.grass ?? [],
+                dirt: configTiles.dirt ?? [],
+                stone: configTiles.stone ?? [],
+                waterVariants: configTiles.waterVariants,
+                grassVariants: configTiles.grassVariants,
+                dirtVariants: configTiles.dirtVariants,
+                stoneVariants: configTiles.stoneVariants
+            )
+            
+            // Debug logging: Show what ground tiles were loaded (only once to avoid spam)
+            if !WorldGenerator.hasLoggedGroundTiles {
+                print("🔍 WorldGenerator: Loaded ground tiles from config:")
+                print("   water: \(groundTiles.water)")
+                print("   grass: \(groundTiles.grass)")
+                print("   dirt: \(groundTiles.dirt)")
+                print("   stone: \(groundTiles.stone)")
+                if let grassVariants = groundTiles.grassVariants {
+                    print("   grassVariants.base: \(grassVariants.base ?? [])")
+                }
+                WorldGenerator.hasLoggedGroundTiles = true
+            }
+        } else {
+            // Fallback to PrefabFactory defaults
+            groundTiles = PrefabFactory.shared.getGroundTileGIDs()
+            if !WorldGenerator.hasLoggedGroundTiles {
+                print("⚠️ WorldGenerator: No config tiles found, using PrefabFactory defaults")
+                WorldGenerator.hasLoggedGroundTiles = true
+            }
+        }
+        
+        // Step 1: Generate terrain type map (what terrain each tile is)
+        var terrainMap: [[TerrainType]] = []
         for y in 0..<chunkSize {
-            var row: [Int] = []
+            var row: [TerrainType] = []
             for x in 0..<chunkSize {
                 let worldTileX = origin.x + x
                 let worldTileY = origin.y + y
@@ -93,61 +149,162 @@ class WorldGenerator {
                 // Use tile coordinates for noise/variation
                 let noiseValue = generateNoise(x: worldTileX, y: worldTileY, rng: &rng)
                 
-                // Map noise to tile types using world config (or defaults)
-                let terrainConfig = config?.terrain
-                let waterThreshold = terrainConfig?.waterThreshold ?? 0.15
-                let grassThreshold = terrainConfig?.grassThreshold ?? 0.9
-                let dirtThreshold = terrainConfig?.dirtThreshold ?? 0.95
-                
-                // Get ground tile GIDs from config or PrefabFactory fallback
-                let groundTiles: GroundTileGIDs
-                if let configTiles = terrainConfig?.groundTiles {
-                    // Use world-specific ground tiles
-                    groundTiles = GroundTileGIDs(
-                        water: configTiles.water,
-                        grass: configTiles.grass,
-                        dirt: configTiles.dirt,
-                        stone: configTiles.stone
-                    )
-                } else {
-                    // Fallback to PrefabFactory defaults
-                    groundTiles = PrefabFactory.shared.getGroundTileGIDs()
-                }
-                
-                var gid: Int = 0
-                
-                // Water areas (low noise values)
+                // Map noise to terrain type
+                let terrainType: TerrainType
                 if noiseValue < waterThreshold {
-                    gid = groundTiles.randomGID(for: .water, using: &rng)
-                }
-                // Grass (most common)
-                else if noiseValue < grassThreshold {
-                    gid = groundTiles.randomGID(for: .grass, using: &rng)
-                }
-                // Dirt patches
-                else if noiseValue < dirtThreshold {
-                    gid = groundTiles.randomGID(for: .dirt, using: &rng)
-                }
-                // Stone patches
-                else {
-                    gid = groundTiles.randomGID(for: .stone, using: &rng)
+                    terrainType = .water
+                } else if noiseValue < grassThreshold {
+                    terrainType = .grass
+                } else if noiseValue < dirtThreshold {
+                    terrainType = .dirt
+                } else {
+                    terrainType = .stone
                 }
                 
-                // Validate GID is positive (GIDs can come from different tilesets)
-                // Note: ground_grass_details is 1-378, but other tilesets may have different ranges
-                // We'll let TileManager.validate if the GID exists
-                if gid <= 0 {
-                    // Fallback to a grass tile if GID is invalid
-                    // Use randomGID to parse the string format correctly
-                    gid = groundTiles.randomGID(for: .grass, using: &rng)
+                row.append(terrainType)
+            }
+            terrainMap.append(row)
+        }
+        
+        // Step 2: Apply autotiling to determine tile variants
+        var tiles: [[String]] = []
+        // Track last used tile spec for consecutive selection (per terrain type)
+        var lastUsedTileSpecs: [TerrainType: String] = [:]
+        
+        for y in 0..<chunkSize {
+            var row: [String] = []
+            for x in 0..<chunkSize {
+                let terrainType = terrainMap[y][x]
+                
+                // Build neighbor mask for autotiling
+                let neighborMask = TerrainAutotiling.buildNeighborMask(
+                    x: x,
+                    y: y,
+                    terrainType: terrainType,
+                    terrainMap: terrainMap,
+                    width: chunkSize,
+                    height: chunkSize
+                )
+                
+                // Determine tile variant based on neighbors
+                let variant = TerrainAutotiling.getTileVariant(
+                    terrain: terrainType,
+                    neighbors: neighborMask
+                )
+                
+                // Get tile spec for this terrain type and variant
+                // Pass last used tile spec for this terrain type to maintain visual continuity
+                let lastUsedSpec = lastUsedTileSpecs[terrainType]
+                var tileSpec = groundTiles.getTileSpec(for: terrainType, variant: variant, lastUsedTileSpec: lastUsedSpec, using: &rng)
+                
+                // Debug logging for first few tiles of each type
+                if (x < 3 && y < 3) || (x == chunkSize / 2 && y == chunkSize / 2) {
+                    print("🔍 WorldGenerator: terrainType=\(terrainType), variant=\(variant) -> tileSpec=\(tileSpec ?? "nil")")
                 }
                 
-                row.append(gid)
+                // Fallback if tile spec is invalid
+                if tileSpec == nil || tileSpec?.isEmpty == true {
+                    // Fallback to base terrain tile if spec is invalid
+                    let fallbackSpecs: [String]
+                    switch terrainType {
+                    case .water: fallbackSpecs = groundTiles.water
+                    case .grass: fallbackSpecs = groundTiles.grass
+                    case .dirt: fallbackSpecs = groundTiles.dirt
+                    case .stone: fallbackSpecs = groundTiles.stone
+                    }
+                    if !fallbackSpecs.isEmpty {
+                        let index = Int.random(in: 0..<fallbackSpecs.count, using: &rng)
+                        tileSpec = fallbackSpecs[index]
+                        if (x < 3 && y < 3) || (x == chunkSize / 2 && y == chunkSize / 2) {
+                            print("   ⚠️ Used fallback: \(tileSpec!) from \(terrainType) array")
+                        }
+                    }
+                }
+                
+                // Use fallback if still nil
+                let finalTileSpec = tileSpec ?? "exterior-257"
+                row.append(finalTileSpec)  // Default fallback
+                
+                // Update last used tile spec for this terrain type (for consecutive selection)
+                lastUsedTileSpecs[terrainType] = finalTileSpec
+                
+                // Debug logging for first few tiles
+                if (x < 3 && y < 3) || (x == chunkSize / 2 && y == chunkSize / 2) {
+                    print("   ✅ Final tileSpec for chunk tile (\(x), \(y)): '\(finalTileSpec)'")
+                }
             }
             tiles.append(row)
         }
         
-        return tiles
+        return (tiles, terrainMap)
+    }
+    
+    /// Generate terrain decorations (placed on top of ground tiles)
+    /// Returns dictionary mapping tile positions "x,y" to decoration tile specs
+    private func generateDecorations(chunkKey: ChunkKey, chunkSize: Int, terrainMap: [[TerrainType]], rng: inout SeededRandomNumberGenerator) -> [String: String] {
+        var decorations: [String: String] = [:]
+        let origin = chunkKey.worldTileOrigin(chunkSize: chunkSize)
+        
+        // Get decoration config from world config
+        guard let terrainConfig = config?.terrain,
+              let decorationConfigs = terrainConfig.groundTiles.decorations else {
+            return decorations  // No decorations configured
+        }
+        
+        // Process each decoration configuration
+        for decorationConfig in decorationConfigs {
+            // Get terrain types this decoration can appear on
+            let allowedTerrainTypes = decorationConfig.terrainTypes
+            let allowOnEdges = decorationConfig.allowOnEdges ?? false
+            
+            // Check if this decoration should appear on each tile
+            for y in 0..<chunkSize {
+                for x in 0..<chunkSize {
+                    // Skip edge tiles if not allowed
+                    if !allowOnEdges && (x == 0 || x == chunkSize - 1 || y == 0 || y == chunkSize - 1) {
+                        continue
+                    }
+                    
+                    // Get terrain type for this tile
+                    let terrainType = terrainMap[y][x]
+                    let terrainTypeString = terrainTypeToString(terrainType)
+                    
+                    // Check if decoration can appear on this terrain type
+                    guard allowedTerrainTypes.contains(terrainTypeString) else {
+                        continue
+                    }
+                    
+                    // Roll for decoration placement based on density
+                    let roll = Double.random(in: 0...1, using: &rng)
+                    if roll < decorationConfig.density {
+                        // Place decoration - pick random tile from available options
+                        let decorationTiles = decorationConfig.tileGIDs
+                        guard !decorationTiles.isEmpty else { continue }
+                        
+                        let tileIndex = Int.random(in: 0..<decorationTiles.count, using: &rng)
+                        let decorationTileSpec = decorationTiles[tileIndex]
+                        
+                        // Store decoration at this position
+                        let worldX = origin.x + x
+                        let worldY = origin.y + y
+                        let positionKey = "\(worldX),\(worldY)"
+                        decorations[positionKey] = decorationTileSpec
+                    }
+                }
+            }
+        }
+        
+        return decorations
+    }
+    
+    /// Convert TerrainType enum to string for matching with JSON config
+    private func terrainTypeToString(_ terrainType: TerrainType) -> String {
+        switch terrainType {
+        case .water: return "water"
+        case .grass: return "grass"
+        case .dirt: return "dirt"
+        case .stone: return "stone"
+        }
     }
     
     /// Generate procedural entities (trees, rocks, decorations)
@@ -156,8 +313,10 @@ class WorldGenerator {
         chunkSize: Int,
         tileSize: CGFloat,
         reservedTiles: Set<String>,
+        terrainMap: [[TerrainType]],
         delta: ChunkDelta,
-        rng: inout SeededRandomNumberGenerator
+        rng: inout SeededRandomNumberGenerator,
+        chestContents: inout [EntityKey: [Item]]
     ) -> [ProceduralEntity] {
         var entities: [ProceduralEntity] = []
         let origin = chunkKey.worldTileOrigin(chunkSize: chunkSize)
@@ -171,6 +330,8 @@ class WorldGenerator {
         let rockDensity = entityConfig?.rockDensity ?? 0.005
         let treePrefabs = entityConfig?.treePrefabs ?? ["tree_oak_01"]
         let rockPrefabs = entityConfig?.rockPrefabs ?? ["rock_stone_01"]
+        let treeBlockedTerrainTypes = entityConfig?.treeBlockedTerrainTypes ?? []
+        let rockBlockedTerrainTypes = entityConfig?.rockBlockedTerrainTypes ?? []
         
         // Generate trees (scattered)
         let numTrees = Int(Double(chunkSize * chunkSize) * treeDensity)
@@ -184,6 +345,15 @@ class WorldGenerator {
             
             // Skip if tile is reserved or occupied
             if occupiedTiles.contains(tileKey) { continue }
+            
+            // Check terrain type - skip if blocked
+            if localY >= 0 && localY < terrainMap.count && localX >= 0 && localX < terrainMap[localY].count {
+                let terrainType = terrainMap[localY][localX]
+                let terrainTypeString = terrainTypeToString(terrainType)
+                if treeBlockedTerrainTypes.contains(terrainTypeString) {
+                    continue
+                }
+            }
             
             // Check if entity was removed by player
             let entityIndex = entities.count
@@ -226,6 +396,15 @@ class WorldGenerator {
             let tileKey = "\(worldX),\(worldY)"
             
             if occupiedTiles.contains(tileKey) { continue }
+            
+            // Check terrain type - skip if blocked
+            if localY >= 0 && localY < terrainMap.count && localX >= 0 && localX < terrainMap[localY].count {
+                let terrainType = terrainMap[localY][localX]
+                let terrainTypeString = terrainTypeToString(terrainType)
+                if rockBlockedTerrainTypes.contains(terrainTypeString) {
+                    continue
+                }
+            }
             
             let entityIndex = entities.count
             let entityKey = EntityKey(chunkKey: chunkKey, entityIndex: entityIndex)
@@ -276,6 +455,7 @@ class WorldGenerator {
                         // Check if all tiles for chest are available
                         var canPlace = true
                         var chestTiles: Set<String> = []
+                        let blockedTerrainTypes = chestConfig.blockedTerrainTypes ?? []
                         
                         for dy in 0..<chestHeight {
                             for dx in 0..<chestWidth {
@@ -287,6 +467,19 @@ class WorldGenerator {
                                     canPlace = false
                                     break
                                 }
+                                
+                                // Check terrain type - skip if blocked
+                                let checkLocalX = localX + dx
+                                let checkLocalY = localY + dy
+                                if checkLocalY >= 0 && checkLocalY < terrainMap.count && checkLocalX >= 0 && checkLocalX < terrainMap[checkLocalY].count {
+                                    let terrainType = terrainMap[checkLocalY][checkLocalX]
+                                    let terrainTypeString = terrainTypeToString(terrainType)
+                                    if blockedTerrainTypes.contains(terrainTypeString) {
+                                        canPlace = false
+                                        break
+                                    }
+                                }
+                                
                                 chestTiles.insert(tileKey)
                             }
                             if !canPlace { break }
@@ -306,6 +499,14 @@ class WorldGenerator {
                             
                             // Check if entity was removed by player
                             if !delta.isEntityRemoved(entityKey) {
+                                // Generate chest contents if not already generated for this chest
+                                // Check if chest contents exist in delta (persistent across reloads)
+                                // For now, generate fresh each time (we can add persistence later)
+                                let chestItems = PrefabFactory.shared.generateChestLoot(for: chestPrefab)
+                                
+                                // Store chest contents (will be added to ChunkData later)
+                                chestContents[entityKey] = chestItems
+                                
                                 entities.append(ProceduralEntity(
                                     type: .chest,
                                     prefabId: chestPrefabId,

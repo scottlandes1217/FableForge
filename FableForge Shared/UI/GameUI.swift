@@ -86,13 +86,16 @@ class GameUI {
         // Landscape: Increase top margin to prevent cut-off
         let buttonWidth: CGFloat = isLandscape ? 50 : 60
         let buttonHeight: CGFloat = isLandscape ? 50 : 60
+        // Bottom buttons are bigger
+        let bottomButtonWidth: CGFloat = isLandscape ? 70 : 80
+        let bottomButtonHeight: CGFloat = isLandscape ? 70 : 80
         let buttonSpacing: CGFloat = 5
         let topMargin: CGFloat = isLandscape ? 40 : 55 // Increased for landscape to prevent cut-off
         let sideMargin: CGFloat = isLandscape ? 15 : 15
         
         // Calculate bottom margin to ensure all buttons are visible
-        // Total height needed: 3 buttons + 2 spacings + margin
-        let totalButtonHeight = (buttonHeight * 3) + (buttonSpacing * 2)
+        // Total height needed: 3 buttons + 2 spacings + margin (using bottom button sizes)
+        let totalButtonHeight = (bottomButtonHeight * 3) + (buttonSpacing * 2)
         let bottomMargin: CGFloat = max(40, totalButtonHeight / 2 + 20) // Ensure enough space for all buttons plus padding
         
         // Calculate max stats width to avoid overlapping buttons
@@ -473,28 +476,20 @@ class GameUI {
         // Use the same edge variables declared earlier
         let rightEdge = screenWidth / 2
         // topEdge already declared above, reuse it
-        let settingsBg = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 8)
-        settingsBg.fillColor = SKColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 0.95)
-        settingsBg.strokeColor = .white
-        settingsBg.lineWidth = 2
-        // Moved further toward the top by reducing topMargin offset
-        settingsBg.position = CGPoint(x: rightEdge - buttonWidth / 2 - sideMargin, y: topEdge - buttonHeight / 2 - topMargin + 20)
-        settingsBg.zPosition = 1000
-        settingsBg.name = "settingsButton"
+        
+        // Use icon image directly as button (no background)
+        let settingsIcon = createSettingsIcon(size: buttonWidth)
+        settingsIcon.position = CGPoint(x: rightEdge - buttonWidth / 2 - sideMargin, y: topEdge - buttonHeight / 2 - topMargin + 20)
+        settingsIcon.zPosition = 1000
+        settingsIcon.name = "settingsButton"
         // Ensure button is not affected by camera scale
-        settingsBg.xScale = 1.0
-        settingsBg.yScale = 1.0
-        settingsBg.isHidden = false
-        settingsBg.alpha = 1.0
+        settingsIcon.xScale = 1.0
+        settingsIcon.yScale = 1.0
+        settingsIcon.isHidden = false
+        settingsIcon.alpha = 1.0
         
-        // Create gear/settings icon
-        let settingsIcon = createSettingsIcon(size: min(buttonWidth, buttonHeight) * 0.6)
-        settingsIcon.position = CGPoint(x: 0, y: 0)
-        settingsIcon.zPosition = 1001
-        settingsBg.addChild(settingsIcon)
-        
-        camera.addChild(settingsBg)
-        settingsButton = settingsBg
+        camera.addChild(settingsIcon)
+        settingsButton = settingsIcon
         
         // Bottom-right button group: Character (first), Inventory (second), Build (third)
         // Calculate positions from bottom up to ensure they're always visible
@@ -505,76 +500,52 @@ class GameUI {
         let buttonPadding: CGFloat = 20 // Padding from screen edge
         
         // Build button (bottom-right, third button - bottommost) with icon
-        let buildBg = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 8)
-        buildBg.fillColor = SKColor(red: 0.4, green: 0.2, blue: 0.6, alpha: 0.95)
-        buildBg.strokeColor = .white
-        buildBg.lineWidth = 2
+        // Use icon image directly as button (no background)
+        let buildIcon = createBuildIcon(size: bottomButtonWidth)
         // Position: right edge - half width - margin, bottom edge + padding + half button height
-        buildBg.position = CGPoint(x: rightEdge - buttonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + buttonHeight / 2)
-        buildBg.zPosition = 1000
-        buildBg.name = "buildButton"
+        buildIcon.position = CGPoint(x: rightEdge - bottomButtonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + bottomButtonHeight / 2)
+        buildIcon.zPosition = 1000
+        buildIcon.name = "buildButton"
         // Ensure button is not affected by camera scale
-        buildBg.xScale = 1.0
-        buildBg.yScale = 1.0
-        buildBg.isHidden = false
-        buildBg.alpha = 1.0
+        buildIcon.xScale = 1.0
+        buildIcon.yScale = 1.0
+        buildIcon.isHidden = false
+        buildIcon.alpha = 1.0
         
-        // Create hammer/wrench icon for build
-        let buildIcon = createBuildIcon(size: min(buttonWidth, buttonHeight) * 0.6)
-        buildIcon.position = CGPoint(x: 0, y: 0)
-        buildIcon.zPosition = 1001
-        buildBg.addChild(buildIcon)
+        camera.addChild(buildIcon)
+        buildButton = buildIcon
         
-        camera.addChild(buildBg)
-        buildButton = buildBg
-        
-        // Inventory button (bottom-right, second button - middle) with icon
-        let inventoryBg = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 8)
-        inventoryBg.fillColor = SKColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.95)
-        inventoryBg.strokeColor = .white
-        inventoryBg.lineWidth = 2
-        // Position: right edge - half width - margin, above build button
-        inventoryBg.position = CGPoint(x: rightEdge - buttonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + buttonHeight / 2 + buttonHeight + buttonSpacing)
-        inventoryBg.zPosition = 1000
-        inventoryBg.name = "inventoryButton"
+        // Inventory button (bottom-right, first button - topmost) with icon
+        // Use icon image directly as button (no background)
+        let inventoryIcon = createInventoryIcon(size: bottomButtonWidth)
+        // Position: right edge - half width - margin, at the top (swapped with character button)
+        inventoryIcon.position = CGPoint(x: rightEdge - bottomButtonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + bottomButtonHeight / 2 + (bottomButtonHeight + buttonSpacing) * 2)
+        inventoryIcon.zPosition = 1000
+        inventoryIcon.name = "inventoryButton"
         // Ensure button is not affected by camera scale
-        inventoryBg.xScale = 1.0
-        inventoryBg.yScale = 1.0
-        inventoryBg.isHidden = false
-        inventoryBg.alpha = 1.0
+        inventoryIcon.xScale = 1.0
+        inventoryIcon.yScale = 1.0
+        inventoryIcon.isHidden = false
+        inventoryIcon.alpha = 1.0
         
-        // Create backpack/bag icon for inventory
-        let inventoryIcon = createInventoryIcon(size: min(buttonWidth, buttonHeight) * 0.6)
-        inventoryIcon.position = CGPoint(x: 0, y: 0)
-        inventoryIcon.zPosition = 1001
-        inventoryBg.addChild(inventoryIcon)
+        camera.addChild(inventoryIcon)
+        inventoryButton = inventoryIcon
         
-        camera.addChild(inventoryBg)
-        inventoryButton = inventoryBg
-        
-        // Character button (bottom-right, first button - topmost) with icon
-        let characterBg = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 8)
-        characterBg.fillColor = SKColor(red: 0.6, green: 0.3, blue: 0.8, alpha: 0.95)
-        characterBg.strokeColor = .white
-        characterBg.lineWidth = 2
-        // Position: right edge - half width - margin, above inventory button
-        characterBg.position = CGPoint(x: rightEdge - buttonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + buttonHeight / 2 + (buttonHeight + buttonSpacing) * 2)
-        characterBg.zPosition = 1000
-        characterBg.name = "characterButton"
+        // Character button (bottom-right, second button - middle) with icon
+        // Use icon image directly as button (no background)
+        let characterIcon = createCharacterIcon(size: bottomButtonWidth)
+        // Position: right edge - half width - margin, above build button (swapped with inventory button)
+        characterIcon.position = CGPoint(x: rightEdge - bottomButtonWidth / 2 - sideMargin, y: bottomEdge + buttonPadding + bottomButtonHeight / 2 + bottomButtonHeight + buttonSpacing)
+        characterIcon.zPosition = 1000
+        characterIcon.name = "characterButton"
         // Ensure button is not affected by camera scale
-        characterBg.xScale = 1.0
-        characterBg.yScale = 1.0
-        characterBg.isHidden = false
-        characterBg.alpha = 1.0
+        characterIcon.xScale = 1.0
+        characterIcon.yScale = 1.0
+        characterIcon.isHidden = false
+        characterIcon.alpha = 1.0
         
-        // Create character/person icon
-        let characterIcon = createCharacterIcon(size: min(buttonWidth, buttonHeight) * 0.6)
-        characterIcon.position = CGPoint(x: 0, y: 0)
-        characterIcon.zPosition = 1001
-        characterBg.addChild(characterIcon)
-        
-        camera.addChild(characterBg)
-        characterButton = characterBg
+        camera.addChild(characterIcon)
+        characterButton = characterIcon
     }
     
     func getViewSize() -> CGSize {
@@ -610,121 +581,36 @@ class GameUI {
         return CGSize(width: 375, height: 667)
     }
     
-    // Create a simple backpack/bag icon for inventory
+    // Create inventory icon from image file
     func createInventoryIcon(size: CGFloat) -> SKNode {
-        let container = SKNode()
-        
-        // Main bag body (rounded rectangle)
-        let bagBody = SKShapeNode(rectOf: CGSize(width: size * 0.7, height: size * 0.8), cornerRadius: size * 0.1)
-        bagBody.fillColor = .white
-        bagBody.strokeColor = .clear
-        bagBody.position = CGPoint(x: 0, y: -size * 0.05)
-        container.addChild(bagBody)
-        
-        // Bag flap/cover (top part)
-        let bagFlap = SKShapeNode(rectOf: CGSize(width: size * 0.7, height: size * 0.25), cornerRadius: size * 0.1)
-        bagFlap.fillColor = SKColor(white: 0.9, alpha: 1.0)
-        bagFlap.strokeColor = .clear
-        bagFlap.position = CGPoint(x: 0, y: size * 0.3)
-        container.addChild(bagFlap)
-        
-        // Strap/handle (top)
-        let strap = SKShapeNode(rectOf: CGSize(width: size * 0.15, height: size * 0.2), cornerRadius: size * 0.05)
-        strap.fillColor = .white
-        strap.strokeColor = .clear
-        strap.position = CGPoint(x: 0, y: size * 0.5)
-        container.addChild(strap)
-        
-        return container
+        let sprite = SKSpriteNode(imageNamed: "inventory_icon")
+        sprite.size = CGSize(width: size, height: size)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        return sprite
     }
     
-    // Create a simple hammer/wrench icon for build
+    // Create build icon from image file
     func createBuildIcon(size: CGFloat) -> SKNode {
-        let container = SKNode()
-        
-        // Hammer handle (vertical line)
-        let handle = SKShapeNode(rectOf: CGSize(width: size * 0.15, height: size * 0.6))
-        handle.fillColor = SKColor(red: 0.6, green: 0.4, blue: 0.2, alpha: 1.0) // Brown wood color
-        handle.strokeColor = .clear
-        handle.position = CGPoint(x: -size * 0.15, y: -size * 0.1)
-        container.addChild(handle)
-        
-        // Hammer head (horizontal rectangle)
-        let head = SKShapeNode(rectOf: CGSize(width: size * 0.5, height: size * 0.3), cornerRadius: size * 0.05)
-        head.fillColor = SKColor(white: 0.7, alpha: 1.0) // Gray metal
-        head.strokeColor = .clear
-        head.position = CGPoint(x: size * 0.1, y: size * 0.2)
-        container.addChild(head)
-        
-        // Claw part (small triangle/rectangle on the back)
-        let claw = SKShapeNode(rectOf: CGSize(width: size * 0.2, height: size * 0.15))
-        claw.fillColor = SKColor(white: 0.7, alpha: 1.0)
-        claw.strokeColor = .clear
-        claw.position = CGPoint(x: size * 0.35, y: size * 0.2)
-        container.addChild(claw)
-        
-        return container
+        let sprite = SKSpriteNode(imageNamed: "builder_icon")
+        sprite.size = CGSize(width: size, height: size)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        return sprite
     }
     
-    // Create a simple character/person icon
+    // Create character icon from image file
     func createCharacterIcon(size: CGFloat) -> SKNode {
-        let container = SKNode()
-        
-        // Head (circle)
-        let head = SKShapeNode(circleOfRadius: size * 0.2)
-        head.fillColor = .white
-        head.strokeColor = .clear
-        head.position = CGPoint(x: 0, y: size * 0.15)
-        container.addChild(head)
-        
-        // Body (rounded rectangle)
-        let body = SKShapeNode(rectOf: CGSize(width: size * 0.4, height: size * 0.5), cornerRadius: size * 0.05)
-        body.fillColor = .white
-        body.strokeColor = .clear
-        body.position = CGPoint(x: 0, y: -size * 0.1)
-        container.addChild(body)
-        
-        return container
+        let sprite = SKSpriteNode(imageNamed: "charactersheet_icon")
+        sprite.size = CGSize(width: size, height: size)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        return sprite
     }
     
-    // Create a simple gear/settings icon
+    // Create settings icon from image file
     func createSettingsIcon(size: CGFloat) -> SKNode {
-        let container = SKNode()
-        
-        // Create a gear shape using multiple rectangles rotated around a center
-        let gearRadius = size * 0.4
-        let toothWidth = size * 0.15
-        let toothHeight = size * 0.2
-        let numTeeth = 8
-        
-        // Outer gear teeth
-        for i in 0..<numTeeth {
-            let angle = CGFloat(i) * (2 * .pi / CGFloat(numTeeth))
-            let tooth = SKShapeNode(rectOf: CGSize(width: toothWidth, height: toothHeight))
-            tooth.fillColor = .white
-            tooth.strokeColor = .clear
-            let x = cos(angle) * gearRadius
-            let y = sin(angle) * gearRadius
-            tooth.position = CGPoint(x: x, y: y)
-            tooth.zRotation = angle
-            container.addChild(tooth)
-        }
-        
-        // Center circle
-        let center = SKShapeNode(circleOfRadius: size * 0.25)
-        center.fillColor = .white
-        center.strokeColor = .clear
-        center.position = CGPoint(x: 0, y: 0)
-        container.addChild(center)
-        
-        // Inner circle (hole)
-        let hole = SKShapeNode(circleOfRadius: size * 0.12)
-        hole.fillColor = SKColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0)
-        hole.strokeColor = .clear
-        hole.position = CGPoint(x: 0, y: 0)
-        container.addChild(hole)
-        
-        return container
+        let sprite = SKSpriteNode(imageNamed: "settings_icon")
+        sprite.size = CGSize(width: size, height: size)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        return sprite
     }
     
     func cleanup() {

@@ -32,6 +32,7 @@ struct TiledTileset {
     let imageWidth: Int
     let imageHeight: Int
     let animations: [Int: TiledTileAnimation]  // Map of local tile ID -> animation data
+    let classNames: [String: [Int]]  // Map of class name -> array of local tile IDs (multiple tiles can share a class)
     
     /// Calculate which tile in this tileset a GID refers to
     func localTileID(for gid: Int) -> Int {
@@ -208,7 +209,7 @@ class TiledMapParser {
         var tilesets: [TiledTileset] = []
         var tilesetStrings = extractAllTags(xmlString, tag: "tileset")
         for tilesetString in tilesetStrings {
-            if let tileset = parseTileset(tilesetString) {
+            if let tileset = parseTileset(tilesetString, firstGID: nil) {
                 tilesets.append(tileset)
             }
         }
@@ -253,9 +254,92 @@ class TiledMapParser {
         )
     }
     
-    /// Parse a tileset tag
-    private static func parseTileset(_ tilesetString: String) -> TiledTileset? {
-        let firstGID = Int(extractAttribute(tilesetString, name: "firstgid") ?? "1") ?? 1
+    /// Parse a standalone .tsx tileset file
+    static func parseStandaloneTileset(fileName: String, firstGID: Int) -> TiledTileset? {
+        // Try multiple locations: root, Prefabs/Maps/TSX/, and Prefabs/Maps/
+        var url: URL?
+        var foundLocation: String = ""
+        
+        // Try root first
+        url = Bundle.main.url(forResource: fileName, withExtension: "tsx")
+        if url != nil {
+            foundLocation = "root bundle"
+        }
+        
+        // Try Prefabs/Maps/TSX/ subdirectory
+        if url == nil {
+            url = Bundle.main.url(forResource: fileName, withExtension: "tsx", subdirectory: "Prefabs/Maps/TSX")
+            if url != nil {
+                foundLocation = "Prefabs/Maps/TSX/"
+            }
+        }
+        
+        // Try Prefabs/Maps/ subdirectory
+        if url == nil {
+            url = Bundle.main.url(forResource: fileName, withExtension: "tsx", subdirectory: "Prefabs/Maps")
+            if url != nil {
+                foundLocation = "Prefabs/Maps/"
+            }
+        }
+        
+        guard let url = url else {
+            // Debug: List all .tsx files in bundle to help diagnose
+            if let bundlePath = Bundle.main.resourcePath {
+                print("⚠️ TiledMapParser: Could not find '\(fileName).tsx' in app bundle")
+                print("   Searched locations: root, Prefabs/Maps/TSX/, Prefabs/Maps/")
+                print("   Bundle resource path: \(bundlePath)")
+                
+                // Try to find any .tsx files in the bundle
+                let fileManager = FileManager.default
+                if let enumerator = fileManager.enumerator(atPath: bundlePath) {
+                    var foundTSXFiles: [String] = []
+                    while let file = enumerator.nextObject() as? String {
+                        if file.hasSuffix(".tsx") {
+                            foundTSXFiles.append(file)
+                        }
+                    }
+                    if !foundTSXFiles.isEmpty {
+                        print("   Found .tsx files in bundle: \(foundTSXFiles.joined(separator: ", "))")
+                    } else {
+                        print("   No .tsx files found in bundle at all")
+                    }
+                }
+            }
+            return nil
+        }
+        
+        print("✅ TiledMapParser: Found '\(fileName).tsx' at: \(foundLocation) (\(url.path))")
+        
+        guard let data = try? Data(contentsOf: url),
+              let xmlString = String(data: data, encoding: .utf8) else {
+            print("⚠️ TiledMapParser: Could not read '\(fileName).tsx'")
+            return nil
+        }
+        
+        // Extract the full <tileset> tag including attributes
+        // extractTag returns content, but we need the full tag with attributes
+        // Use regex to find the full opening tag and its matching closing tag
+        let fullTilesetTag: String
+        if let selfClosingMatch = xmlString.range(of: "<tileset[^>]*/>", options: .regularExpression) {
+            // Self-closing tag
+            fullTilesetTag = String(xmlString[selfClosingMatch])
+        } else if let openingTagRange = xmlString.range(of: "<tileset[^>]*>", options: .regularExpression),
+                  let closingTagRange = xmlString.range(of: "</tileset>", range: openingTagRange.upperBound..<xmlString.endIndex) {
+            // Tag with content - extract from opening to closing
+            fullTilesetTag = String(xmlString[openingTagRange.lowerBound..<closingTagRange.upperBound])
+        } else {
+            print("⚠️ TiledMapParser: Could not find <tileset> tag in '\(fileName).tsx'")
+            return nil
+        }
+        
+        return parseTileset(fullTilesetTag, firstGID: firstGID)
+    }
+    
+    /// Parse a tileset tag (from TMX or standalone TSX)
+    private static func parseTileset(_ tilesetString: String, firstGID: Int? = nil) -> TiledTileset? {
+        // For standalone .tsx files, firstGID is provided as parameter
+        // For TMX files, firstGID is in the attribute
+        let firstGID = firstGID ?? Int(extractAttribute(tilesetString, name: "firstgid") ?? "1") ?? 1
         let name = extractAttribute(tilesetString, name: "name") ?? "unknown"
         let tileWidth = Int(extractAttribute(tilesetString, name: "tilewidth") ?? "32") ?? 32
         let tileHeight = Int(extractAttribute(tilesetString, name: "tileheight") ?? "32") ?? 32
@@ -269,12 +353,28 @@ class TiledMapParser {
         }
         
         let source = extractAttribute(imageTag, name: "source") ?? ""
-        // Extract just the filename (remove path and extension)
+        // Extract image name from path
         // Handle both "exterior.png" and "../path/exterior.png" cases
+        // Special handling for asset catalog paths: extract imageset name instead of filename
         var imageName = (source as NSString).lastPathComponent
-        // Remove extension if present (.png, .jpg, etc.)
-        if let dotIndex = imageName.lastIndex(of: ".") {
-            imageName = String(imageName[..<dotIndex])
+        // Check if path contains .imageset/ - if so, extract the imageset name
+        if source.contains(".imageset/") {
+            // Extract imageset name from path like "path/to/imagesetname.imageset/file.png"
+            let pathParts = (source as NSString).pathComponents
+            if let imagesetIndex = pathParts.firstIndex(where: { $0.hasSuffix(".imageset") }) {
+                let imagesetName = String(pathParts[imagesetIndex].dropLast(".imageset".count))
+                imageName = imagesetName
+            } else {
+                // Fall back to filename extraction
+                if let dotIndex = imageName.lastIndex(of: ".") {
+                    imageName = String(imageName[..<dotIndex])
+                }
+            }
+        } else {
+            // Remove extension if present (.png, .jpg, etc.)
+            if let dotIndex = imageName.lastIndex(of: ".") {
+                imageName = String(imageName[..<dotIndex])
+            }
         }
         let imageWidth = Int(extractAttribute(imageTag, name: "width") ?? "0") ?? 0
         let imageHeight = Int(extractAttribute(imageTag, name: "height") ?? "0") ?? 0
@@ -286,32 +386,124 @@ class TiledMapParser {
             print("📋 Parsed tileset '\(name)': imageName='\(imageName)', source='\(source)'")
         }
         
-        // Parse animation data for tiles in this tileset
+        // Parse animation data and class names for tiles in this tileset
         var animations: [Int: TiledTileAnimation] = [:]
+        var classNames: [String: [Int]] = [:]  // Map class name -> array of local tile IDs
         
-        // Find all <tile> tags with animations in this tileset
-        // Pattern: <tile id="0"> ... <animation> ... <frame tileid="..." duration="..."/> ... </animation> ... </tile>
+        // Find all <tile> tags in this tileset
+        // Pattern: <tile id="0" type="grass_full"> ... <properties> ... <property name="class" value="..."/> ... </properties> ... </tile>
         var searchStart = tilesetString.startIndex
-        while let tileStartRange = tilesetString.range(of: "<tile id=\"", range: searchStart..<tilesetString.endIndex) {
-            // Find the tile ID
-            let idStart = tileStartRange.upperBound
-            guard let idEndRange = tilesetString.range(of: "\"", range: idStart..<tilesetString.endIndex),
-                  let tileID = Int(tilesetString[idStart..<idEndRange.lowerBound]) else {
+        while let tileStartRange = tilesetString.range(of: "<tile", range: searchStart..<tilesetString.endIndex) {
+            // Find the tile ID (can be in id="..." or just after <tile)
+            var tileID: Int? = nil
+            var idEndRange: Range<String.Index>? = nil
+            
+            // Try to find id="..." attribute
+            if let idAttrRange = tilesetString.range(of: "id=\"", range: tileStartRange.upperBound..<tilesetString.endIndex) {
+                let idStart = idAttrRange.upperBound
+                if let idEnd = tilesetString.range(of: "\"", range: idStart..<tilesetString.endIndex),
+                   let parsedTileID = Int(tilesetString[idStart..<idEnd.lowerBound]) {
+                    tileID = parsedTileID
+                    idEndRange = idEnd
+                } else {
+                    searchStart = tileStartRange.upperBound
+                    continue
+                }
+            } else {
+                // No id attribute found, skip this tile
                 searchStart = tileStartRange.upperBound
                 continue
             }
             
-            // Find the end of this tile tag
-            guard let tileEndRange = tilesetString.range(of: "</tile>", range: idEndRange.upperBound..<tilesetString.endIndex) else {
+            // Ensure we have a valid tileID and idEndRange
+            guard let validTileID = tileID, let validIdEndRange = idEndRange else {
                 searchStart = tileStartRange.upperBound
                 continue
             }
             
-            // Extract the tile content
-            let tileContent = String(tilesetString[idEndRange.upperBound..<tileEndRange.lowerBound])
+            // Extract type attribute if present (e.g., <tile id="617" type="grass_full"/>)
+            // Check if this is a self-closing tag first by looking for "/>" before ">"
+            let isSelfClosing: Bool
+            let tileTagEnd: String.Index
             
-            // Look for animation tag
-            if let animStartRange = tileContent.range(of: "<animation>"),
+            // Find both ">" and "/>" patterns
+            let greaterThanRange = tilesetString.range(of: ">", range: tileStartRange.lowerBound..<tilesetString.endIndex)
+            let selfClosingRange = tilesetString.range(of: "/>", range: tileStartRange.lowerBound..<tilesetString.endIndex)
+            
+            if let selfClose = selfClosingRange, let gt = greaterThanRange {
+                // Check if "/>" comes before ">"
+                if selfClose.lowerBound < gt.lowerBound {
+                    isSelfClosing = true
+                    tileTagEnd = selfClose.upperBound
+                } else {
+                    isSelfClosing = false
+                    tileTagEnd = gt.lowerBound
+                }
+            } else if let selfClose = selfClosingRange {
+                // Only "/>" found
+                isSelfClosing = true
+                tileTagEnd = selfClose.upperBound
+            } else if let gt = greaterThanRange {
+                // Only ">" found
+                isSelfClosing = false
+                tileTagEnd = gt.lowerBound
+            } else {
+                // Neither found (shouldn't happen, but handle gracefully)
+                isSelfClosing = false
+                tileTagEnd = validIdEndRange.upperBound
+            }
+            
+            let tileTag = String(tilesetString[tileStartRange.lowerBound..<tileTagEnd])
+            let tileType = extractAttribute(tileTag, name: "type")
+            
+            // Extract tile content (empty for self-closing tags)
+            let tileContent: String
+            if isSelfClosing {
+                tileContent = ""  // Self-closing tags have no content
+            } else {
+                // Find the end of this tile tag
+                guard let tileEndRange = tilesetString.range(of: "</tile>", range: validIdEndRange.upperBound..<tilesetString.endIndex) else {
+                    searchStart = tileStartRange.upperBound
+                    continue
+                }
+                tileContent = String(tilesetString[validIdEndRange.upperBound..<tileEndRange.lowerBound])
+            }
+            
+            // Extract class name from properties (if present)
+            var className: String? = nil
+            if let propertiesTag = extractTag(tileContent, tag: "properties") {
+                // Look for <property name="class" value="..."/>
+                var propSearchStart = propertiesTag.startIndex
+                while let propStart = propertiesTag.range(of: "<property", range: propSearchStart..<propertiesTag.endIndex) {
+                    guard let propEnd = propertiesTag.range(of: "/>", range: propStart.upperBound..<propertiesTag.endIndex) else {
+                        break
+                    }
+                    let propTag = String(propertiesTag[propStart.lowerBound..<propEnd.upperBound])
+                    let propName = extractAttribute(propTag, name: "name")
+                    if propName == "class" {
+                        className = extractAttribute(propTag, name: "value")
+                        break
+                    }
+                    propSearchStart = propEnd.upperBound
+                }
+            }
+            
+            // Use type attribute if class property not found
+            if className == nil {
+                className = tileType
+            }
+            
+            // Store class name mapping (if we found one)
+            if let className = className, !className.isEmpty {
+                if classNames[className] == nil {
+                    classNames[className] = []
+                }
+                classNames[className]?.append(validTileID)
+            }
+            
+            // Look for animation tag (only if tile has content, not self-closing)
+            if !tileContent.isEmpty,
+               let animStartRange = tileContent.range(of: "<animation>"),
                let animEndRange = tileContent.range(of: "</animation>", range: animStartRange.upperBound..<tileContent.endIndex) {
                 let animContent = String(tileContent[animStartRange.upperBound..<animEndRange.lowerBound])
                 
@@ -339,16 +531,34 @@ class TiledMapParser {
                 }
                 
                 if !frames.isEmpty {
-                    animations[tileID] = TiledTileAnimation(tileID: tileID, frames: frames)
-                    print("   📋 Found animation for tile \(tileID): \(frames.count) frames")
+                    animations[validTileID] = TiledTileAnimation(tileID: validTileID, frames: frames)
+                    print("   📋 Found animation for tile \(validTileID): \(frames.count) frames")
                 }
             }
             
+            // Update search start position
+            if isSelfClosing {
+                searchStart = tileTagEnd
+            } else {
+                // Find the closing </tile> tag for non-self-closing tags
+                if let tileEndRange = tilesetString.range(of: "</tile>", range: validIdEndRange.upperBound..<tilesetString.endIndex) {
             searchStart = tileEndRange.upperBound
+                } else {
+                    searchStart = tileTagEnd
+                }
+            }
         }
         
         if !animations.isEmpty {
             print("📋 Parsed \(animations.count) animations for tileset '\(name)'")
+        }
+        
+        if !classNames.isEmpty {
+            let totalTilesWithClasses = classNames.values.reduce(0) { $0 + $1.count }
+            print("📋 Parsed \(classNames.count) unique class names for tileset '\(name)' (covering \(totalTilesWithClasses) tiles)")
+            for (className, tileIDs) in classNames.sorted(by: { $0.key < $1.key }) {
+                print("   🏷️  '\(className)': \(tileIDs.count) tile(s) - IDs: \(tileIDs.prefix(5).map { String($0) }.joined(separator: ", "))\(tileIDs.count > 5 ? "..." : "")")
+            }
         }
         
         return TiledTileset(
@@ -361,7 +571,8 @@ class TiledMapParser {
             imageName: imageName,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
-            animations: animations
+            animations: animations,
+            classNames: classNames
         )
     }
     

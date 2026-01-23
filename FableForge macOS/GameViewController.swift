@@ -24,6 +24,8 @@ class GameViewController: NSViewController {
         
         skView.showsFPS = true
         skView.showsNodeCount = true
+        
+        print("🔵 GameViewController: SKView initialized, ready for mouse events")
     }
     
     override func scrollWheel(with event: NSEvent) {
@@ -35,6 +37,7 @@ class GameViewController: NSViewController {
             scene.scrollWheel(with: event)
         }
     }
+    
 
 }
 

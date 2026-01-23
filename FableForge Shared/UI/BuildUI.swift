@@ -226,9 +226,9 @@ class BuildUI {
         let viewSize = getViewSize()
         let isLandscape = viewSize.width > viewSize.height
         
-        // Create background panel
-        let panelWidth = viewSize.width * 0.98
-        let panelHeight = viewSize.height * 0.98
+        // Create background panel - full screen
+        let panelWidth = viewSize.width
+        let panelHeight = viewSize.height
         let panel = MenuStyling.createBookPage(size: CGSize(width: panelWidth, height: panelHeight))
         panel.position = CGPoint(x: 0, y: 0)
         panel.zPosition = 2000
@@ -277,21 +277,26 @@ class BuildUI {
         }
         
         // Content container
+        // Ensure proper bottom padding so cards don't overlap the bottom
+        let bottomPadding: CGFloat = 100 // Extra padding at bottom to prevent overlap (increased further)
         let contentY = tabY - tabHeight / 2 - 20
-        let contentHeight = panelHeight - (titleY - contentY) - 40
+        let contentHeight = panelHeight - (titleY - contentY) - bottomPadding
         let contentContainer = SKNode()
         contentContainer.position = CGPoint(x: 0, y: contentY - contentHeight / 2)
         contentContainer.zPosition = 2001
         panel.addChild(contentContainer)
         self.contentContainer = contentContainer
         
-        // Close button
+        // Close button - positioned in top-right corner, always visible
         let closeButtonSize: CGFloat = isLandscape ? 40 : 45
         let closeButton = SKShapeNode(rectOf: CGSize(width: closeButtonSize, height: closeButtonSize), cornerRadius: 6)
         closeButton.fillColor = MenuStyling.bookDanger
         closeButton.strokeColor = MenuStyling.parchmentBorder
         closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: panelWidth / 2 - closeButtonSize / 2 - 20, y: panelHeight / 2 - closeButtonSize / 2 - 20)
+        // Position relative to view bounds, ensuring it's always visible
+        // Use viewSize for positioning to ensure it's always within visible area
+        let closeButtonMargin: CGFloat = 15 // Margin from edge
+        closeButton.position = CGPoint(x: viewSize.width / 2 - closeButtonSize / 2 - closeButtonMargin, y: viewSize.height / 2 - closeButtonSize / 2 - closeButtonMargin)
         closeButton.zPosition = 2002
         closeButton.name = "closeBuildUI"
         panel.addChild(closeButton)
@@ -351,15 +356,17 @@ class BuildUI {
         let isLandscape = viewSize.width > viewSize.height
         
         // Calculate available space for content
-        // Get panel dimensions (same as in setupUI)
-        let panelHeight = viewSize.height * 0.98
+        // Get panel dimensions (same as in setupUI) - use full screen height
+        let panelHeight = viewSize.height
         let titleY = panelHeight / 2 - 50
         let tabY = titleY - 50
         let tabHeight: CGFloat = isLandscape ? 45 : 50
         
         // Calculate content area bounds (same calculation as setupUI)
+        // Ensure proper bottom padding so cards don't overlap the bottom
+        let bottomPadding: CGFloat = 80 // Extra padding at bottom to prevent overlap (increased further)
         let contentY = tabY - tabHeight / 2 - 20
-        let contentHeight = panelHeight - (titleY - contentY) - 40
+        let contentHeight = panelHeight - (titleY - contentY) - bottomPadding
         let availableHeight = contentHeight
         
         // contentContainer is positioned at: CGPoint(x: 0, y: contentY - contentHeight / 2)
@@ -704,27 +711,34 @@ class BuildUI {
         }
         
         let panelLocation = backgroundPanel.convert(location, from: camera)
-        let node = backgroundPanel.atPoint(panelLocation)
         
-        // Close button
+        // Check ALL nodes at this location for buttons and cards
+        let allNodesAtLocation = backgroundPanel.nodes(at: panelLocation)
+        print("🔍 BuildUI: Touch at \(panelLocation), found \(allNodesAtLocation.count) nodes")
+        
+        // First, check all nodes for close button
+        for node in allNodesAtLocation {
         if let closeButton = findNodeWithName("closeBuildUI", startingFrom: node) {
+                print("✅ BuildUI: Close button clicked")
             hide()
             return true
+            }
         }
         
-        // Tab buttons
+        // Then check all nodes for tab buttons
+        for node in allNodesAtLocation {
         if let tabButton = findNodeWithName(prefix: "buildTabButton_", startingFrom: node) {
             if let tab = tabButton.userData?["tab"] as? BuildUITab {
+                    print("✅ BuildUI: Tab button clicked: \(tab)")
                 currentTab = tab
                 updateTabButtons()
                 updateTabContent()
                 return true
+                }
             }
         }
         
         // Check for structure cards - search all nodes at this location
-        let allNodesAtLocation = backgroundPanel.nodes(at: panelLocation)
-        print("🔍 BuildUI: Touch at \(panelLocation), found \(allNodesAtLocation.count) nodes")
         
         for nodeAtLocation in allNodesAtLocation {
             var currentNode: SKNode? = nodeAtLocation
@@ -742,32 +756,32 @@ class BuildUI {
                     // Process the card click immediately
                     if let structureId = current.userData?["structureId"] as? String,
                        let structureTypeString = current.userData?["structureType"] as? String,
-                       let structureType = StructureType(rawValue: structureTypeString),
-                       let player = player,
-                       let gameScene = scene as? GameScene {
+               let structureType = StructureType(rawValue: structureTypeString),
+               let player = player,
+               let gameScene = scene as? GameScene {
                         
                         print("✅ BuildUI: Processing card click for \(structureTypeString)")
-                        
-                        // Find the structure data
-                        guard let structure = structures.first(where: { $0.id == structureId }) else {
+                
+                // Find the structure data
+                guard let structure = structures.first(where: { $0.id == structureId }) else {
                             print("❌ BuildUI: Structure not found for id: \(structureId)")
-                            return false
-                        }
-                        
-                        // Check if player can build this structure
-                        if canBuildStructure(structure: structure, player: player) {
+                    return false
+                }
+                
+                // Check if player can build this structure
+                if canBuildStructure(structure: structure, player: player) {
                             print("✅ BuildUI: Can build, entering placement mode")
                             // Close UI and enter build placement mode with JSON data
-                            hide()
+                    hide()
                             gameScene.enterBuildPlacementMode(structureData: structure)
-                            return true
-                        } else {
+                    return true
+                } else {
                             print("❌ BuildUI: Cannot build, showing error")
-                            // Show error message with missing requirements
-                            let missingItems = getMissingRequirements(structure: structure)
-                            gameScene.showMessage("Cannot build: \(missingItems)", color: .red)
-                            return true
-                        }
+                    // Show error message with missing requirements
+                    let missingItems = getMissingRequirements(structure: structure)
+                    gameScene.showMessage("Cannot build: \(missingItems)", color: .red)
+                    return true
+                }
                     }
                     return true // We found a card
                 }

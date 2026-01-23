@@ -282,6 +282,16 @@ class TileManager {
     /// Clears the texture cache (useful for memory management)
     func clearCache() {
         textureCache.removeAll()
+        extractedTextureCache.removeAll()
+        tilesetDimensionsCache.removeAll()
+    }
+    
+    /// Clears the sprite atlas cache (call this when atlas images are updated)
+    func clearSpriteAtlasCache() {
+        spriteAtlasCache.removeAll()
+        spriteAtlasTextures.removeAll()
+        spriteAtlasDimensionsCache.removeAll()
+        print("🧹 Cleared sprite atlas cache - atlases will reload from disk")
     }
     
     /// Reloads all textures (useful after adding new assets)
@@ -322,6 +332,232 @@ class TileManager {
     /// Get the loaded tilesets (for debugging/logging purposes)
     func getTiledTilesets() -> [TiledTileset] {
         return tiledTilesets
+    }
+    
+    /// Look up tiles by class name, optionally scoped to a specific tileset
+    /// Format: "className" (searches all tilesets) or "tilesetName-className" (searches specific tileset)
+    /// Returns array of tile specs in format "tilesetName-localTileID", sorted by position (row, col)
+    func getTileSpecsByClassName(_ classSpec: String) -> [String] {
+        // Check if it's "tilesetName-className" format
+        if let dashIndex = classSpec.firstIndex(of: "-") {
+            let tilesetName = String(classSpec[..<dashIndex])
+            let className = String(classSpec[classSpec.index(after: dashIndex)...])
+            
+            // Find the specific tileset
+            guard let tileset = tiledTilesets.first(where: { $0.name == tilesetName }) else {
+                print("⚠️ TileManager: Tileset '\(tilesetName)' not found when looking up class '\(className)'")
+                print("   Available tilesets: \(tiledTilesets.map { $0.name }.joined(separator: ", "))")
+                return []
+            }
+            
+            // Get tile IDs for this class in this tileset
+            guard let tileIDs = tileset.classNames[className] else {
+                print("⚠️ TileManager: Class name '\(className)' not found in tileset '\(tilesetName)'")
+                print("   Available classes in '\(tilesetName)': \(tileset.classNames.keys.sorted().joined(separator: ", "))")
+                return []
+            }
+            
+            // Sort by position (row, col) for consecutive selection
+            let sortedTileIDs = tileIDs.sorted()
+            
+            // Convert to tile specs
+            return sortedTileIDs.map { "\(tileset.name)-\($0)" }
+        } else {
+            // Search all tilesets
+            var specs: [String] = []
+            for tileset in tiledTilesets {
+                if let tileIDs = tileset.classNames[classSpec] {
+                    // Sort by position for consecutive selection
+                    let sortedTileIDs = tileIDs.sorted()
+                    for tileID in sortedTileIDs {
+                        specs.append("\(tileset.name)-\(tileID)")
+                    }
+                }
+            }
+            return specs
+        }
+    }
+    
+    /// Get a consecutive tile spec by class name, preferring tiles next to the last used tile
+    /// Format: "className" or "tilesetName-className"
+    /// lastUsedTileID: Optional last used tile ID (local ID within tileset) to maintain continuity
+    /// Returns nil if no tiles found with the given class name
+    func getConsecutiveTileSpecByClassName(_ classSpec: String, lastUsedTileID: Int? = nil, targetRow: Int? = nil, targetColumn: Int? = nil, using rng: inout SeededRandomNumberGenerator) -> String? {
+        let specs = getTileSpecsByClassName(classSpec)
+        guard !specs.isEmpty else { return nil }
+        if specs.count == 1 {
+            return specs[0]
+        }
+        
+        // Parse tileset name and find tileset
+        let tilesetName: String
+        let className: String
+        if let dashIndex = classSpec.firstIndex(of: "-") {
+            tilesetName = String(classSpec[..<dashIndex])
+            className = String(classSpec[classSpec.index(after: dashIndex)...])
+        } else {
+            // If no tileset specified, use first tileset that has this class
+            guard let firstTileset = tiledTilesets.first(where: { $0.classNames[classSpec] != nil }) else {
+                return specs[Int.random(in: 0..<specs.count, using: &rng)]
+            }
+            tilesetName = firstTileset.name
+            className = classSpec
+        }
+        
+        guard let tileset = tiledTilesets.first(where: { $0.name == tilesetName }),
+              let tileIDs = tileset.classNames[className] else {
+            return specs[Int.random(in: 0..<specs.count, using: &rng)]
+        }
+        
+        // Filter tiles by target row and/or target column
+        var candidateTileIDs = tileIDs
+        if let targetRow = targetRow {
+            candidateTileIDs = candidateTileIDs.filter { tileID in
+                let row = tileID / tileset.columns
+                return row == targetRow
+            }
+        }
+        if let targetColumn = targetColumn {
+            // When target column is specified, we MUST use that column (no fallback)
+            // This ensures trunk and canopy align properly even if canopy has fewer tiles
+            candidateTileIDs = candidateTileIDs.filter { tileID in
+                let col = tileID % tileset.columns
+                return col == targetColumn
+            }
+            // Only fall back if column filter resulted in no tiles AND we're not also filtering by row
+            // This ensures we respect column alignment when it's critical (for multi-part entities)
+            if candidateTileIDs.isEmpty && targetRow == nil {
+                candidateTileIDs = tileIDs
+            }
+        }
+        
+        // If we have a last used tile ID, try to find consecutive tiles
+        if let lastID = lastUsedTileID {
+            let lastRow = lastID / tileset.columns  // Calculate once, use multiple times
+            let lastCol = lastID % tileset.columns
+            
+            // CRITICAL: When looking for consecutive tiles, we need to check ALL tiles, not just filtered ones
+            // because the lastID might be from a different row. We'll filter by targetRow AFTER finding consecutive tiles.
+            let allSortedIDs = tileIDs.sorted()
+            
+            // Find the index of last used tile in ALL tiles
+            if let lastIndex = allSortedIDs.firstIndex(of: lastID) {
+                // Prefer next tile in sequence (same row, next column)
+                let nextIndex = lastIndex + 1
+                if nextIndex < allSortedIDs.count {
+                    let nextID = allSortedIDs[nextIndex]
+                    let nextRow = nextID / tileset.columns
+                    let nextCol = nextID % tileset.columns
+                    // Check if it's in the same row and next column (truly consecutive)
+                    if lastRow == nextRow && nextCol == lastCol + 1 {
+                        // Verify this tile matches our filters
+                        if candidateTileIDs.contains(nextID) {
+                            return "\(tilesetName)-\(nextID)"
+                        }
+                    }
+                }
+                
+                // If no next tile in same row, try previous tile (for backwards selection)
+                if lastIndex > 0 {
+                    let prevIndex = lastIndex - 1
+                    let prevID = allSortedIDs[prevIndex]
+                    let prevRow = prevID / tileset.columns
+                    let prevCol = prevID % tileset.columns
+                    if lastRow == prevRow && prevCol == lastCol - 1 {
+                        // Verify this tile matches our filters
+                        if candidateTileIDs.contains(prevID) {
+                            return "\(tilesetName)-\(prevID)"
+                        }
+                    }
+                }
+                
+                // If no consecutive tile in same row, try next row, same column (for vertical continuity)
+                for candidateID in allSortedIDs {
+                    let candidateRow = candidateID / tileset.columns
+                    let candidateCol = candidateID % tileset.columns
+                    if candidateRow == lastRow + 1 && candidateCol == lastCol {
+                        // Verify this tile matches our filters (especially targetRow)
+                        if candidateTileIDs.contains(candidateID) {
+                            return "\(tilesetName)-\(candidateID)"
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fall back to random selection from sorted list (still maintains some order)
+        // If targetRow was specified, select from that row's tiles
+        let sortedIDs = candidateTileIDs.sorted()
+        if sortedIDs.isEmpty {
+            // Shouldn't happen, but handle gracefully
+            return specs[Int.random(in: 0..<specs.count, using: &rng)]
+        }
+        let selectedID = sortedIDs[Int.random(in: 0..<sortedIDs.count, using: &rng)]
+        return "\(tilesetName)-\(selectedID)"
+    }
+    
+    /// Get a random tile spec by class name (legacy method for backward compatibility)
+    /// Returns nil if no tiles found with the given class name
+    func getRandomTileSpecByClassName(_ className: String, using rng: inout SeededRandomNumberGenerator) -> String? {
+        return getConsecutiveTileSpecByClassName(className, lastUsedTileID: nil, using: &rng)
+    }
+    
+    /// Load a standalone .tsx tileset file
+    /// Assigns a firstGID starting from a high number to avoid conflicts with TMX-loaded tilesets
+    func loadStandaloneTileset(fileName: String, firstGID: Int? = nil) -> Bool {
+        // Use provided firstGID or assign one starting from 10000
+        let assignedFirstGID: Int
+        if let provided = firstGID {
+            assignedFirstGID = provided
+        } else {
+            // Find the highest existing firstGID and add 10000 to avoid conflicts
+            let maxExistingGID = tiledTilesets.map { $0.firstGID + $0.tileCount }.max() ?? 0
+            assignedFirstGID = max(10000, maxExistingGID + 1000)
+        }
+        
+        guard let tileset = TiledMapParser.parseStandaloneTileset(fileName: fileName, firstGID: assignedFirstGID) else {
+            print("⚠️ TileManager: Failed to parse standalone tileset '\(fileName).tsx'")
+            return false
+        }
+        
+        // Check if tileset with same name or image already exists
+        if tiledTilesets.contains(where: { $0.name == tileset.name || $0.imageName == tileset.imageName }) {
+            let existing = tiledTilesets.first(where: { $0.name == tileset.name || $0.imageName == tileset.imageName })
+            print("⚠️ TileManager: Tileset '\(tileset.name)' (image: '\(tileset.imageName)') already loaded as '\(existing?.name ?? "unknown")', skipping")
+            return false
+        }
+        
+        // Add to tilesets array
+        tiledTilesets.append(tileset)
+        tiledTilesets.sort { $0.firstGID < $1.firstGID }
+        
+        // Clear extracted texture cache for this tileset to force re-extraction with correct calculations
+        let keysToRemove = extractedTextureCache.keys.filter { $0.hasPrefix("\(tileset.imageName)_") }
+        for key in keysToRemove {
+            extractedTextureCache.removeValue(forKey: key)
+        }
+        tilesetDimensionsCache.removeValue(forKey: tileset.imageName)
+        
+        // Load texture for this tileset
+        if tiledTextures[tileset.imageName] == nil {
+            let texture = SKTexture(imageNamed: tileset.imageName)
+            let textureSize = texture.size()
+            if textureSize.width > 0 && textureSize.height > 0 {
+                texture.filteringMode = .nearest
+                texture.preload { }
+                tiledTextures[tileset.imageName] = texture
+                print("✅ TileManager: Loaded standalone tileset '\(tileset.name)' (firstGID: \(assignedFirstGID), image: '\(tileset.imageName)')")
+                return true
+            } else {
+                print("⚠️ TileManager: Could not load texture '\(tileset.imageName)' for tileset '\(tileset.name)'")
+                // Remove from tilesets if texture failed
+                tiledTilesets.removeAll { $0.name == tileset.name }
+                return false
+            }
+        }
+        
+        print("✅ TileManager: Standalone tileset '\(tileset.name)' already has texture loaded")
+        return true
     }
     
     /// Extract flip flags from a GID
@@ -392,21 +628,75 @@ class TileManager {
         
         // Load atlas texture if not cached
         if spriteAtlasTextures[atlasName] == nil {
-            // Loading sprite atlas (debug log removed for performance)
-            let texture = SKTexture(imageNamed: atlasName)
-            let textureSize = texture.size()
+            // Try loading the requested atlas name first
+            var texture = SKTexture(imageNamed: atlasName)
+            var textureSize = texture.size()
+            var loadedAtlasName = atlasName
+            
+            // If not found, try alternative names (singular/plural variations)
+            if textureSize.width == 0 || textureSize.height == 0 {
+                if atlasName.hasSuffix("_atlas") {
+                    let base = String(atlasName.dropLast(6))  // Remove "_atlas"
+                    let alternatives: [String]
+                    if atlasName.contains("grasslands") {
+                        // Try singular version (grasslands_atlas -> grassland_atlas)
+                        alternatives = [base.replacingOccurrences(of: "grasslands", with: "grassland") + "_atlas"]
+                    } else if atlasName.contains("grassland") && !atlasName.contains("grasslands") {
+                        // Try plural version (grassland_atlas -> grasslands_atlas)
+                        alternatives = [base.replacingOccurrences(of: "grassland", with: "grasslands") + "_atlas"]
+                    } else {
+                        alternatives = []
+                    }
+                    
+                    for altName in alternatives {
+                        let altTexture = SKTexture(imageNamed: altName)
+                        let altSize = altTexture.size()
+                        if altSize.width > 0 && altSize.height > 0 {
+                            print("🔄 TileManager: Atlas '\(atlasName)' not found, using alternative '\(altName)' (size: \(altSize.width)x\(altSize.height))")
+                            texture = altTexture
+                            textureSize = altSize
+                            loadedAtlasName = altName
+                            break
+                        }
+                    }
+                }
+            }
+            
             if textureSize.width > 0 && textureSize.height > 0 {
                 texture.filteringMode = .nearest
-                spriteAtlasTextures[atlasName] = texture
-                // Loaded sprite atlas (debug log removed for performance)
+                spriteAtlasTextures[atlasName] = texture  // Cache under original name for consistent lookup
+                if loadedAtlasName != atlasName {
+                    // Also cache under the actual loaded name to avoid re-trying alternatives
+                    spriteAtlasTextures[loadedAtlasName] = texture
+                }
+                print("📦 TileManager: Loaded sprite atlas '\(loadedAtlasName)' as '\(atlasName)' (size: \(textureSize.width)x\(textureSize.height))")
             } else {
-                print("⚠️ TileManager: Could not load sprite atlas '\(atlasName)' - texture size is 0")
+                print("⚠️ TileManager: Could not load sprite atlas '\(atlasName)' - texture size is 0 (no alternatives found)")
                 return nil
             }
         }
         
         guard let atlasTexture = spriteAtlasTextures[atlasName] else {
+            print("⚠️ TileManager: Atlas texture not loaded for '\(atlasName)'")
             return nil
+        }
+        
+        // CRITICAL FIX: Check if this is actually a Tiled tileset first
+        // If a TiledTileset with this name exists, use its tile dimensions instead of inferring
+        if let tileset = tiledTilesets.first(where: { $0.name == atlasName }) {
+            // This is a Tiled tileset, not a sprite atlas
+            // The frame number is already 0-indexed (matches Tiled's convention where first tile is 0)
+            // This matches PrefabFactory's behavior: gid = tileset.firstGID + index (no subtraction)
+            let localTileID = frameNumber  // JSON specs are 0-indexed (e.g., "water1-445" means tile index 445)
+            let gid = tileset.firstGID + localTileID
+            
+            // Use the existing GID-based sprite creation (which handles Tiled tilesets correctly)
+            if let sprite = createSprite(for: gid, size: size) {
+                return sprite
+            } else {
+                print("⚠️ TileManager: Failed to create sprite from Tiled tileset '\(atlasName)' frame \(frameNumber) (GID: \(gid))")
+                return nil
+            }
         }
         
         // Get or calculate atlas dimensions
@@ -416,26 +706,165 @@ class TileManager {
             tilesPerCol = cached.tilesPerCol
             tileSize = cached.tileSize
         } else {
+            // Try to load metadata JSON to get the correct tile size
+            // Note: JSON files in asset catalogs aren't directly accessible via Bundle.main.path
+            // Try multiple approaches to find the metadata file
+            var actualTileSize: Int = 32  // Default to 32 (common tile size)
+            var metadata: [String: Any]? = nil
+            
+            // Try 1: Look in bundle root
+            if let metadataPath = Bundle.main.path(forResource: atlasName, ofType: "json") {
+                if let metadataData = try? Data(contentsOf: URL(fileURLWithPath: metadataPath)),
+                   let parsedMetadata = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                    metadata = parsedMetadata
+                }
+            }
+            
+            // Try 2: Look in "Generated Maps" directory (common location)
+            if metadata == nil {
+                if let metadataPath = Bundle.main.path(forResource: "Generated Maps/\(atlasName)", ofType: "json") {
+                    if let metadataData = try? Data(contentsOf: URL(fileURLWithPath: metadataPath)),
+                       let parsedMetadata = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                        metadata = parsedMetadata
+                    }
+                }
+            }
+            
+            // Try 3: Look in asset catalog imageset (using URL instead of path)
+            if metadata == nil {
+                // Asset catalogs: try to find the JSON in the imageset
+                // The JSON might be alongside the PNG in the asset catalog
+                if let metadataURL = Bundle.main.url(forResource: atlasName, withExtension: "json", subdirectory: nil) {
+                    if let metadataData = try? Data(contentsOf: metadataURL),
+                       let parsedMetadata = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                        metadata = parsedMetadata
+                    }
+                }
+            }
+            
+            // Extract tile size from metadata if found
+            if let metadata = metadata {
+                if let tileSizeFromMetadata = metadata["tile_size"] as? Int {
+                    actualTileSize = tileSizeFromMetadata
+                    print("✅ TileManager: Loaded tile size \(actualTileSize) from metadata for atlas '\(atlasName)'")
+                    
+                    // Also extract frame information if available for validation
+                    if let tiles = metadata["tiles"] as? [String: Any] {
+                        let frameCount = tiles.keys.count
+                        print("   📋 Metadata shows \(frameCount) frames defined")
+                    }
+                } else {
+                    print("⚠️ TileManager: Metadata found for '\(atlasName)' but no tile_size field")
+                }
+            } else {
+                print("⚠️ TileManager: No metadata JSON found for '\(atlasName)', will infer tile size")
+            }
+            
             // Calculate dimensions from texture size
-            // Default to 16x16 tiles (can be overridden by metadata if available)
-            let defaultTileSize = 16
             let atlasWidth = Int(atlasTexture.size().width)
             let atlasHeight = Int(atlasTexture.size().height)
-            tilesPerRow = atlasWidth / defaultTileSize
-            tilesPerCol = atlasHeight / defaultTileSize
-            tileSize = defaultTileSize
+            
+            // If metadata wasn't found or tile size seems wrong, try to infer from atlas dimensions
+            // IMPORTANT: If metadata says 707 but atlas should be 32x32, the inferred size is more reliable
+            // Check common tile sizes: 16, 32, 64, 128, etc. (prioritize 32 for ground tiles)
+            let commonSizes = [32, 16, 64, 128, 256]  // Prioritize 32 (common ground tile size)
+            var inferredTileSize: Int? = nil
+            
+            for size in commonSizes {
+                if atlasWidth % size == 0 && atlasHeight % size == 0 {
+                    let testRows = atlasWidth / size
+                    let testCols = atlasHeight / size
+                    // Prefer sizes that give reasonable grid dimensions
+                    if testRows >= 1 && testRows <= 100 && testCols >= 1 && testCols <= 100 {
+                        inferredTileSize = size
+                        print("📐 TileManager: Could infer tile size \(size) for atlas '\(atlasName)' from dimensions \(atlasWidth)x\(atlasHeight) (grid: \(testRows)x\(testCols))")
+                        break
+                    }
+                }
+            }
+            
+            // If we have an inferred size and metadata size seems wrong, prefer inferred
+            // This handles the case where metadata says 707 but tiles are actually 32x32
+            if let inferred = inferredTileSize {
+                // If metadata is clearly wrong (too large or doesn't match inferred), use inferred
+                // Ground tiles should typically be 32x32, so prefer 32 if we can infer it
+                let metadataDivisibleByInferred = (atlasWidth % inferred == 0 && atlasHeight % inferred == 0)
+                let metadataDivisibleByReported = (atlasWidth % actualTileSize == 0 && atlasHeight % actualTileSize == 0)
+                
+                // Prefer inferred size if:
+                // 1. Metadata size is too large (>512) and inferred is reasonable (<=128), OR
+                // 2. Inferred is 32 (standard ground tile size) and metadata is different, OR
+                // 3. Metadata size doesn't divide atlas evenly but inferred does
+                if (actualTileSize > 512 && inferred <= 128) ||
+                   (inferred == 32 && actualTileSize != 32 && metadataDivisibleByInferred) ||
+                   (!metadataDivisibleByReported && metadataDivisibleByInferred) {
+                    print("⚠️ TileManager: Metadata tile size (\(actualTileSize)) seems incorrect, using inferred size (\(inferred))")
+                    print("   Atlas: \(atlasWidth)x\(atlasHeight), metadata divides evenly: \(metadataDivisibleByReported), inferred divides evenly: \(metadataDivisibleByInferred)")
+                    actualTileSize = inferred
+                } else if inferred == 32 && actualTileSize != 32 {
+                    // Ground tiles should typically be 32x32 - warn but keep metadata for now
+                    print("💡 TileManager: Inferred size is 32 (standard ground tile size), but metadata says \(actualTileSize)")
+                }
+            } else if actualTileSize > 512 {
+                // No inferred size found, but metadata seems too large - try to recalculate
+                // This handles edge cases where atlas dimensions don't match any common size
+                print("⚠️ TileManager: Metadata tile size (\(actualTileSize)) seems too large, but couldn't infer alternative")
+                print("   Atlas dimensions: \(atlasWidth)x\(atlasHeight)")
+                // Check if metadata size divides atlas evenly
+                if atlasWidth % actualTileSize != 0 || atlasHeight % actualTileSize != 0 {
+                    print("   ⚠️ WARNING: Metadata tile size doesn't divide atlas dimensions evenly!")
+                    print("   This will cause incorrect frame positioning. Please update metadata JSON.")
+                }
+            }
+            
+            var calculatedTilesPerRow = atlasWidth / actualTileSize
+            var calculatedTilesPerCol = atlasHeight / actualTileSize
+            
+            // Ensure we have valid dimensions
+            if calculatedTilesPerRow == 0 {
+                calculatedTilesPerRow = 1
+            }
+            if calculatedTilesPerCol == 0 {
+                calculatedTilesPerCol = 1
+            }
+            
+            tilesPerRow = calculatedTilesPerRow
+            tilesPerCol = calculatedTilesPerCol
+            tileSize = actualTileSize
             
             spriteAtlasDimensionsCache[atlasName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol, tileSize: tileSize)
+            
+            print("📐 TileManager: Using tile size \(tileSize) for atlas '\(atlasName)' (atlas: \(atlasWidth)x\(atlasHeight), grid: \(tilesPerRow)x\(tilesPerCol))")
         }
         
         // Convert 1-indexed frame number to 0-indexed row/col
+        // Formula: frame = row * cols + col + 1 (1-indexed)
+        // Reverse: frameIndex = frame - 1, then row = frameIndex / cols, col = frameIndex % cols
         let frameIndex = frameNumber - 1
         let row = frameIndex / tilesPerRow
         let col = frameIndex % tilesPerRow
         
+        // Validate frame bounds
         guard row < tilesPerCol && col < tilesPerRow else {
-            print("⚠️ TileManager: Frame \(frameNumber) out of bounds for atlas '\(atlasName)' (max: \(tilesPerRow * tilesPerCol))")
+            print("❌ TileManager: Frame \(frameNumber) out of bounds for atlas '\(atlasName)'")
+            print("   Atlas size: \(atlasTexture.size().width)x\(atlasTexture.size().height)")
+            print("   Tile size: \(tileSize)x\(tileSize), Grid: \(tilesPerRow)x\(tilesPerCol)")
+            print("   Frame \(frameNumber) -> row \(row), col \(col) (max: row \(tilesPerCol-1), col \(tilesPerRow-1))")
+            print("   💡 Tip: Check that the metadata JSON tile_size matches the actual tile size in the PNG")
             return nil
+        }
+        
+        // Enhanced debug logging for frame calculation
+        print("🔍 TileManager: Frame calculation for '\(atlasName)' frame \(frameNumber):")
+        print("   frameIndex = \(frameNumber) - 1 = \(frameIndex)")
+        print("   row = \(frameIndex) / \(tilesPerRow) = \(row)")
+        print("   col = \(frameIndex) % \(tilesPerRow) = \(col)")
+        print("   Grid position: (\(col), \(row)) [col, row]")
+        print("   Pixel position: (\(col * tileSize), \(row * tileSize))")
+        
+        // Log successful frame access for debugging
+        if frameNumber <= 4 || frameNumber % 10 == 0 {
+            print("✅ TileManager: Accessing frame \(frameNumber) from atlas '\(atlasName)' at row \(row), col \(col)")
         }
         
         // Extract tile from atlas using normalized coordinates
@@ -444,18 +873,43 @@ class TileManager {
         let tileWidthPoints = baseWidth / CGFloat(tilesPerRow)
         let tileHeightPoints = baseHeight / CGFloat(tilesPerCol)
         
+        // Calculate pixel coordinates in the atlas image
+        let pixelX = CGFloat(col) * CGFloat(tileSize)
+        let pixelY = CGFloat(row) * CGFloat(tileSize)
+        
+        // Calculate normalized coordinates (0.0 to 1.0) for SKTexture(rect:in:)
         let normalizedX = (CGFloat(col) * tileWidthPoints) / baseWidth
         let normalizedY = 1.0 - ((CGFloat(row) + 1) * tileHeightPoints) / baseHeight  // Flip Y for SpriteKit
         let normalizedWidth = tileWidthPoints / baseWidth
         let normalizedHeight = tileHeightPoints / baseHeight
         
+        print("   📐 Tile extraction details:")
+        print("      Atlas size (points): \(baseWidth)x\(baseHeight)")
+        print("      Tile size (pixels): \(tileSize)x\(tileSize)")
+        print("      Tile size (points): \(tileWidthPoints)x\(tileHeightPoints)")
+        print("      Pixel position in atlas: (\(Int(pixelX)), \(Int(pixelY)))")
+        print("      Normalized rect: (\(String(format: "%.4f", normalizedX)), \(String(format: "%.4f", normalizedY)), \(String(format: "%.4f", normalizedWidth)), \(String(format: "%.4f", normalizedHeight)))")
+        
         let tileRect = CGRect(x: normalizedX, y: normalizedY, width: normalizedWidth, height: normalizedHeight)
         let tileTexture = SKTexture(rect: tileRect, in: atlasTexture)
         tileTexture.filteringMode = .nearest  // Ensure pixel-perfect rendering to prevent gaps
-        tileTexture.filteringMode = .nearest
+        
+        // Verify texture is valid
+        let texSize = tileTexture.size()
+        guard texSize.width > 0 && texSize.height > 0 else {
+            print("⚠️ TileManager: Extracted texture for frame \(frameNumber) from '\(atlasName)' has invalid size: \(texSize)")
+            return nil
+        }
         
         // Cache the extracted texture
         spriteAtlasCache[cacheKey] = tileTexture
+        
+        // Debug: Log first few tiles to verify correct extraction
+        if frameNumber <= 3 {
+            print("✅ TileManager: Created sprite from atlas '\(atlasName)' frame \(frameNumber)")
+            print("   Position: row \(row), col \(col), rect: (\(String(format: "%.3f", normalizedX)), \(String(format: "%.3f", normalizedY)), \(String(format: "%.3f", normalizedWidth)), \(String(format: "%.3f", normalizedHeight)))")
+            print("   Texture size: \(texSize.width)x\(texSize.height)")
+        }
         
         let sprite = SKSpriteNode(texture: tileTexture, size: size)
         return sprite
@@ -480,7 +934,7 @@ class TileManager {
         
         // Get the texture for this tileset
         guard let tilesetTexture = tiledTextures[tileset.imageName] else {
-            print("⚠️ TileManager: Tileset texture '\(tileset.imageName)' not loaded")
+            print("⚠️ TileManager: Tileset texture '\(tileset.imageName)' not loaded for tileset '\(tileset.name)' (available: \(tiledTextures.keys.joined(separator: ", ")))")
             return nil
         }
         
@@ -502,6 +956,7 @@ class TileManager {
             return nil
         }
         
+        
         // Set texture filtering mode
         texture.filteringMode = .nearest
         
@@ -521,16 +976,12 @@ class TileManager {
             sprite.size = size  // Force the size
         }
         
-        // Debug: Log first few sprites to verify correct extraction
-        if actualGID <= 10 || (actualGID >= 257 && actualGID <= 260) || actualGID == 308 || actualGID == 359 || actualGID == 537 {
-            print("✅ TileManager: Created sprite for GID \(gid) (actual: \(actualGID))")
-            print("   Tileset: '\(tileset.name)' (firstGID: \(tileset.firstGID), tileCount: \(tileset.tileCount), columns: \(tileset.columns))")
-            print("   Local tile ID: \(tileset.localTileID(for: actualGID))")
-            print("   Position in tileset: row \(row), col \(col)")
-            print("   Texture size: \(textureSize.width)x\(textureSize.height) points")
-            print("   Sprite size: \(size.width)x\(size.height) points (actual sprite size: \(sprite.size.width)x\(sprite.size.height))")
-            print("   Tile dimensions: \(tileset.tileWidth)x\(tileset.tileHeight) pixels")
-        }
+        // Ensure sprite is visible
+        sprite.alpha = 1.0
+        sprite.isHidden = false
+        sprite.colorBlendFactor = 0.0  // Don't blend with color
+        sprite.color = .white  // Ensure color is white (no tinting)
+        
         
         // CRITICAL: Apply flip transforms
         // Horizontal flip: negate x scale
@@ -656,25 +1107,31 @@ class TileManager {
         // The texture size in points already accounts for @2x/@3x scaling
         // So we should normalize using the texture size in points, not the pixel dimensions
         
-        // CRITICAL PERFORMANCE FIX: Cache tileset dimensions to avoid calling cgImage() for every tile!
-        // cgImage() is a blocking call that's extremely slow when called thousands of times
-        let (tilesPerRow, tilesPerCol): (Int, Int)
-        if let cached = tilesetDimensionsCache[tileset.imageName] {
-            tilesPerRow = cached.tilesPerRow
-            tilesPerCol = cached.tilesPerCol
+        // CRITICAL: Use tileset.columns from TSX file - it tells us exactly how many tiles per row
+        // This is more reliable than calculating from image dimensions, especially if there's spacing/margins
+        let tilesPerRow: Int
+        let tilesPerCol: Int
+        
+        if tileset.columns > 0 {
+            // Use columns from TSX file (most reliable)
+            tilesPerRow = tileset.columns
+            // Calculate rows from tileCount and columns
+            tilesPerCol = tileset.tileCount > 0 
+                ? Int(ceil(Double(tileset.tileCount) / Double(tileset.columns)))
+                : 1
         } else {
-            // Only call cgImage() once per tileset (not once per tile!)
-            let cgImage = tilesetTexture.cgImage()
-            let actualImageWidthPixels = CGFloat(cgImage.width)
-            let actualImageHeightPixels = CGFloat(cgImage.height)
-            
-            // Calculate how many tiles fit in the actual image (in pixels)
-            // This is the REAL layout of the image file, regardless of what TMX says
-            tilesPerRow = max(1, Int(actualImageWidthPixels / CGFloat(tileset.tileWidth)))
-            tilesPerCol = max(1, Int(actualImageHeightPixels / CGFloat(tileset.tileHeight)))
-            
-            // Cache the dimensions for this tileset
-            tilesetDimensionsCache[tileset.imageName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol)
+            // Fallback: calculate from image dimensions if columns not specified
+            if let cached = tilesetDimensionsCache[tileset.imageName] {
+                tilesPerRow = cached.tilesPerRow
+                tilesPerCol = cached.tilesPerCol
+            } else {
+                let cgImage = tilesetTexture.cgImage()
+                let actualImageWidthPixels = CGFloat(cgImage.width)
+                let actualImageHeightPixels = CGFloat(cgImage.height)
+                tilesPerRow = max(1, Int(actualImageWidthPixels / CGFloat(tileset.tileWidth)))
+                tilesPerCol = max(1, Int(actualImageHeightPixels / CGFloat(tileset.tileHeight)))
+                tilesetDimensionsCache[tileset.imageName] = (tilesPerRow: tilesPerRow, tilesPerCol: tilesPerCol)
+            }
         }
         
         // Validate that row/col are within actual bounds
@@ -684,6 +1141,7 @@ class TileManager {
         
         // Calculate tile dimensions in points based on actual texture size
         // Divide the actual texture size by the actual number of tiles
+        // This accounts for @2x/@3x scaling automatically since baseWidth/baseHeight are in points
         let tileWidthPoints = baseWidth / CGFloat(tilesPerRow)
         let tileHeightPoints = baseHeight / CGFloat(tilesPerCol)
         
@@ -693,10 +1151,14 @@ class TileManager {
         let normalizedWidth = tileWidthPoints / baseWidth
         
         // Y coordinate: Flip for SpriteKit's bottom-left origin
-        // In Tiled: row 0 is at top (Y=0), row N is at Y=N*tileHeight
-        // In SpriteKit: y=0 is bottom, y=1 is top (normalized coordinates)
-        // Formula: normalizedY = 1.0 - ((row + 1) * tileHeight) / baseHeight
-        // This gives: row 0 -> y = 1.0 - tileHeight/baseHeight (bottom of top tile)
+        // In Tiled: row 0 is at top of image, row increases downward
+        // In SpriteKit normalized coords: y=0 is bottom, y=1 is top
+        // SKTexture(rect:in:) uses (x, y) as the BOTTOM-LEFT corner of the rect
+        // For row 0 (top row in Tiled): we want the TOP of the texture (y near 1.0)
+        // The bottom-left of row 0 is at: y = 1.0 - tileHeightPoints/baseHeight
+        // For row N (bottom row): bottom-left is at y = 0.0
+        // Formula: normalizedY = 1.0 - ((row + 1) * tileHeightPoints) / baseHeight
+        // This gives us the bottom-left corner of each tile
         let normalizedY = 1.0 - ((CGFloat(row + 1) * tileHeightPoints) / baseHeight)
         let normalizedHeight = tileHeightPoints / baseHeight
         
@@ -725,15 +1187,6 @@ class TileManager {
         
         // Cache the texture
         extractedTextureCache[cacheKey] = texture
-        
-        // Debug logging for first few tiles (disabled to reduce spam during loading)
-        // if (row == 0 && col <= 5) || (row <= 1 && col == 0) {
-        //     print("✅ Extracted tile row \(row), col \(col) from '\(tileset.imageName)' using SKTexture(rect:in:)")
-        //     print("   Base texture size: \(baseWidth)x\(baseHeight) points")
-        //     print("   Tile size: \(tileWidth)x\(tileHeight) points")
-        //     print("   Normalized rect: (\(String(format: "%.4f", normalizedX)), \(String(format: "%.4f", normalizedY)), \(String(format: "%.4f", normalizedWidth)), \(String(format: "%.4f", normalizedHeight)))")
-        //     print("   Extracted texture size: \(texture.size()) points")
-        // }
         
         return texture
     }

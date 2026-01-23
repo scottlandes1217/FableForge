@@ -69,8 +69,140 @@ extension GameScene {
         }
     }
     
-    override func mouseDown(with event: NSEvent) {
+    // NOTE: mouseDown is now in the main GameScene class, not in this extension
+    // This prevents duplicate method errors
+    /*override func mouseDown(with event: NSEvent) {
+        // CRITICAL: This log should appear for EVERY mouse click on the game screen
+        print("🖱️🖱️🖱️🖱️🖱️🖱️🖱️ GameScene_macOS: mouseDown CALLED - THIS SHOULD APPEAR FOR EVERY CLICK")
         let location = event.location(in: self)
+        
+        print("🖱️🖱️🖱️ GameScene_macOS: mouseDown at \(location)")
+        print("   isGamePaused=\(isGamePaused), isInCombat=\(isInCombat), isInDialogue=\(isInDialogue)")
+        print("   isUserInteractionEnabled=\(isUserInteractionEnabled), isPaused=\(isPaused), view=\(view != nil ? "exists" : "nil")")
+        print("   event.locationInWindow=\(event.locationInWindow)")
+        
+        // Check if clicking a chest UI button first
+        if chestUI?.isVisible == true {
+            print("📦 GameScene_macOS: Chest UI is visible, handling UI interaction")
+            handleChestUIInteraction(at: location)
+            return
+        }
+        
+        // Check for chest clicks BEFORE other UI handling (even if paused - we want to detect them)
+        // Find nodes at this location to check for chests
+        let touchedNodes = nodes(at: location)
+        print("🔍 GameScene_macOS: Checking for chests - found \(touchedNodes.count) nodes at \(location)")
+        for (index, node) in touchedNodes.enumerated() {
+            let nodeName = node.name ?? "nil"
+            let entityType = node.userData?["entityType"] as? String ?? "nil"
+            print("   Node \(index): name=\(nodeName), type=\(type(of: node)), userData.entityType=\(entityType)")
+            // Also check parent chain
+            var parent = node.parent
+            var depth = 0
+            while parent != nil && depth < 5 {
+                let parentName = parent?.name ?? "nil"
+                let parentEntityType = parent?.userData?["entityType"] as? String ?? "nil"
+                print("     Parent \(depth): name=\(parentName), userData.entityType=\(parentEntityType)")
+                parent = parent?.parent
+                depth += 1
+            }
+        }
+        
+        // Check for chests even if paused (so we can detect them)
+        // First check direct nodes
+        for node in touchedNodes {
+            // Check if this is a chest entity container
+            if let name = node.name, name.hasPrefix("chest_entity_") {
+                print("✅✅✅ GameScene_macOS: Found chest node by name: \(name)")
+                handleChestClick(node: node, worldPosition: location)
+                return  // Don't process other UI if clicking a chest
+            }
+            // Also check userData for chest identification
+            if let userData = node.userData, userData["entityType"] as? String == "chest" {
+                print("✅✅✅ GameScene_macOS: Found chest node by userData")
+                handleChestClick(node: node, worldPosition: location)
+                return  // Don't process other UI if clicking a chest
+            }
+        }
+        
+        // Also search through parent chains - chest containers might not be directly hit
+        for node in touchedNodes {
+            var currentNode: SKNode? = node
+            var depth = 0
+            while let current = currentNode, depth < 10 {
+                if let name = current.name, name.hasPrefix("chest_entity_") {
+                    print("✅✅✅ GameScene_macOS: Found chest node in parent chain (depth \(depth)): \(name)")
+                    handleChestClick(node: current, worldPosition: location)
+                    return
+                }
+                if let userData = current.userData, userData["entityType"] as? String == "chest" {
+                    print("✅✅✅ GameScene_macOS: Found chest node in parent chain by userData (depth \(depth))")
+                    handleChestClick(node: current, worldPosition: location)
+                    return
+                }
+                currentNode = current.parent
+                depth += 1
+            }
+        }
+        
+        // Also search all children of entitiesBelow/chunk nodes that were hit
+        // Chest containers are children of entitiesBelow, but might not be directly hit-tested
+        // because they're just container nodes without frames
+        for node in touchedNodes {
+            if node.name == "entitiesBelow" || node.name?.hasPrefix("chunk_") == true {
+                print("🔍 GameScene_macOS: Searching children of \(node.name ?? "nil") for chests")
+                // Search all descendants for chest containers
+                node.enumerateChildNodes(withName: "//chest_entity_*") { [weak self] chestNode, _ in
+                    guard let self = self else { return }
+                    // Check if click is near this chest (within reasonable distance)
+                    let chestWorldPos = chestNode.position
+                    // Convert chest position to scene coordinates by traversing parent chain
+                    var worldPos = chestWorldPos
+                    var parent = chestNode.parent
+                    while parent != nil && parent !== self {
+                        worldPos = CGPoint(x: worldPos.x + parent!.position.x, y: worldPos.y + parent!.position.y)
+                        parent = parent!.parent
+                    }
+                    let distance = sqrt(pow(location.x - worldPos.x, 2) + pow(location.y - worldPos.y, 2))
+                    if distance < 100 {  // Within 100 pixels
+                        print("✅✅✅ GameScene_macOS: Found chest node via enumerateChildNodes: \(chestNode.name ?? "nil") at distance \(distance)")
+                        self.handleChestClick(node: chestNode, worldPosition: location)
+                    }
+                }
+            }
+        }
+        
+        // Also search all children of entitiesBelow/chunk nodes that were hit
+        // Chest containers are children of entitiesBelow, but might not be directly hit-tested
+        // because they're just container nodes without frames
+        for node in touchedNodes {
+            if node.name == "entitiesBelow" || node.name?.hasPrefix("chunk_") == true {
+                print("🔍 GameScene_macOS: Searching children of \(node.name ?? "nil") for chests")
+                // Search all descendants for chest containers using recursive search
+                node.enumerateChildNodes(withName: "//chest_entity_*") { [weak self] chestNode, _ in
+                    guard let self = self else { return }
+                    // Check if click is near this chest (within reasonable distance)
+                    let chestLocalPos = chestNode.position
+                    // Convert chest position to scene coordinates by traversing parent chain
+                    var worldPos = chestLocalPos
+                    var parent = chestNode.parent
+                    while parent != nil && parent !== self {
+                        worldPos = CGPoint(x: worldPos.x + parent!.position.x, y: worldPos.y + parent!.position.y)
+                        parent = parent!.parent
+                    }
+                    let distance = sqrt(pow(location.x - worldPos.x, 2) + pow(location.y - worldPos.y, 2))
+                    print("   🔍 Found chest '\(chestNode.name ?? "nil")' at world pos \(worldPos), distance: \(distance)")
+                    if distance < 100 {  // Within 100 pixels
+                        print("✅✅✅ GameScene_macOS: Found chest node via enumerateChildNodes: \(chestNode.name ?? "nil") at distance \(distance)")
+                        self.handleChestClick(node: chestNode, worldPosition: location)
+                    }
+                }
+            }
+        }
+        
+        // Always check for UI (inventory, settings, panels, etc.) even when paused.
+        // When paused, UI like inventory is open and must receive clicks.
+        // Only world interactions (movement, world objects) are skipped via isGamePaused elsewhere.
         
         // Check for UI buttons and panel buttons using nodes(at:) for reliable hit-testing
         let clickedNodes = nodes(at: location)
@@ -389,7 +521,7 @@ extension GameScene {
             // Check for dialogue button clicks
             handleDialogueInteraction(at: location)
         }
-    }
+    }*/
     
     override func mouseDragged(with event: NSEvent) {
         let location = event.location(in: self)
@@ -533,23 +665,6 @@ extension GameScene {
         
         // Find nodes at this location
         let clickedNodes = nodes(at: location)
-        
-        // Check if clicking on a question mark
-        for node in clickedNodes {
-            if let name = node.name, name.hasPrefix("questionMark_") {
-                // Extract object ID from question mark name
-                let objectIdString = String(name.dropFirst("questionMark_".count))
-                if let objectId = Int(objectIdString) {
-                    // Find the object sprite with this ID
-                    for (sprite, object) in objectSprites {
-                        if object.id == objectId {
-                            startDialogueWithObject(object)
-                            return
-                        }
-                    }
-                }
-            }
-        }
     }
     
     private func handleDialogueInteraction(at location: CGPoint) {

@@ -143,19 +143,30 @@ class MenuStyling {
         let minDimension = min(size.width, size.height)
         
         if isLandscape {
+            // Cap button width more aggressively for fullscreen - use smaller of: 40% width or 280px max
+            // This prevents buttons from being too large on wide fullscreen displays
+            let buttonWidth = min(280.0, size.width * 0.3)
+            // Use a more reasonable button height that scales slightly but caps at 60px
+            let buttonHeight = min(60.0, size.height * 0.08)
+            
             return (
                 panelWidth: size.width * 0.85,
                 panelHeight: size.height * 0.9,
-                buttonWidth: min(350.0, size.width * 0.4),
-                buttonHeight: 65.0,
+                buttonWidth: buttonWidth,
+                buttonHeight: max(50.0, buttonHeight), // Minimum 50px height
                 spacing: 15.0
             )
         } else {
+            // Cap button width more aggressively for fullscreen - use smaller of: 85% width or 300px max
+            let buttonWidth = min(300.0, size.width * 0.7)
+            // Use a more reasonable button height that scales slightly but caps at 65px
+            let buttonHeight = min(65.0, size.height * 0.08)
+            
             return (
                 panelWidth: size.width * 0.9,
                 panelHeight: size.height * 0.85,
-                buttonWidth: min(320.0, size.width * 0.85),
-                buttonHeight: 70.0,
+                buttonWidth: buttonWidth,
+                buttonHeight: max(55.0, buttonHeight), // Minimum 55px height
                 spacing: 20.0
             )
         }
@@ -509,7 +520,9 @@ class MenuStyling {
         position: CGPoint,
         name: String,
         isSelected: Bool = false,
-        isEmpty: Bool = false
+        isEmpty: Bool = false,
+        fontSize: CGFloat? = nil,
+        subtitleFontSize: CGFloat? = nil
     ) -> SKNode {
         let container = SKNode()
         container.position = position
@@ -547,36 +560,40 @@ class MenuStyling {
         
         // Main label
         let label = SKLabelNode(fontNamed: "Arial-BoldMT")
-        let fontSize: CGFloat = isEmpty ? 20 : 26
-        label.fontSize = fontSize
+        let mainFontSize = fontSize ?? (isEmpty ? 20 : 26)  // Use provided fontSize or default
+        label.fontSize = mainFontSize
         label.fontColor = isEmpty ? inkMuted : inkColor
         label.verticalAlignmentMode = .center
         label.horizontalAlignmentMode = .center
-        label.position = CGPoint(x: 0, y: subtitle != nil ? 12 : 0)
+        // Adjust vertical position based on subtitle presence and font size
+        let subtitleOffset = subtitle != nil ? (mainFontSize * 0.3) : 0
+        label.position = CGPoint(x: 0, y: subtitleOffset)
         label.zPosition = 3
         label.isUserInteractionEnabled = false
         
         // Truncate text if it's too wide for the container
         let maxWidth = size.width - 40
-        label.text = truncateText(text: text, fontName: "Arial-BoldMT", fontSize: fontSize, maxWidth: maxWidth)
+        label.text = truncateText(text: text, fontName: "Arial-BoldMT", fontSize: mainFontSize, maxWidth: maxWidth)
         
         card.addChild(label)
         
         // Subtitle
         if let subtitle = subtitle {
             let subtitleLabel = SKLabelNode(fontNamed: "Arial")
-            let subtitleFontSize: CGFloat = 16
-            subtitleLabel.fontSize = subtitleFontSize
+            let subFontSize = subtitleFontSize ?? 16  // Use provided subtitleFontSize or default
+            subtitleLabel.fontSize = subFontSize
             subtitleLabel.fontColor = isEmpty ? inkMuted : SKColor(red: 0.40, green: 0.32, blue: 0.26, alpha: 1.0)
             subtitleLabel.verticalAlignmentMode = .center
             subtitleLabel.horizontalAlignmentMode = .center
-            subtitleLabel.position = CGPoint(x: 0, y: -18)
+            // Position subtitle below main text based on font sizes
+            let subtitleY = -(mainFontSize * 0.4 + subFontSize * 0.3)
+            subtitleLabel.position = CGPoint(x: 0, y: subtitleY)
             subtitleLabel.zPosition = 3
             subtitleLabel.isUserInteractionEnabled = false
             
             // Truncate subtitle if it's too wide
             let maxSubtitleWidth = size.width - 40
-            subtitleLabel.text = truncateText(text: subtitle, fontName: "Arial", fontSize: subtitleFontSize, maxWidth: maxSubtitleWidth)
+            subtitleLabel.text = truncateText(text: subtitle, fontName: "Arial", fontSize: subFontSize, maxWidth: maxSubtitleWidth)
             
             card.addChild(subtitleLabel)
         }

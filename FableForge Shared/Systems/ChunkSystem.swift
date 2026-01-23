@@ -107,24 +107,50 @@ struct ChunkDelta: Codable {
 /// Complete chunk data ready for rendering
 class ChunkData {
     let chunkKey: ChunkKey
-    let tiles: [[Int]]  // 2D array of GIDs for ground tiles (chunkSize x chunkSize)
+    let tiles: [[String]]  // 2D array of tile specs for ground tiles (chunkSize x chunkSize) - can be GID specs or sprite atlas specs
+    let terrainMap: [[TerrainType]]?  // 2D array of terrain types (chunkSize x chunkSize) - optional for backwards compatibility
+    let decorations: [String: String]  // Dictionary mapping tile positions "x,y" to decoration tile specs - rendered on separate layer above ground
     let entitiesBelow: [ProceduralEntity]  // Trees/rocks/walls (render below player)
     let entitiesAbove: [ProceduralEntity]  // Tree canopies/roofs (render above player)
+    
+    // Chest contents storage - maps entity keys to their generated loot
+    var chestContents: [EntityKey: [Item]] = [:]
     
     // SpriteKit nodes (set after rendering)
     var chunkNode: SKNode?  // Parent node containing all chunk content
     var tilesNode: SKNode?  // Container for tile sprites
+    var decorationsNode: SKNode?  // Container for decoration sprites (rendered above ground tiles)
     var entitiesBelowNode: SKNode?  // Container for entities below player
     var entitiesAboveNode: SKNode?  // Container for entities above player
     
     // TMX instance bounds (if this chunk contains a TMX instance)
     var tmxInstanceBounds: CGRect?  // World-space bounds of TMX instance(s) in this chunk
     
-    init(chunkKey: ChunkKey, tiles: [[Int]], entitiesBelow: [ProceduralEntity], entitiesAbove: [ProceduralEntity]) {
+    init(chunkKey: ChunkKey, tiles: [[String]], terrainMap: [[TerrainType]]? = nil, decorations: [String: String] = [:], entitiesBelow: [ProceduralEntity], entitiesAbove: [ProceduralEntity]) {
         self.chunkKey = chunkKey
         self.tiles = tiles
+        self.terrainMap = terrainMap
+        self.decorations = decorations
         self.entitiesBelow = entitiesBelow
         self.entitiesAbove = entitiesAbove
+    }
+    
+    /// Get terrain type at a local tile position within this chunk
+    func getTerrainTypeAt(localX: Int, localY: Int, chunkSize: Int) -> TerrainType? {
+        guard let terrainMap = terrainMap,
+              localY >= 0 && localY < terrainMap.count,
+              localX >= 0 && localX < terrainMap[localY].count else {
+            return nil
+        }
+        return terrainMap[localY][localX]
+    }
+    
+    /// Get terrain type at a world tile position
+    func getTerrainTypeAtWorldTile(x: Int, y: Int, chunkSize: Int) -> TerrainType? {
+        let origin = chunkKey.worldTileOrigin(chunkSize: chunkSize)
+        let localX = x - origin.x
+        let localY = y - origin.y
+        return getTerrainTypeAt(localX: localX, localY: localY, chunkSize: chunkSize)
     }
     
     /// Check if a world tile position is within this chunk's bounds
@@ -176,7 +202,7 @@ class ChunkManager {
     /// Update chunks based on player position
     /// Unloads chunks that are too far away, loads chunks that are nearby
     func updateChunks(around playerPosition: CGPoint) {
-        guard let scene = scene else { return }
+        guard scene != nil else { return }
         
         let currentChunkKey = ChunkKey.fromWorldPosition(playerPosition, chunkSize: chunkSize, tileSize: tileSize)
         
@@ -216,7 +242,7 @@ class ChunkManager {
     
     /// Async version of updateChunks with completion callback
     func updateChunksAsync(around playerPosition: CGPoint, completion: @escaping () -> Void) {
-        guard let scene = scene else {
+        guard scene != nil else {
             completion()
             return
         }
@@ -330,7 +356,7 @@ class ChunkManager {
                     self.renderChunk(baseChunkData)
                     
                     // Debug: Log chunk loading progress
-                    let totalTiles = baseChunkData.tiles.flatMap { $0 }.filter { $0 > 0 }.count
+                    let totalTiles = baseChunkData.tiles.flatMap { $0 }.filter { !$0.isEmpty }.count
                     print("✅ Loaded chunk (\(chunkKey.x), \(chunkKey.y)): \(totalTiles) ground tiles, \(baseChunkData.entitiesBelow.count) entities below, \(baseChunkData.entitiesAbove.count) entities above")
                 }
                 
@@ -349,6 +375,7 @@ class ChunkManager {
         // Clear references
         chunkData.chunkNode = nil
         chunkData.tilesNode = nil
+        chunkData.decorationsNode = nil
         chunkData.entitiesBelowNode = nil
         chunkData.entitiesAboveNode = nil
         
@@ -370,9 +397,15 @@ class ChunkManager {
         // Create sub-nodes for organization
         let tilesNode = SKNode()
         tilesNode.name = "tiles"
-        tilesNode.zPosition = 0
+        tilesNode.zPosition = 0  // Ground tiles at bottom
         chunkNode.addChild(tilesNode)
         chunkData.tilesNode = tilesNode
+        
+        let decorationsNode = SKNode()
+        decorationsNode.name = "decorations"
+        decorationsNode.zPosition = 20  // Decorations above ground tiles, below entities
+        chunkNode.addChild(decorationsNode)
+        chunkData.decorationsNode = decorationsNode
         
         let entitiesBelowNode = SKNode()
         entitiesBelowNode.name = "entitiesBelow"
@@ -392,12 +425,88 @@ class ChunkManager {
         var tilesFailed = 0
         var gidCounts: [Int: Int] = [:]  // Track which GIDs are being used
         
-        for (y, row) in chunkData.tiles.enumerated() {
-            for (x, gid) in row.enumerated() {
-                guard gid > 0 else { continue }  // Skip empty tiles
+        // Helper function to parse GID spec
+        func parseGIDSpec(_ spec: String) -> Int? {
+            // Check if it's "tileset-localIndex" format
+            if let dashIndex = spec.firstIndex(of: "-") {
+                let tilesetName = String(spec[..<dashIndex])
+                guard let localIndex = Int(String(spec[spec.index(after: dashIndex)...])) else {
+                    return nil
+                }
                 
-                // Track GID usage
-                gidCounts[gid, default: 0] += 1
+                // Look up tileset by name
+                let tilesets = TileManager.shared.getTiledTilesets()
+                guard let tileset = tilesets.first(where: { $0.name == tilesetName }) else {
+                    return nil  // Not a tileset, might be sprite atlas
+                }
+                
+                // Calculate GID: firstGID + localIndex
+                return tileset.firstGID + localIndex
+            }
+            
+            // Otherwise, treat as direct GID number
+            return Int(spec)
+        }
+        
+        for (y, row) in chunkData.tiles.enumerated() {
+            for (x, tileSpec) in row.enumerated() {
+                guard !tileSpec.isEmpty else { continue }  // Skip empty tiles
+                
+                // Get actual tile spec (handle fallback for "generate", "none", and "-r" replacement suffix)
+                var actualTileSpec = tileSpec
+                
+                if tileSpec == "generate" || tileSpec == "none" || tileSpec.hasSuffix("-r") {
+                    // For "-r" suffix, try to determine terrain type from the tile spec before "-r"
+                    // Otherwise fallback to first tile from ground tile config
+                    var foundFallback = false
+                    
+                    if tileSpec.hasSuffix("-r") {
+                        // Remove "-r" suffix to get the original tile spec
+                        let baseSpec = String(tileSpec.dropLast(2))
+                        
+                        // Try to parse as sprite atlas to determine terrain type
+                        // Check if it matches any of the ground tiles
+                        let groundTiles = PrefabFactory.shared.getGroundTileGIDs()
+                        
+                        // Find which terrain type this tile belongs to
+                        if groundTiles.grass.contains(baseSpec), !groundTiles.grass.isEmpty {
+                            actualTileSpec = groundTiles.grass[0]
+                            foundFallback = true
+                        } else if groundTiles.water.contains(baseSpec), !groundTiles.water.isEmpty {
+                            actualTileSpec = groundTiles.water[0]
+                            foundFallback = true
+                        } else if groundTiles.dirt.contains(baseSpec), !groundTiles.dirt.isEmpty {
+                            actualTileSpec = groundTiles.dirt[0]
+                            foundFallback = true
+                        } else if groundTiles.stone.contains(baseSpec), !groundTiles.stone.isEmpty {
+                            actualTileSpec = groundTiles.stone[0]
+                            foundFallback = true
+                        }
+                    }
+                    
+                    // General fallback: use first tile from ground tile config
+                    // Try each terrain type in order: grass, water, dirt, stone
+                    if !foundFallback {
+                        let groundTiles = PrefabFactory.shared.getGroundTileGIDs()
+                        
+                        // Try grass first (most common)
+                        if !groundTiles.grass.isEmpty {
+                            actualTileSpec = groundTiles.grass[0]
+                        } else if !groundTiles.water.isEmpty {
+                            actualTileSpec = groundTiles.water[0]
+                        } else if !groundTiles.dirt.isEmpty {
+                            actualTileSpec = groundTiles.dirt[0]
+                        } else if !groundTiles.stone.isEmpty {
+                            actualTileSpec = groundTiles.stone[0]
+                        } else {
+                            // No ground tiles available, skip this tile
+                            continue
+                        }
+                    }
+                }
+                
+                // Track tile spec usage
+                gidCounts[0, default: 0] += 1  // Keep for compatibility, but don't track actual GIDs
                 
                 // Calculate world position for seamless tiling
                 // Each tile occupies exactly tileSize x tileSize space
@@ -411,9 +520,81 @@ class ChunkManager {
                     continue
                 }
                 
-                if let sprite = TileManager.shared.createSprite(for: gid, size: CGSize(width: tileSize, height: tileSize)) {
+                // Try to create sprite from tile spec (handles both GID specs and sprite atlas specs)
+                var sprite: SKSpriteNode? = nil
+                var resolvedSpec = actualTileSpec
+                
+                // Check if spec is a class name format - resolve it first
+                // Formats: "className" or "tilesetName-className"
+                let isClassSpec: Bool
+                if let dashIndex = actualTileSpec.firstIndex(of: "-") {
+                    let afterDash = String(actualTileSpec[actualTileSpec.index(after: dashIndex)...])
+                    // If after dash is not a number, it's a class name (e.g., "terrain1-grass_full")
+                    isClassSpec = Int(afterDash) == nil
+                } else {
+                    // No dash - check if it's a number (direct GID) or class name
+                    isClassSpec = Int(actualTileSpec) == nil && !actualTileSpec.isEmpty
+                }
+                
+                if isClassSpec {
+                    // Try to resolve as class name (searches tilesets)
+                    let classSpecs = TileManager.shared.getTileSpecsByClassName(actualTileSpec)
+                    if !classSpecs.isEmpty {
+                        // Use first matching tile (maintains some order)
+                        resolvedSpec = classSpecs[0]
+                    } else {
+                        print("⚠️ ChunkSystem: Class name '\(actualTileSpec)' not found in any tileset")
+                    }
+                }
+                
+                // First, try as sprite atlas spec (e.g., "grasslands_atlas-3")
+                if let dashIndex = resolvedSpec.firstIndex(of: "-") {
+                    let atlasName = String(resolvedSpec[..<dashIndex])
+                    if let frameNumber = Int(String(resolvedSpec[resolvedSpec.index(after: dashIndex)...])) {
+                        // Try sprite atlas first
+                        sprite = TileManager.shared.createSpriteFromAtlas(atlasName: atlasName, frameNumber: frameNumber, size: CGSize(width: tileSize, height: tileSize))
+                    }
+                }
+                
+                // If not a sprite atlas, try as GID spec or direct GID number
+                if sprite == nil {
+                    // Try parsing as GID spec (e.g., "exterior-257")
+                    if let gid = parseGIDSpec(resolvedSpec) {
+                        sprite = TileManager.shared.createSprite(for: gid, size: CGSize(width: tileSize, height: tileSize))
+                    } else if let directGID = Int(resolvedSpec) {
+                        // Try as direct GID number
+                        sprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: tileSize, height: tileSize))
+                    }
+                }
+                
+                // Debug logging for first few tiles or failed tiles
+                if (x < 3 && y < 3) || sprite == nil {
+                    print("🔍 ChunkSystem: Rendering chunk tile (\(x), \(y)) -> world tile (\(origin.x + x), \(origin.y + y))")
+                    print("   Original tileSpec: '\(tileSpec)', Actual tileSpec: '\(actualTileSpec)'")
+                    if sprite == nil {
+                        print("   ⚠️ Failed to create sprite for tile spec '\(actualTileSpec)'")
+                    }
+                }
+                
+                // If sprite creation failed, show error indicator instead of skipping
+                if sprite == nil {
+                    // Create a red error indicator sprite to show where tiles failed to load
+                    let errorSprite = SKSpriteNode(color: .red, size: CGSize(width: tileSize, height: tileSize))
+                    errorSprite.alpha = 0.5  // Semi-transparent so it's visible but not too distracting
+                    errorSprite.name = "error_tile_\(actualTileSpec)"
+                    sprite = errorSprite
+                    tilesFailed += 1
+                    print("   ❌ Created error indicator for failed tile '\(actualTileSpec)' at chunk tile (\(x), \(y))")
+                }
+                
+                if let sprite = sprite {
                     // CRITICAL: Ensure sprite is exactly tileSize for seamless tiling
                     sprite.size = CGSize(width: tileSize, height: tileSize)
+                    
+                    // Debug logging
+                    if (x < 3 && y < 3) {
+                        print("   ✅ Successfully created sprite with texture: \(sprite.texture != nil ? "present" : "missing")")
+                    }
                     
                     // CRITICAL FIX: Snap positions to pixel boundaries to prevent sub-pixel rendering gaps
                     // Round to nearest 0.5 pixel (half-pixel precision) to avoid floating-point precision errors
@@ -432,7 +613,7 @@ class ChunkManager {
                     tilesFailed += 1
                     // Only log first few failures to avoid spam
                     if tilesFailed <= 5 {
-                        print("⚠️ ChunkSystem: Failed to create sprite for GID \(gid) at chunk tile (\(x), \(y)), world tile (\(origin.x + x), \(origin.y + y))")
+                        print("⚠️ ChunkSystem: Failed to create sprite for tile spec '\(tileSpec)' at chunk tile (\(x), \(y)), world tile (\(origin.x + x), \(origin.y + y))")
                     }
                 }
             }
@@ -445,6 +626,66 @@ class ChunkManager {
                 let topGIDs = gidCounts.sorted { $0.value > $1.value }.prefix(5)
                 print("   Top GIDs used: \(topGIDs.map { "GID \($0.key): \($0.value)" }.joined(separator: ", "))")
             }
+        }
+        
+        // Render decorations (on separate layer above ground tiles)
+        var decorationsRendered = 0
+        for (positionKey, decorationTileSpec) in chunkData.decorations {
+            // Parse position key "x,y"
+            let components = positionKey.split(separator: ",")
+            guard components.count == 2,
+                  let worldX = Int(components[0]),
+                  let worldY = Int(components[1]) else {
+                continue
+            }
+            
+            // Convert world tile coordinates to local chunk coordinates
+            let localX = worldX - origin.x
+            let localY = worldY - origin.y
+            
+            // Skip if outside chunk bounds
+            guard localX >= 0 && localX < chunkSize && localY >= 0 && localY < chunkSize else {
+                continue
+            }
+            
+            // Calculate world position
+            let worldPosX = CGFloat(worldX) * tileSize
+            let worldPosY = CGFloat(worldY) * tileSize
+            
+            // Create sprite for decoration (same logic as ground tiles)
+            var decorationSprite: SKSpriteNode? = nil
+            
+            // Try as sprite atlas spec first
+            if let dashIndex = decorationTileSpec.firstIndex(of: "-") {
+                let atlasName = String(decorationTileSpec[..<dashIndex])
+                if let frameNumber = Int(String(decorationTileSpec[decorationTileSpec.index(after: dashIndex)...])) {
+                    decorationSprite = TileManager.shared.createSpriteFromAtlas(atlasName: atlasName, frameNumber: frameNumber, size: CGSize(width: tileSize, height: tileSize))
+                }
+            }
+            
+            // If not a sprite atlas, try as GID spec or direct GID number
+            if decorationSprite == nil {
+                if let gid = parseGIDSpec(decorationTileSpec) {
+                    decorationSprite = TileManager.shared.createSprite(for: gid, size: CGSize(width: tileSize, height: tileSize))
+                } else if let directGID = Int(decorationTileSpec) {
+                    decorationSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: tileSize, height: tileSize))
+                }
+            }
+            
+            if let sprite = decorationSprite {
+                sprite.size = CGSize(width: tileSize, height: tileSize)
+                let snappedX = round(worldPosX * 2.0) / 2.0
+                let snappedY = round(worldPosY * 2.0) / 2.0
+                sprite.position = CGPoint(x: snappedX, y: snappedY)
+                sprite.anchorPoint = CGPoint(x: 0, y: 0)
+                sprite.zPosition = 0
+                decorationsNode.addChild(sprite)
+                decorationsRendered += 1
+            }
+        }
+        
+        if decorationsRendered > 0 {
+            print("   ✅ Rendered \(decorationsRendered) decorations")
         }
         
         // Render entities below player
@@ -465,11 +706,6 @@ class ChunkManager {
             // Get sprites separated by layer
             let (lowSprites, highSprites) = PrefabFactory.shared.createEntitySpritesByLayer(entity, tileSize: tileSize)
             
-            // Debug: Log layer assignment for trees
-            if entity.type == .tree {
-                print("🌳 Tree entity '\(entity.prefabId)': \(lowSprites.count) low sprites, \(highSprites.count) high sprites")
-            }
-            
             // Create container node for physics body (only needed if entity has collision)
             var physicsContainer: SKNode? = nil
             
@@ -483,7 +719,18 @@ class ChunkManager {
                 // Create container for low parts (for physics body attachment)
                 let lowEntityContainer = SKNode()
                 lowEntityContainer.position = entity.position
-                lowEntityContainer.name = "entity_\(entity.prefabId)_low"
+                // Add entity type and key info for chest detection
+                if entity.type == .chest {
+                    lowEntityContainer.name = "chest_entity_\(entity.prefabId)"
+                    lowEntityContainer.userData = NSMutableDictionary()
+                    lowEntityContainer.userData?["entityType"] = "chest"
+                    lowEntityContainer.userData?["prefabId"] = entity.prefabId
+                    lowEntityContainer.userData?["position"] = NSValue(point: entity.position)
+                    lowEntityContainer.isUserInteractionEnabled = true  // Make chest clickable
+                    print("📦 ChunkSystem: Created chest node '\(lowEntityContainer.name ?? "nil")' at \(entity.position)")
+                } else {
+                    lowEntityContainer.name = "entity_\(entity.prefabId)_low"
+                }
                 lowEntityContainer.zPosition = 0  // Inherit from parent (entitiesBelowNode has zPosition 40)
                 
                 // Add sprites to container, adjusting positions to be relative to container
@@ -498,6 +745,10 @@ class ChunkManager {
                         y: sprite.position.y - entity.position.y
                     )
                     sprite.zPosition = 0  // Ensure sprites inherit container zPosition
+                    // Make sprites non-interactive so clicks go to container (for chests)
+                    if entity.type == .chest {
+                        sprite.isUserInteractionEnabled = false
+                    }
                     lowEntityContainer.addChild(sprite)
                 }
                 
@@ -519,6 +770,7 @@ class ChunkManager {
                 // Add sprites to container, adjusting positions to be relative to container
                 for sprite in highSprites {
                     // Convert from world coordinates to container-relative coordinates
+                    let originalPos = sprite.position
                     sprite.position = CGPoint(
                         x: sprite.position.x - entity.position.x,
                         y: sprite.position.y - entity.position.y
@@ -539,26 +791,6 @@ class ChunkManager {
             // Add physics body to container (only once per entity)
             // IMPORTANT: For trees, physics should be on the LOW container (trunk), not high container (canopy)
             if let container = physicsContainer {
-                // CRITICAL: For trees, verify we're using the LOW container (trunk), not high container (canopy)
-                if entity.type == .tree {
-                    let expectedLowContainerName = "entity_\(entity.prefabId)_low"
-                    if container.name != expectedLowContainerName {
-                        print("⚠️ ERROR: Tree physics body is being added to WRONG container!")
-                        print("   Expected: '\(expectedLowContainerName)' (trunk)")
-                        print("   Actual: '\(container.name ?? "unknown")'")
-                        print("   This is a BUG - physics and debug boxes will be in wrong location!")
-                        // Try to find the correct container
-                        if let correctContainer = lowContainer.children.first(where: { ($0.name ?? "") == expectedLowContainerName }) {
-                            print("   Found correct container: '\(correctContainer.name ?? "unknown")'")
-                            // Use the correct container instead
-                            // NOTE: We can't change container here because it's used later
-                            // But we can log it for debugging
-                        }
-                    } else {
-                        print("   ✅ Using correct trunk container: '\(container.name ?? "unknown")'")
-                    }
-                }
-                
                 if let physicsBody = PrefabFactory.shared.createPhysicsBody(entity, tileSize: tileSize) {
                     physicsBody.isDynamic = false
                     physicsBody.categoryBitMask = 0x1
@@ -684,6 +916,19 @@ class ChunkManager {
         return loadedChunks[chunkKey] != nil
     }
     
+    /// Get terrain type at a world position
+    func getTerrainTypeAt(position: CGPoint) -> TerrainType? {
+        let tileX = Int(position.x / tileSize)
+        let tileY = Int(position.y / tileSize)
+        let chunkKey = ChunkKey.fromWorldTile(x: tileX, y: tileY, chunkSize: chunkSize)
+        
+        guard let chunkData = loadedChunks[chunkKey] else {
+            return nil  // Chunk not loaded
+        }
+        
+        return chunkData.getTerrainTypeAtWorldTile(x: tileX, y: tileY, chunkSize: chunkSize)
+    }
+    
     /// Pre-load a chunk asynchronously (for pre-loading ahead of player movement)
     func loadChunkAsync(_ chunkKey: ChunkKey, completion: (() -> Void)? = nil) {
         // Check if already loaded
@@ -707,6 +952,23 @@ class ChunkManager {
         for key in keysToUnload {
             unloadChunk(key)
         }
+    }
+    
+    /// Reload all currently loaded chunks (useful when atlas changes)
+    /// This will regenerate and re-render all loaded chunks
+    func reloadAllChunks() {
+        print("🔄 Reloading all loaded chunks...")
+        let keysToReload = Array(loadedChunks.keys)
+        print("   📊 Reloading \(keysToReload.count) chunks")
+        
+        for chunkKey in keysToReload {
+            // Unload the chunk first
+            unloadChunk(chunkKey)
+            // Reload it asynchronously (will regenerate with updated atlas)
+            loadChunkAsync(chunkKey)
+        }
+        
+        print("✅ Finished reloading all chunks")
     }
     
     /// Place an entity at a world position (player building)

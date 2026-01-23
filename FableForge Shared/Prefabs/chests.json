@@ -52,6 +52,18 @@
           "maxQuantity": 3
         }
       ],
+      "fixedItems": [
+        {
+          "itemId": "health_potion",
+          "quantity": 1
+        }
+      ],
+      "randomItems": {
+        "count": "1-2",
+        "categories": ["consumable"],
+        "minValue": 10,
+        "maxValue": 50
+      },
       "lockLevel": null,
       "requiredKey": null
     },
@@ -114,6 +126,23 @@
           "maxQuantity": 10
         }
       ],
+      "fixedItems": [
+        {
+          "itemId": "health_potion",
+          "quantity": 3
+        },
+        {
+          "itemId": "iron_ore",
+          "quantity": 5
+        }
+      ],
+      "randomItems": {
+        "count": "2-4",
+        "types": ["weapon", "armor"],
+        "minValue": 40,
+        "maxValue": 200,
+        "excludeItemIds": []
+      },
       "lockLevel": 1,
       "requiredKey": null
     }

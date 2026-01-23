@@ -75,24 +75,32 @@ struct GroundTileGIDs {
     // Example: If exterior tileset shows index 0 → use "exterior-0"
     //          If exterior tileset shows index 78 → use "exterior-78"
     
-    // Water tile GIDs - use "tileset-localIndex" format or direct GID
+    // Legacy flat arrays (for backward compatibility)
     let water: [String]
-    
-    // Grass tile GIDs - multiple for variety
     let grass: [String]
-    
-    // Dirt tile GIDs
     let dirt: [String]
-    
-    // Stone tile GIDs
     let stone: [String]
     
+    // Variant-based configuration (optional - falls back to flat arrays if not provided)
+    let waterVariants: TileVariantConfig?
+    let grassVariants: TileVariantConfig?
+    let dirtVariants: TileVariantConfig?
+    let stoneVariants: TileVariantConfig?
+    
     // Helper initializer to create from world config
-    init(water: [String], grass: [String], dirt: [String], stone: [String]) {
+    init(water: [String] = [], grass: [String] = [], dirt: [String] = [], stone: [String] = [],
+         waterVariants: TileVariantConfig? = nil,
+         grassVariants: TileVariantConfig? = nil,
+         dirtVariants: TileVariantConfig? = nil,
+         stoneVariants: TileVariantConfig? = nil) {
         self.water = water
         self.grass = grass
         self.dirt = dirt
         self.stone = stone
+        self.waterVariants = waterVariants
+        self.grassVariants = grassVariants
+        self.dirtVariants = dirtVariants
+        self.stoneVariants = stoneVariants
     }
     
     // Default initializer (uses default values)
@@ -101,33 +109,70 @@ struct GroundTileGIDs {
         self.grass = ["exterior-257"]
         self.dirt = ["exterior-357"]
         self.stone = ["exterior-852", "exterior-853", "exterior-839"]
+        self.waterVariants = nil
+        self.grassVariants = nil
+        self.dirtVariants = nil
+        self.stoneVariants = nil
+    }
+    
+    // Helper to get variant config for a terrain type
+    func getVariantConfig(for terrainType: TerrainType) -> TileVariantConfig? {
+        switch terrainType {
+        case .water: return waterVariants
+        case .grass: return grassVariants
+        case .dirt: return dirtVariants
+        case .stone: return stoneVariants
+        }
     }
     
     /// Convert a tile specifier to actual GID
-    /// Supports: "tileset-localIndex" format or direct GID number (as string or int)
+    /// Supports: "tileset-localIndex" format, "atlasName-frameNumber" format, or direct GID number (as string or int)
+    /// For sprite atlases, this returns nil (handled separately in chunk rendering)
     private func parseTileSpec(_ spec: String) -> Int? {
-        // Check if it's "tileset-localIndex" format
+        // Check if it's "tileset-localIndex" or "atlasName-frameNumber" format
         if let dashIndex = spec.firstIndex(of: "-") {
-            let tilesetName = String(spec[..<dashIndex])
-            guard let localIndex = Int(String(spec[spec.index(after: dashIndex)...])) else {
+            let name = String(spec[..<dashIndex])
+            guard let index = Int(String(spec[spec.index(after: dashIndex)...])) else {
                 print("⚠️ PrefabFactory: Invalid local index in '\(spec)'")
                 return nil
             }
             
-            // Look up tileset by name
+            // First, try to find a Tiled tileset by name
             let tilesets = TileManager.shared.getTiledTilesets()
-            guard let tileset = tilesets.first(where: { $0.name == tilesetName }) else {
-                print("⚠️ PrefabFactory: Tileset '\(tilesetName)' not found. Available: \(tilesets.map { $0.name }.joined(separator: ", "))")
-                return nil
+            if let tileset = tilesets.first(where: { $0.name == name }) {
+                // It's a Tiled tileset: calculate GID
+                let gid = tileset.firstGID + index
+                return gid
             }
             
-            // Calculate GID: firstGID + localIndex
-            let gid = tileset.firstGID + localIndex
-            return gid
+            // If not a tileset, assume it's a sprite atlas (name might have "_atlas" suffix or not)
+            // For sprite atlas specs like "grasslands-3" or "grasslands_atlas-3", we can't convert to GID
+            // Return nil to indicate it's a sprite atlas spec (handled separately in chunk rendering)
+            // The system will use the original spec string for sprite atlas tiles
+            return nil
         }
         
         // Otherwise, treat as direct GID number
         return Int(spec)
+    }
+    
+    /// Store tile specs for sprite atlases (since they can't be converted to GIDs)
+    /// Maps original spec string to itself for sprite atlas handling
+    private var spriteAtlasSpecs: Set<String> = []
+    
+    /// Check if a spec is a sprite atlas spec (not a GID)
+    func isSpriteAtlasSpec(_ spec: String) -> Bool {
+        if let dashIndex = spec.firstIndex(of: "-") {
+            let name = String(spec[..<dashIndex])
+            // Check if it's NOT a Tiled tileset (then it might be a sprite atlas)
+            let tilesets = TileManager.shared.getTiledTilesets()
+            if tilesets.contains(where: { $0.name == name }) {
+                return false  // It's a tileset
+            }
+            // If name doesn't match a tileset, assume it's a sprite atlas
+            return !name.isEmpty && Int(name) == nil  // Not a direct GID number
+        }
+        return false  // Direct GID number
     }
     
     /// Get a random GID for a terrain type using the provided RNG
@@ -157,6 +202,170 @@ struct GroundTileGIDs {
         // Fallback if parsing fails
         print("⚠️ PrefabFactory: Failed to parse tile spec '\(selectedSpec)' for \(terrainType), using fallback GID 757")
         return 757
+    }
+    
+    /// Resolve a tile spec that might be a class name to an actual tile spec
+    /// Supports: "className", "tilesetName-className", or "tilesetName-localID" formats
+    /// If the spec is a class name, looks it up in TileManager and prefers consecutive tiles
+    /// lastUsedTileID: Optional context for consecutive tile selection (local tile ID within tileset)
+    /// Returns the resolved spec or the original spec if it's already a valid spec
+    private func resolveTileSpec(_ spec: String, lastUsedTileID: Int? = nil, using rng: inout SeededRandomNumberGenerator) -> String? {
+        // Check if it's a class name format: "className" or "tilesetName-className"
+        // A class name spec is one that:
+        // 1. Contains a dash but the part after dash is not a number (e.g., "terrain1-grass_full")
+        // 2. OR has no dash and is not a number (e.g., "grass_full")
+        
+        if let dashIndex = spec.firstIndex(of: "-") {
+            let tilesetName = String(spec[..<dashIndex])
+            let afterDash = String(spec[spec.index(after: dashIndex)...])
+            
+            // If after dash is a number, it's already a valid spec (e.g., "terrain1-445")
+            if Int(afterDash) != nil {
+                return spec
+            }
+            
+            // Otherwise, it's a class name (e.g., "terrain1-grass_full")
+            // Extract last used tile ID from context if available
+            if let resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(spec, lastUsedTileID: lastUsedTileID, using: &rng) {
+                return resolvedSpec
+            }
+            return nil
+        } else {
+            // No dash - check if it's a number (direct GID) or class name
+            if Int(spec) != nil {
+                // It's a direct GID number
+                return spec
+            }
+            
+            // It's a class name without tileset prefix (e.g., "grass_full")
+            // Try to resolve as class name (searches all tilesets)
+            if let resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(spec, lastUsedTileID: lastUsedTileID, using: &rng) {
+                return resolvedSpec
+            }
+            return nil
+        }
+    }
+    
+    /// Extract tileset name and local tile ID from a tile spec
+    /// Returns (tilesetName, localTileID) or nil if parsing fails
+    private func parseTileSpecComponents(_ spec: String) -> (tilesetName: String, localTileID: Int)? {
+        guard let dashIndex = spec.firstIndex(of: "-") else { return nil }
+        let tilesetName = String(spec[..<dashIndex])
+        guard let localTileID = Int(String(spec[spec.index(after: dashIndex)...])) else { return nil }
+        return (tilesetName, localTileID)
+    }
+    
+    /// Get a tile spec string for a specific terrain type and variant
+    /// Returns the tile spec string (e.g., "grasslands_atlas-3" or "exterior-257")
+    /// Supports class names (e.g., "grass_full" or "terrain1-grass_full") which are resolved to actual tile specs
+    /// lastUsedTileSpec: Optional previous tile spec to maintain visual continuity (e.g., "terrain1-445")
+    func getTileSpec(for terrainType: TerrainType, variant: TileVariant, lastUsedTileSpec: String? = nil, using rng: inout SeededRandomNumberGenerator) -> String? {
+        // Extract last used tile ID from context if available
+        var lastUsedTileID: Int? = nil
+        if let lastSpec = lastUsedTileSpec, let components = parseTileSpecComponents(lastSpec) {
+            // Check if last used tile is from the same tileset we might use
+            let tilesets = TileManager.shared.getTiledTilesets()
+            if let tileset = tilesets.first(where: { $0.name == components.tilesetName }) {
+                lastUsedTileID = components.localTileID
+            }
+        }
+        
+        // For .base variant, prefer the flat array first, then variant-specific base array
+        // For all other variants, prefer variant-specific arrays, then fall back to flat array
+        
+        if variant == .base {
+            // For base tiles, use flat array first (more common case)
+            let specs: [String]
+            switch terrainType {
+            case .water: specs = water
+            case .grass: specs = grass
+            case .dirt: specs = dirt
+            case .stone: specs = stone
+            }
+            
+            if !specs.isEmpty {
+                let index = Int.random(in: 0..<specs.count, using: &rng)
+                let selectedSpec = specs[index]
+                // Resolve class names if needed, maintaining continuity
+                return resolveTileSpec(selectedSpec, lastUsedTileID: lastUsedTileID, using: &rng)
+            }
+            
+            // Fall back to variant-specific base array if flat array is empty
+            if let variantConfig = getVariantConfig(for: terrainType),
+               let baseSpecs = variantConfig.base, !baseSpecs.isEmpty {
+                let index = Int.random(in: 0..<baseSpecs.count, using: &rng)
+                let selectedSpec = baseSpecs[index]
+                // Resolve class names if needed, maintaining continuity
+                return resolveTileSpec(selectedSpec, lastUsedTileID: lastUsedTileID, using: &rng)
+            }
+            
+            return nil
+        }
+        
+        // For non-base variants, try variant-specific spec first
+        if let variantConfig = getVariantConfig(for: terrainType) {
+            let specs: [String]?
+            
+            // Get specs for the specific variant
+            switch variant {
+            case .base: specs = nil  // Already handled above
+            case .edgeN: specs = variantConfig.edgeN
+            case .edgeS: specs = variantConfig.edgeS
+            case .edgeE: specs = variantConfig.edgeE
+            case .edgeW: specs = variantConfig.edgeW
+            case .cornerNE: specs = variantConfig.cornerNE
+            case .cornerNW: specs = variantConfig.cornerNW
+            case .cornerSE: specs = variantConfig.cornerSE
+            case .cornerSW: specs = variantConfig.cornerSW
+            case .innerCornerNE: specs = variantConfig.innerCornerNE
+            case .innerCornerNW: specs = variantConfig.innerCornerNW
+            case .innerCornerSE: specs = variantConfig.innerCornerSE
+            case .innerCornerSW: specs = variantConfig.innerCornerSW
+            case .transitionN: specs = variantConfig.transitionN
+            case .transitionS: specs = variantConfig.transitionS
+            case .transitionE: specs = variantConfig.transitionE
+            case .transitionW: specs = variantConfig.transitionW
+            case .transitionNE: specs = variantConfig.transitionNE
+            case .transitionNW: specs = variantConfig.transitionNW
+            case .transitionSE: specs = variantConfig.transitionSE
+            case .transitionSW: specs = variantConfig.transitionSW
+            }
+            
+            // If we have variant-specific specs, use them
+            if let variantSpecs = specs, !variantSpecs.isEmpty {
+                let index = Int.random(in: 0..<variantSpecs.count, using: &rng)
+                let selectedSpec = variantSpecs[index]
+                // Resolve class names if needed, maintaining continuity
+                return resolveTileSpec(selectedSpec, lastUsedTileID: lastUsedTileID, using: &rng)
+            }
+        }
+        
+        // Fall back to base terrain type (flat array) for non-base variants
+        let specs: [String]
+        switch terrainType {
+        case .water: specs = water
+        case .grass: specs = grass
+        case .dirt: specs = dirt
+        case .stone: specs = stone
+        }
+        
+        guard !specs.isEmpty else { return nil }
+        let index = Int.random(in: 0..<specs.count, using: &rng)
+        let selectedSpec = specs[index]
+        // Resolve class names if needed, maintaining continuity
+        return resolveTileSpec(selectedSpec, lastUsedTileID: lastUsedTileID, using: &rng)
+    }
+    
+    /// Get a GID for a specific terrain type and variant
+    /// Note: For sprite atlas specs, returns nil (use getTileSpec() instead)
+    func getGID(for terrainType: TerrainType, variant: TileVariant, using rng: inout SeededRandomNumberGenerator) -> Int? {
+        // Get tile spec first
+        guard let spec = getTileSpec(for: terrainType, variant: variant, using: &rng) else {
+            return nil
+        }
+        
+        // Try to parse as GID
+        return parseTileSpec(spec)
     }
 }
 
@@ -382,6 +591,22 @@ struct ChestLootItem: Codable {
     let maxQuantity: Int  // Maximum quantity if item drops
 }
 
+/// Fixed item that always appears in a chest
+struct ChestFixedItem: Codable {
+    let itemId: String  // Item prefab ID (from items.json)
+    let quantity: Int  // Exact quantity of this item
+}
+
+/// Rules for random item generation
+struct ChestRandomItems: Codable {
+    let count: String  // Number of random items to generate, can be "3" or "1-3" (range)
+    let categories: [String]?  // Optional: item categories to filter by (e.g., ["consumable", "material"])
+    let types: [String]?  // Optional: specific item types to filter by (e.g., ["weapon", "armor"])
+    let minValue: Double?  // Optional: minimum item value
+    let maxValue: Double?  // Optional: maximum item value
+    let excludeItemIds: [String]?  // Optional: item IDs to exclude from random selection
+}
+
 /// Chest prefab definition (loaded from chests.json)
 /// Chests are map-only entities that contain loot tables and cannot be added to inventory
 struct ChestPrefab: Codable {
@@ -395,7 +620,11 @@ struct ChestPrefab: Codable {
     let collision: CollisionSpec  // Collision specification
     let zPosition: CGFloat  // Base z-position
     
-    let lootTable: [ChestLootItem]  // Items that can drop from this chest with drop rates
+    // Loot configuration - can use any combination of these
+    let lootTable: [ChestLootItem]?  // Optional: Items that can drop with drop rates (legacy system)
+    let fixedItems: [ChestFixedItem]?  // Optional: Items that always appear in this chest
+    let randomItems: ChestRandomItems?  // Optional: Rules for generating random items
+    
     let lockLevel: Int?  // Optional lock level (0 = unlocked, 1+ = requires lockpicking skill)
     let requiredKey: String?  // Optional key item ID required to open
 }
@@ -638,6 +867,177 @@ class PrefabFactory {
         return chestPrefabs
     }
     
+    /// Generate loot from a chest's configuration
+    /// Returns an array of Item instances based on fixed items, random items, and loot table
+    func generateChestLoot(for chest: ChestPrefab) -> [Item] {
+        var loot: [Item] = []
+        
+        // 1. Add fixed items (always appear)
+        if let fixedItems = chest.fixedItems {
+            for fixedItem in fixedItems {
+                if let itemPrefab = getItemPrefab(fixedItem.itemId) {
+                    let item = createItemFromPrefab(itemPrefab, quantity: fixedItem.quantity)
+                    loot.append(item)
+                } else {
+                    print("⚠️ PrefabFactory: Fixed item '\(fixedItem.itemId)' not found in chest '\(chest.id)'")
+                }
+            }
+        }
+        
+        // 2. Generate random items based on rules
+        if let randomRules = chest.randomItems {
+            let randomItems = generateRandomItems(rules: randomRules)
+            loot.append(contentsOf: randomItems)
+        }
+        
+        // 3. Legacy loot table system (drop rate based)
+        if let lootTable = chest.lootTable {
+            for lootEntry in lootTable {
+                let roll = Double.random(in: 0...1)
+                if roll <= lootEntry.dropRate {
+                    if let itemPrefab = getItemPrefab(lootEntry.itemId) {
+                        let quantity = Int.random(in: lootEntry.minQuantity...lootEntry.maxQuantity)
+                        let item = createItemFromPrefab(itemPrefab, quantity: quantity)
+                        loot.append(item)
+                    } else {
+                        print("⚠️ PrefabFactory: Loot table item '\(lootEntry.itemId)' not found in chest '\(chest.id)'")
+                    }
+                }
+            }
+        }
+        
+        return loot
+    }
+    
+    /// Generate random items based on rules
+    private func generateRandomItems(rules: ChestRandomItems) -> [Item] {
+        var randomLoot: [Item] = []
+        
+        // Parse count (can be "3" or "1-3")
+        let count: Int
+        if let dashIndex = rules.count.firstIndex(of: "-") {
+            let minStr = String(rules.count[..<dashIndex])
+            let maxStr = String(rules.count[rules.count.index(after: dashIndex)...])
+            if let min = Int(minStr), let max = Int(maxStr) {
+                count = Int.random(in: min...max)
+            } else {
+                count = 1
+            }
+        } else {
+            count = Int(rules.count) ?? 1
+        }
+        
+        // Filter available items based on rules
+        var eligibleItems: [ItemPrefab] = []
+        for (_, itemPrefab) in itemPrefabs {
+            // Check category filter (if provided) - categories match ItemTypeString enum values
+            if let categories = rules.categories, !categories.isEmpty {
+                let itemTypeString = itemPrefab.type.rawValue.lowercased()
+                let categoryMatches = categories.contains { $0.lowercased() == itemTypeString }
+                if !categoryMatches {
+                    continue
+                }
+            }
+            
+            // Check type filter (if provided) - types also match ItemTypeString enum values
+            if let types = rules.types, !types.isEmpty {
+                let itemTypeString = itemPrefab.type.rawValue.lowercased()
+                let typeMatches = types.contains { $0.lowercased() == itemTypeString }
+                if !typeMatches {
+                    continue
+                }
+            }
+            
+            // Check value range (if provided)
+            if let minValue = rules.minValue, Double(itemPrefab.value) < minValue {
+                continue
+            }
+            if let maxValue = rules.maxValue, Double(itemPrefab.value) > maxValue {
+                continue
+            }
+            
+            // Check exclusion list
+            if let excludeIds = rules.excludeItemIds, excludeIds.contains(itemPrefab.id) {
+                continue
+            }
+            
+            eligibleItems.append(itemPrefab)
+        }
+        
+        // Randomly select items
+        guard !eligibleItems.isEmpty else {
+            print("⚠️ PrefabFactory: No eligible items found for random generation rules")
+            return randomLoot
+        }
+        
+        for _ in 0..<count {
+            if let randomPrefab = eligibleItems.randomElement() {
+                let item = createItemFromPrefab(randomPrefab, quantity: 1)
+                randomLoot.append(item)
+            }
+        }
+        
+        return randomLoot
+    }
+    
+    /// Create an Item instance from an ItemPrefab
+    private func createItemFromPrefab(_ prefab: ItemPrefab, quantity: Int = 1) -> Item {
+        // Map item prefab type to ItemType enum
+        let itemType: ItemType
+        switch prefab.type {
+        case .consumable:
+            // Try to determine specific consumable type from name/ID
+            if prefab.id.contains("health") || prefab.name.lowercased().contains("health") {
+                itemType = .healthPotion
+            } else {
+                itemType = .food
+            }
+        case .weapon:
+            itemType = .weapon
+        case .armor:
+            itemType = .armor
+        case .material:
+            // Try to determine material type
+            if prefab.id.contains("wood") || prefab.name.lowercased().contains("wood") {
+                itemType = .wood
+            } else if prefab.id.contains("stone") || prefab.name.lowercased().contains("stone") {
+                itemType = .stone
+            } else if prefab.id.contains("iron") || prefab.name.lowercased().contains("iron") {
+                itemType = .iron
+            } else {
+                itemType = .wood  // Default fallback
+            }
+        case .befriending:
+            // Map befriending items
+            if prefab.id.contains("meat") || prefab.name.lowercased().contains("meat") {
+                itemType = .meat
+            } else if prefab.id.contains("honey") || prefab.name.lowercased().contains("honey") {
+                itemType = .honey
+            } else if prefab.id.contains("berries") || prefab.name.lowercased().contains("berries") {
+                itemType = .berries
+            } else {
+                itemType = .food  // Default fallback
+            }
+        default:
+            itemType = .food  // Default fallback
+        }
+        
+        // Parse GID if available
+        let gid: Int? = parseGIDSpec(prefab.gid)
+        
+        let item = Item(
+            name: prefab.name,
+            type: itemType,
+            quantity: quantity,
+            description: prefab.description ?? "",
+            value: prefab.value,
+            gid: gid,
+            stackable: prefab.stackable
+        )
+        
+        return item
+    }
+    
     /// Get a prefab definition by ID (for procedural entities like trees, rocks, etc.)
     func getPrefab(_ id: String) -> PrefabDefinition? {
         let baseId = id.replacingOccurrences(of: "_low", with: "")
@@ -646,16 +1046,23 @@ class PrefabFactory {
     }
     
     /// Create sprite nodes for a chest prefab
-    func createChestSprites(_ prefab: ChestPrefab, position: CGPoint, rotation: CGFloat = 0) -> [SKSpriteNode] {
-        return createEntitySprites(from: prefab.parts, position: position, rotation: rotation, zPosition: prefab.zPosition)
+    func createChestSprites(_ prefab: ChestPrefab, position: CGPoint, rotation: CGFloat = 0, tileSize: CGFloat = 32.0) -> [SKSpriteNode] {
+        return createEntitySprites(from: prefab.parts, position: position, rotation: rotation, zPosition: prefab.zPosition, tileSize: tileSize)
     }
     
     /// Helper method to create sprites from entity prefab parts
-    private func createEntitySprites(from parts: [EntityPrefabPart], position: CGPoint, rotation: CGFloat, zPosition: CGFloat) -> [SKSpriteNode] {
+    private func createEntitySprites(from parts: [EntityPrefabPart], position: CGPoint, rotation: CGFloat, zPosition: CGFloat, tileSize: CGFloat = 32.0) -> [SKSpriteNode] {
         var sprites: [SKSpriteNode] = []
+        var rng = SeededRandomNumberGenerator(seed: UInt64(Date().timeIntervalSince1970))
         
         for part in parts {
-            let partTileSize = part.tileSize > 0 ? part.tileSize : 32.0
+            let sourceTileSize = part.tileSize > 0 ? part.tileSize : 16.0
+            let scaleFactor = tileSize / sourceTileSize
+            
+            // Track last used tile info for class name continuity (same tileset, sequential tiles)
+            var lastUsedTilesetName: String? = nil
+            var lastUsedTileID: Int? = nil
+            var lastUsedClassName: String? = nil  // Track class name to reset continuity when it changes
             
             for (rowIndex, row) in part.tileGrid.enumerated() {
                 for (colIndex, gidSpec) in row.enumerated() {
@@ -663,12 +1070,96 @@ class PrefabFactory {
                     
                     // Try to create sprite directly (handles both GIDs and sprite atlases)
                     let sprite: SKSpriteNode?
-                    if let directGID = Int(gidSpec) {
-                        // Direct GID number
-                        sprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: partTileSize, height: partTileSize))
+                    
+                    // Check if this is a class name
+                    let isClassName = isClassSpec(gidSpec)
+                    
+                    if isClassName {
+                        // Reset continuity if class name changed
+                        if let lastClassName = lastUsedClassName, lastClassName != gidSpec {
+                            lastUsedTilesetName = nil
+                            lastUsedTileID = nil
+                        }
+                        lastUsedClassName = gidSpec
+                        
+                        // Resolve class name with continuity tracking
+                        let resolvedSpec: String?
+                        if let tilesetName = lastUsedTilesetName, let lastID = lastUsedTileID {
+                            // Try to maintain continuity with last used tile (same class)
+                            resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: lastID, using: &rng)
+                        } else {
+                            // First tile in grid or class name changed, no continuity context
+                            resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, using: &rng)
+                        }
+                        
+                        if let resolved = resolvedSpec {
+                            // Extract tileset name and local tile ID from resolved spec for next iteration
+                            if let dashIndex = resolved.firstIndex(of: "-") {
+                                lastUsedTilesetName = String(resolved[..<dashIndex])
+                                if let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                    lastUsedTileID = tileID
+                                }
+                            }
+                            
+                            // Create sprite from resolved spec - create at source size then scale
+                            if let directGID = Int(resolved) {
+                                if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                    if scaleFactor != 1.0 {
+                                        createdSprite.xScale = scaleFactor
+                                        createdSprite.yScale = scaleFactor
+                                    }
+                                    sprite = createdSprite
+                                } else {
+                                    sprite = nil
+                                }
+                            } else {
+                                if let createdSprite = createSpriteFromGIDSpec(resolved, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                    if scaleFactor != 1.0 {
+                                        createdSprite.xScale = scaleFactor
+                                        createdSprite.yScale = scaleFactor
+                                    }
+                                    sprite = createdSprite
+                                } else {
+                                    sprite = nil
+                                }
+                            }
+                        } else {
+                            // Class name resolution failed - try as regular GID spec as fallback
+                            if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                if scaleFactor != 1.0 {
+                                    createdSprite.xScale = scaleFactor
+                                    createdSprite.yScale = scaleFactor
+                                }
+                                sprite = createdSprite
+                            } else {
+                                sprite = nil
+                            }
+                        }
                     } else {
-                        // Try sprite atlas or parsed GID
-                        sprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: partTileSize, height: partTileSize))
+                        // Not a class name, handle as regular GID spec
+                        if let directGID = Int(gidSpec) {
+                            // Direct GID number
+                            if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                if scaleFactor != 1.0 {
+                                    createdSprite.xScale = scaleFactor
+                                    createdSprite.yScale = scaleFactor
+                                }
+                                sprite = createdSprite
+                            } else {
+                                sprite = nil
+                            }
+                        } else {
+                            // Try sprite atlas or parsed GID
+                            if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                if scaleFactor != 1.0 {
+                                    createdSprite.xScale = scaleFactor
+                                    createdSprite.yScale = scaleFactor
+                                }
+                                sprite = createdSprite
+                            } else {
+                                sprite = nil
+                            }
+                        }
                     }
                     
                     guard let sprite = sprite else {
@@ -676,9 +1167,9 @@ class PrefabFactory {
                         continue
                     }
                     
-                    // Calculate position for this tile
-                    let tileOffsetX = CGFloat(colIndex) * partTileSize
-                    let tileOffsetY = -CGFloat(rowIndex) * partTileSize
+                    // Calculate position for this tile - use tileSize for spacing since sprites are scaled
+                    let tileOffsetX = CGFloat(colIndex) * tileSize
+                    let tileOffsetY = -CGFloat(rowIndex) * tileSize
                     
                     sprite.position = CGPoint(
                         x: position.x + part.offset.x + tileOffsetX,
@@ -707,7 +1198,7 @@ class PrefabFactory {
         // Handle chests separately (they're stored in chestPrefabs, not prefabs)
         if entity.type == .chest {
             if let chestPrefab = chestPrefabs[entity.prefabId] {
-                let allSprites = createChestSprites(chestPrefab, position: entity.position, rotation: entity.rotation)
+                let allSprites = createChestSprites(chestPrefab, position: entity.position, rotation: entity.rotation, tileSize: tileSize)
                 // Chests typically only have low layer parts, but check anyway
                 var lowSprites: [SKSpriteNode] = []
                 var highSprites: [SKSpriteNode] = []
@@ -741,11 +1232,21 @@ class PrefabFactory {
         var lowSprites: [SKSpriteNode] = []
         var highSprites: [SKSpriteNode] = []
         
+        // Track shared starting column across all parts for vertical alignment
+        // (e.g., trunk and canopy should align to the same column)
+        var sharedStartingColumn: Int? = nil
+        
         // Always render all parts and separate them by their actual layer
         // This ensures that entities with both low and high parts are properly split
         // regardless of which container they're being rendered in
         for part in prefab.parts {
-            let partSprites = createSpritesForPart(part, entity: entity, tileSize: tileSize)
+            // Pass shared starting column to ensure parts align vertically
+            let (partSprites, usedColumn) = createSpritesForPartWithColumn(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn)
+            
+            // Store the starting column from first part for subsequent parts
+            if sharedStartingColumn == nil, let column = usedColumn {
+                sharedStartingColumn = column
+            }
             
             // Separate by actual part layer
             // CORRECT: "low" = bottom/trunk parts → go to entitiesAbove (zPosition 110, IN FRONT of player)
@@ -773,22 +1274,70 @@ class PrefabFactory {
             zOffset: part.zOffset,
             tileSize: part.tileSize
         )
-        return createSpritesForPart(prefabPart, entity: entity, tileSize: tileSize)
+        let (sprites, _) = createSpritesForPart(prefabPart, entity: entity, tileSize: tileSize)
+        return sprites
+    }
+    
+    /// Helper to create sprites for a single part with column alignment support
+    /// Returns (sprites, startingColumnUsed)
+    private func createSpritesForPartWithColumn(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int?) -> ([SKSpriteNode], Int?) {
+        let (sprites, usedColumn) = createSpritesForPart(part, entity: entity, tileSize: tileSize, sharedStartingColumn: sharedStartingColumn)
+        return (sprites, usedColumn)
     }
     
     /// Helper to create sprites for a single part (PrefabPart version for map prefabs)
-    private func createSpritesForPart(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat) -> [SKSpriteNode] {
+    /// Returns (sprites, startingColumnUsed)
+    private func createSpritesForPart(_ part: PrefabPart, entity: ProceduralEntity, tileSize: CGFloat, sharedStartingColumn: Int? = nil) -> ([SKSpriteNode], Int?) {
         var sprites: [SKSpriteNode] = []
         
-        // Determine tile size for this part
-        let partTileSize = tileSize
+        // Determine tile size for this part - use part's tileSize if specified, otherwise use world tileSize
+        let sourceTileSize = part.tileSize > 0 ? part.tileSize : tileSize
+        let partTileSize = sourceTileSize  // Use for grid calculations
+        // For tilesets with 16x16 tiles, we need to scale them to match world tile size (32x32)
+        let scaleFactor = tileSize / sourceTileSize
+        
+        // AUTO-EXPAND: If tileGrid has only one entry and it's a class name, automatically expand it to fill the size
+        // The existing loop below will handle sequential tile selection from the class
+        var grid = part.tileGrid
+        let gridHeight = grid.count
+        let gridWidth = grid.first?.count ?? 0
+        
+        // Check if we should auto-expand: single entry that needs multiple tiles based on size
+        // For class names, we'll expand them and let the tile selection logic pick appropriate tiles from different rows
+        if gridHeight == 1 && gridWidth == 1, let singleEntry = grid[0][0] {
+            let requiredCols = Int(part.size.width / partTileSize)
+            let requiredRows = Int(part.size.height / partTileSize)
+            
+            if requiredCols > 1 || requiredRows > 1 {
+                // Auto-expand: fill grid with the class name or GID spec
+                // The tile selection logic will pick appropriate tiles based on position
+                var expandedGrid: [[String?]] = []
+                for _ in 0..<requiredRows {
+                    var rowEntries: [String?] = []
+                    for _ in 0..<requiredCols {
+                        rowEntries.append(singleEntry)
+                    }
+                    expandedGrid.append(rowEntries)
+                }
+                
+                grid = expandedGrid
+            }
+        }
         
         // Render tileGrid (works for both single-tile [["gid"]] and multi-tile grids)
-        let grid = part.tileGrid
-        let gridHeight = grid.count
-        guard gridHeight > 0 else { return [] }
-        let gridWidth = grid.first?.count ?? 0
-        guard gridWidth > 0 else { return [] }
+        let finalGridHeight = grid.count
+        guard finalGridHeight > 0 else { return ([], nil) }
+        let finalGridWidth = grid.first?.count ?? 0
+        guard finalGridWidth > 0 else { return ([], nil) }
+        
+        // Track last used tile info for class name continuity (same tileset, sequential tiles)
+        var lastUsedTilesetName: String? = nil
+        var lastUsedTileID: Int? = nil
+        var firstTileID: Int? = nil  // Track the very first tile ID for arithmetic-based selection
+        var lastUsedClassName: String? = nil  // Track class name to reset continuity when it changes
+        var startingColumn: Int? = sharedStartingColumn  // Use shared column if provided, otherwise calculate from first part
+        var startingRow: Int? = nil  // Track starting row for proper row mapping
+        var rng = SeededRandomNumberGenerator(seed: UInt64(Date().timeIntervalSince1970))
         
         for (rowIndex, row) in grid.enumerated() {
             for (colIndex, gid) in row.enumerated() {
@@ -803,45 +1352,231 @@ class PrefabFactory {
                     sprite.colorBlendFactor = 1.0
                     // Note: This is a placeholder - replace "generate" with actual GIDs in the JSON
                 } else {
-                
+                    // Check if this is a class name (not a direct GID or tileset-localIndex)
+                    let isClassName = isClassSpec(gidSpec)
+                    
+                    if isClassName {
+                        // Reset continuity if class name changed
+                        if let lastClassName = lastUsedClassName, lastClassName != gidSpec {
+                            lastUsedTilesetName = nil
+                            lastUsedTileID = nil
+                            firstTileID = nil
+                            startingColumn = nil
+                            startingRow = nil
+                        }
+                        lastUsedClassName = gidSpec
+                        
+                        // Get tileset info first
+                        let tilesetName: String
+                        let className: String
+                        if let dashIndex = gidSpec.firstIndex(of: "-") {
+                            tilesetName = String(gidSpec[..<dashIndex])
+                            className = String(gidSpec[gidSpec.index(after: dashIndex)...])
+                        } else {
+                            // Find first tileset with this class
+                            guard let firstTileset = TileManager.shared.getTiledTilesets().first(where: { $0.classNames[gidSpec] != nil }) else {
+                                continue
+                            }
+                            tilesetName = firstTileset.name
+                            className = gidSpec
+                        }
+                        
+                        guard let tileset = TileManager.shared.getTiledTilesets().first(where: { $0.name == tilesetName }) else {
+                            continue
+                        }
+                        
+                        // Resolve class name with row and column alignment
+                        var resolvedSpec: String?
+                        
+                        // If we're at the start (row 0, col 0), pick a starting tile and remember its column and row
+                        // Use shared column if provided, otherwise calculate from first tile
+                        if rowIndex == 0 && colIndex == 0 {
+                            if let sharedCol = startingColumn {
+                                // Use shared column from another part (e.g., canopy uses trunk's column)
+                                print("🌳 Part '\(part.layer)' using shared column: \(sharedCol) from previous part")
+                                resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, targetRow: nil, targetColumn: sharedCol, using: &rng)
+                                if let resolved = resolvedSpec,
+                                   let dashIndex = resolved.firstIndex(of: "-"),
+                                   let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                    lastUsedTileID = tileID
+                                    firstTileID = tileID  // Store first tile ID for arithmetic-based selection
+                                    lastUsedTilesetName = tilesetName
+                                    let actualColumn = tileID % tileset.columns
+                                    let actualRow = tileID / tileset.columns
+                                    startingRow = actualRow
+                                    print("🌳 Part '\(part.layer)' selected tile ID \(tileID) at row \(actualRow), column \(actualColumn) (requested column: \(sharedCol))")
+                                } else {
+                                    print("⚠️ Part '\(part.layer)' failed to find tile at column \(sharedCol) for class '\(gidSpec)'")
+                                }
+                            } else {
+                                // Calculate starting column and row from first tile
+                                resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, targetRow: nil, targetColumn: nil, using: &rng)
+                                if let resolved = resolvedSpec,
+                                   let dashIndex = resolved.firstIndex(of: "-"),
+                                   let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                    let calculatedColumn = tileID % tileset.columns
+                                    let calculatedRow = tileID / tileset.columns
+                                    startingColumn = calculatedColumn
+                                    startingRow = calculatedRow
+                                    lastUsedTileID = tileID
+                                    firstTileID = tileID  // Store first tile ID for arithmetic-based selection
+                                    lastUsedTilesetName = tilesetName
+                                    // Debug: log column and row calculation
+                                    print("🌳 Part '\(part.layer)' calculated starting row: \(calculatedRow), column: \(calculatedColumn) from tile ID \(tileID) (tileset columns: \(tileset.columns))")
+                                }
+                            }
+                        } else if let startCol = startingColumn, let startRow = startingRow, let baseTileID = firstTileID {
+                            // We have a starting column, row, and tile ID - use simple arithmetic to maintain position
+                            // Calculate the expected tile ID based on grid position
+                            let expectedTileID = baseTileID + (rowIndex * tileset.columns) + colIndex
+                            
+                            // Check if this expected tile ID exists in the class
+                            if let tileIDs = tileset.classNames[className], tileIDs.contains(expectedTileID) {
+                                // Use the expected tile ID directly - preserves spatial relationships
+                                resolvedSpec = "\(tilesetName)-\(expectedTileID)"
+                                lastUsedTileID = expectedTileID
+                            } else {
+                                // Fallback: try to find a tile in the same row and column
+                                let targetRow = startRow + rowIndex
+                                let targetCol = startCol + colIndex
+                                // Find any tile that matches the target row and column
+                                if let tileIDs = tileset.classNames[className] {
+                                    let matchingTiles = tileIDs.filter { tileID in
+                                        let tileRow = tileID / tileset.columns
+                                        let tileCol = tileID % tileset.columns
+                                        return tileRow == targetRow && tileCol == targetCol
+                                    }
+                                    
+                                    if let matchedTileID = matchingTiles.first {
+                                        resolvedSpec = "\(tilesetName)-\(matchedTileID)"
+                                        lastUsedTileID = matchedTileID
+                                    } else {
+                                        // Last resort: find closest tile in same column, then same row
+                                        resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: lastUsedTileID, targetRow: targetRow, targetColumn: startCol, using: &rng)
+                                        if let resolved = resolvedSpec,
+                                           let dashIndex = resolved.firstIndex(of: "-"),
+                                           let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                            lastUsedTileID = tileID
+                                        }
+                                    }
+                                } else {
+                                    // No tiles found - skip this tile
+                                    continue
+                                }
+                            }
+                        } else {
+                            // No starting info yet - shouldn't happen, but handle gracefully
+                            resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: lastUsedTileID, targetRow: nil, targetColumn: nil, using: &rng)
+                        }
+                        
+                        if let resolved = resolvedSpec {
+                            // Extract tileset name and local tile ID from resolved spec for next iteration
+                            if let dashIndex = resolved.firstIndex(of: "-") {
+                                lastUsedTilesetName = String(resolved[..<dashIndex])
+                                if let tileID = Int(String(resolved[resolved.index(after: dashIndex)...])) {
+                                    lastUsedTileID = tileID
+                                }
+                            }
+                            
+                            // Create sprite from resolved spec - create at source size then scale
+                            if let directGID = Int(resolved) {
+                                if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                    sprite = createdSprite
+                                    if scaleFactor != 1.0 {
+                                        sprite.xScale = scaleFactor
+                                        sprite.yScale = scaleFactor
+                                    }
+                                } else if let assetName = part.assetName {
+                                    let texture = SKTexture(imageNamed: assetName)
+                                    sprite = SKSpriteNode(texture: texture, size: CGSize(width: tileSize, height: tileSize))
+                                } else {
+                                    sprite = SKSpriteNode(color: .brown, size: CGSize(width: tileSize, height: tileSize))
+                                }
+                            } else if let createdSprite = createSpriteFromGIDSpec(resolved, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                sprite = createdSprite
+                                if scaleFactor != 1.0 {
+                                    sprite.xScale = scaleFactor
+                                    sprite.yScale = scaleFactor
+                                }
+                                sprite.alpha = 1.0
+                                sprite.isHidden = false
+                                sprite.colorBlendFactor = 0.0
+                                sprite.color = .white
+                            } else {
+                                // Try as regular GID spec as fallback
+                                if let assetName = part.assetName {
+                                    let texture = SKTexture(imageNamed: assetName)
+                                    sprite = SKSpriteNode(texture: texture, size: CGSize(width: tileSize, height: tileSize))
+                                } else {
+                                    sprite = SKSpriteNode(color: .brown, size: CGSize(width: tileSize, height: tileSize))
+                                }
+                            }
+                        } else {
+                            // Class name resolution failed - try as regular GID spec as fallback
+                            if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
+                                sprite = createdSprite
+                                if scaleFactor != 1.0 {
+                                    sprite.xScale = scaleFactor
+                                    sprite.yScale = scaleFactor
+                                }
+                            } else if let assetName = part.assetName {
+                                let texture = SKTexture(imageNamed: assetName)
+                                sprite = SKSpriteNode(texture: texture, size: CGSize(width: tileSize, height: tileSize))
+                            } else {
+                                // Final fallback: colored rectangle to show missing tile
+                                sprite = SKSpriteNode(color: .red, size: CGSize(width: tileSize, height: tileSize))
+                                print("   ⚠️ Using red placeholder for missing tile '\(gidSpec)'")
+                            }
+                        }
+                    } else {
+                        // Not a class name, handle as regular GID spec (direct GID, tileset-localIndex, or atlas-frame)
                     // Try to create sprite directly (handles both GIDs and sprite atlases)
                     if let directGID = Int(gidSpec) {
                     // Direct GID number
-                    if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: partTileSize, height: partTileSize)) {
+                    if let createdSprite = TileManager.shared.createSprite(for: directGID, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
                         sprite = createdSprite
+                        if scaleFactor != 1.0 {
+                            sprite.xScale = scaleFactor
+                            sprite.yScale = scaleFactor
+                        }
                     } else if let assetName = part.assetName {
                         // Fallback to asset if GID fails
                         let texture = SKTexture(imageNamed: assetName)
-                        sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
+                        sprite = SKSpriteNode(texture: texture, size: CGSize(width: tileSize, height: tileSize))
                     } else {
                         // Final fallback: colored rectangle
-                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
+                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: tileSize, height: tileSize))
                     }
-                } else if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: partTileSize, height: partTileSize)) {
+                } else if let createdSprite = createSpriteFromGIDSpec(gidSpec, size: CGSize(width: sourceTileSize, height: sourceTileSize)) {
                     // Sprite atlas or parsed GID
                     sprite = createdSprite
+                    if scaleFactor != 1.0 {
+                        sprite.xScale = scaleFactor
+                        sprite.yScale = scaleFactor
+                    }
                 } else if let assetName = part.assetName {
                     // Fallback to asset if sprite atlas/GID fails
                     let texture = SKTexture(imageNamed: assetName)
-                    sprite = SKSpriteNode(texture: texture, size: CGSize(width: partTileSize, height: partTileSize))
+                    sprite = SKSpriteNode(texture: texture, size: CGSize(width: tileSize, height: tileSize))
                     } else {
                         // Final fallback: colored rectangle
-                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: partTileSize, height: partTileSize))
+                        sprite = SKSpriteNode(color: .brown, size: CGSize(width: tileSize, height: tileSize))
+                        }
                     }
                 }
                 
-                // Calculate position for this tile in the grid
-                let tileOffsetX = CGFloat(colIndex) * partTileSize
-                let tileOffsetY = -CGFloat(rowIndex) * partTileSize  // Negative because Y increases up in SpriteKit
+                // Calculate position for this tile in the grid - use tileSize for spacing since sprites are scaled
+                let tileOffsetX = CGFloat(colIndex) * tileSize
+                let tileOffsetY = -CGFloat(rowIndex) * tileSize  // Negative because Y increases up in SpriteKit
                 
                 // Position relative to entity center + part offset + tile offset
-                let offsetScale = part.tileSize > 0 ? (tileSize / part.tileSize) : 1.0
-                let scaledOffsetX = part.offset.x * offsetScale
-                let scaledOffsetY = part.offset.y * offsetScale
+                // CRITICAL: part.offset is already in world units, do NOT scale it
+                let offsetX = part.offset.x
+                let offsetY = part.offset.y
                 
                 sprite.position = CGPoint(
-                    x: entity.position.x + scaledOffsetX + tileOffsetX,
-                    y: entity.position.y + scaledOffsetY + tileOffsetY
+                    x: entity.position.x + offsetX + tileOffsetX,
+                    y: entity.position.y + offsetY + tileOffsetY
                 )
                 // Sprite zPosition is always 0 - layering is handled by container zPosition
                 sprite.zPosition = 0
@@ -857,7 +1592,25 @@ class PrefabFactory {
             }
         }
         
-        return sprites
+        return (sprites, startingColumn)
+    }
+    
+    /// Check if a spec is a class name (not a direct GID or tileset-localIndex)
+    private func isClassSpec(_ spec: String) -> Bool {
+        // If it's a direct number, it's not a class name
+        if Int(spec) != nil {
+            return false
+        }
+        
+        // If it has a dash, check if the part after is a number
+        if let dashIndex = spec.firstIndex(of: "-") {
+            let afterDash = String(spec[spec.index(after: dashIndex)...])
+            // If after dash is not a number, it's a class name (e.g., "terrain1-grass_full")
+            return Int(afterDash) == nil
+        }
+        
+        // No dash and not a number = class name (e.g., "grass_full")
+        return true
     }
     
     /// Create sprite nodes for an entity (legacy method - returns all sprites together)
@@ -1599,7 +2352,9 @@ class PrefabFactory {
                 let tileSize: CGFloat
                 let collision: CollisionSpecJSON
                 let zPosition: CGFloat
-                let lootTable: [ChestLootItem]
+                let lootTable: [ChestLootItem]?  // Optional for backwards compatibility
+                let fixedItems: [ChestFixedItem]?  // Optional fixed items
+                let randomItems: ChestRandomItems?  // Optional random item rules
                 let lockLevel: Int?
                 let requiredKey: String?
             }
@@ -1633,6 +2388,8 @@ class PrefabFactory {
                     collision: CollisionSpec(type: jsonChest.collision.type, size: CGSize(width: jsonChest.collision.size.width, height: jsonChest.collision.size.height)),
                     zPosition: jsonChest.zPosition,
                     lootTable: jsonChest.lootTable,
+                    fixedItems: jsonChest.fixedItems,
+                    randomItems: jsonChest.randomItems,
                     lockLevel: jsonChest.lockLevel,
                     requiredKey: jsonChest.requiredKey
                 )
@@ -1678,6 +2435,7 @@ class PrefabFactory {
     }
     
     /// Create a sprite from a GID spec, handling both Tiled tilesets and sprite atlases
+    /// Also supports class names: "className" or "tilesetName-className"
     func createSpriteFromGIDSpec(_ gidSpec: String?, size: CGSize) -> SKSpriteNode? {
         guard let gidSpec = gidSpec, !gidSpec.isEmpty else { return nil }
         
@@ -1690,38 +2448,70 @@ class PrefabFactory {
             return sprite
         }
         
-        // Check if it's "atlas-frameNumber" format (sprite atlas)
+        // Check if it's "tileset-localIndex" or "tileset-className" format
         if let dashIndex = gidSpec.firstIndex(of: "-") {
-            let atlasName = String(gidSpec[..<dashIndex])
-            guard let frameNumber = Int(String(gidSpec[gidSpec.index(after: dashIndex)...])) else {
-                print("⚠️ PrefabFactory: Invalid frame number in GID spec '\(gidSpec)'")
+            let name = String(gidSpec[..<dashIndex])
+            let afterDash = String(gidSpec[gidSpec.index(after: dashIndex)...])
+            
+            // Check if the part after dash is a number (tile ID) or a class name
+            if let index = Int(afterDash) {
+                // It's a numeric tile ID: "tilesetName-localIndex" or "atlasName-frameNumber"
+                
+                // PRIORITY 1: Check if it's a Tiled tileset first (before sprite atlas)
+                // This handles "terrain1-0", "water1-445", etc.
+                let tilesets = TileManager.shared.getTiledTilesets()
+                if let tileset = tilesets.first(where: { $0.name == name }) {
+                    // It's a Tiled tileset: calculate GID and create sprite
+                    let gid = tileset.firstGID + index
+                    if let sprite = TileManager.shared.createSprite(for: gid, size: size) {
+                        return sprite
+                    } else {
+                        return nil
+                    }
+                }
+                
+                // PRIORITY 2: Try sprite atlas (e.g., "grasslands_atlas-1")
+                // Only try sprite atlas if it's not a Tiled tileset
+                if let sprite = TileManager.shared.createSpriteFromAtlas(atlasName: name, frameNumber: index, size: size) {
+                    return sprite
+                }
+                
+                // If both fail, check if it's a known sprite atlas pattern
+                if name.hasSuffix("_atlas") {
+                    // This is definitely a sprite atlas, but lookup failed
+                    print("⚠️ PrefabFactory: Failed to load sprite from atlas '\(name)' frame \(index)")
+                    return nil
+                }
+                
+                // Unknown format
+                print("⚠️ PrefabFactory: Unknown tileset/atlas name '\(name)' in GID spec '\(gidSpec)'")
                 return nil
-            }
-            
-            // Try sprite atlas first
-            if let sprite = TileManager.shared.createSpriteFromAtlas(atlasName: atlasName, frameNumber: frameNumber, size: size) {
-                return sprite
-            }
-            
-            // If atlas lookup fails, don't fall back to Tiled tileset lookup for sprite atlases
-            // Sprite atlases are separate from Tiled tilesets and shouldn't be confused
-            // Only fall back if it might be a Tiled tileset name (not a sprite atlas)
-            // Check if it's a known sprite atlas name pattern (ends with "_atlas")
-            if atlasName.hasSuffix("_atlas") {
-                // This is definitely a sprite atlas, don't try Tiled tileset lookup
-                print("⚠️ PrefabFactory: Failed to load sprite from atlas '\(atlasName)' frame \(frameNumber)")
-                return nil
-            }
-            
-            // For non-atlas names, try Tiled tileset lookup as fallback
-            if let gid = parseGIDSpec(gidSpec) {
-                return TileManager.shared.createSprite(for: gid, size: size)
+            } else {
+                // It's a class name: "tilesetName-className" (e.g., "terrain1-grass_full")
+                // Resolve the class name to a tile spec, then recursively create the sprite
+                var rng = SeededRandomNumberGenerator(seed: UInt64(Date().timeIntervalSince1970))
+                if let resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, using: &rng) {
+                    // Recursively call with resolved spec
+                    return createSpriteFromGIDSpec(resolvedSpec, size: size)
+                } else {
+                    print("⚠️ PrefabFactory: Could not resolve class name '\(gidSpec)'")
+                    return nil
+                }
             }
         }
         
-        // Try as direct GID
+        // No dash - check if it's a direct GID number or a class name
         if let gid = Int(gidSpec) {
+            // It's a direct GID number
             return TileManager.shared.createSprite(for: gid, size: size)
+        }
+        
+        // Try as a class name without tileset prefix (e.g., "grass_full")
+        // Resolve the class name to a tile spec, then recursively create the sprite
+        var rng = SeededRandomNumberGenerator(seed: UInt64(Date().timeIntervalSince1970))
+        if let resolvedSpec = TileManager.shared.getConsecutiveTileSpecByClassName(gidSpec, lastUsedTileID: nil, using: &rng) {
+            // Recursively call with resolved spec
+            return createSpriteFromGIDSpec(resolvedSpec, size: size)
         }
         
         print("⚠️ PrefabFactory: Could not parse GID spec '\(gidSpec)'")

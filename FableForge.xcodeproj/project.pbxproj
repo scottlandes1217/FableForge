@@ -61,6 +61,51 @@
 		6753AA7B2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
 		6753AA7C2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
 		6753AA7D2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */; };
+		6753AA7F2F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7E2F1EEEFD00DF0F1E /* TerrainAutotiling.swift */; };
+		6753AA802F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7E2F1EEEFD00DF0F1E /* TerrainAutotiling.swift */; };
+		6753AA812F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6753AA7E2F1EEEFD00DF0F1E /* TerrainAutotiling.swift */; };
+		67571A6C2F1F788000511067 /* terrain1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6B2F1F777E00511067 /* terrain1.tsx */; };
+		67571A6D2F1F788000511067 /* water1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6A2F1F777E00511067 /* water1.tsx */; };
+		67571A6E2F1F788F00511067 /* terrain1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6B2F1F777E00511067 /* terrain1.tsx */; };
+		67571A6F2F1F788F00511067 /* water1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6A2F1F777E00511067 /* water1.tsx */; };
+		67571A702F1F789A00511067 /* terrain1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6B2F1F777E00511067 /* terrain1.tsx */; };
+		67571A712F1F789A00511067 /* water1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A6A2F1F777E00511067 /* water1.tsx */; };
+		67571A732F206F3000511067 /* ChestUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A722F206F3000511067 /* ChestUI.swift */; };
+		67571A742F206F3000511067 /* ChestUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A722F206F3000511067 /* ChestUI.swift */; };
+		67571A752F206F3000511067 /* ChestUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A722F206F3000511067 /* ChestUI.swift */; };
+		67571A772F20956300511067 /* outside_objects1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A762F20953E00511067 /* outside_objects1.tsx */; };
+		67571A782F20956E00511067 /* outside_objects1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A762F20953E00511067 /* outside_objects1.tsx */; };
+		67571A792F20957300511067 /* outside_objects1.tsx in Resources */ = {isa = PBXBuildFile; fileRef = 67571A762F20953E00511067 /* outside_objects1.tsx */; };
+		67571A832F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7A2F21952F00511067 /* GameScene_ObjectInteraction.swift */; };
+		67571A842F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7A2F21952F00511067 /* GameScene_ObjectInteraction.swift */; };
+		67571A852F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7A2F21952F00511067 /* GameScene_ObjectInteraction.swift */; };
+		67571A862F21952F00511067 /* GameScene_Collision.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7B2F21952F00511067 /* GameScene_Collision.swift */; };
+		67571A872F21952F00511067 /* GameScene_Collision.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7B2F21952F00511067 /* GameScene_Collision.swift */; };
+		67571A882F21952F00511067 /* GameScene_Collision.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7B2F21952F00511067 /* GameScene_Collision.swift */; };
+		67571A892F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7C2F21952F00511067 /* GameScene_LoadingScreen.swift */; };
+		67571A8A2F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7C2F21952F00511067 /* GameScene_LoadingScreen.swift */; };
+		67571A8B2F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7C2F21952F00511067 /* GameScene_LoadingScreen.swift */; };
+		67571A8C2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7D2F21952F00511067 /* GameScene_EntityManagement.swift */; };
+		67571A8D2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7D2F21952F00511067 /* GameScene_EntityManagement.swift */; };
+		67571A8E2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7D2F21952F00511067 /* GameScene_EntityManagement.swift */; };
+		67571A8F2F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7E2F21952F00511067 /* GameScene_PlayerMovement.swift */; };
+		67571A902F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7E2F21952F00511067 /* GameScene_PlayerMovement.swift */; };
+		67571A912F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7E2F21952F00511067 /* GameScene_PlayerMovement.swift */; };
+		67571A922F21952F00511067 /* GameScene_Building.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7F2F21952F00511067 /* GameScene_Building.swift */; };
+		67571A932F21952F00511067 /* GameScene_Building.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7F2F21952F00511067 /* GameScene_Building.swift */; };
+		67571A942F21952F00511067 /* GameScene_Building.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A7F2F21952F00511067 /* GameScene_Building.swift */; };
+		67571A952F21952F00511067 /* GameScene_Inventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A802F21952F00511067 /* GameScene_Inventory.swift */; };
+		67571A962F21952F00511067 /* GameScene_Inventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A802F21952F00511067 /* GameScene_Inventory.swift */; };
+		67571A972F21952F00511067 /* GameScene_Inventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A802F21952F00511067 /* GameScene_Inventory.swift */; };
+		67571A982F21952F00511067 /* GameScene_Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A812F21952F00511067 /* GameScene_Camera.swift */; };
+		67571A992F21952F00511067 /* GameScene_Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A812F21952F00511067 /* GameScene_Camera.swift */; };
+		67571A9A2F21952F00511067 /* GameScene_Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A812F21952F00511067 /* GameScene_Camera.swift */; };
+		67571A9B2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A822F21952F00511067 /* GameScene_WorldRendering.swift */; };
+		67571A9C2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A822F21952F00511067 /* GameScene_WorldRendering.swift */; };
+		67571A9D2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A822F21952F00511067 /* GameScene_WorldRendering.swift */; };
+		67571A9F2F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
+		67571AA02F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
+		67571AA12F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */; };
 		67C26A732F1334C400C97685 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A722F1334C400C97685 /* AppDelegate.swift */; };
 		67C26A752F1334C400C97685 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67C26A742F1334C400C97685 /* GameViewController.swift */; };
 		67C26A782F1334C400C97685 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = 67C26A772F1334C400C97685 /* Base */; };
@@ -177,6 +222,21 @@
 		6753AA562F1DABAF00DF0F1E /* races.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = races.json; sourceTree = "<group>"; };
 		6753AA572F1DABAF00DF0F1E /* skills.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = skills.json; sourceTree = "<group>"; };
 		6753AA7A2F1DD0AF00DF0F1E /* BuildUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BuildUI.swift; sourceTree = "<group>"; };
+		6753AA7E2F1EEEFD00DF0F1E /* TerrainAutotiling.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TerrainAutotiling.swift; sourceTree = "<group>"; };
+		67571A6A2F1F777E00511067 /* water1.tsx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.typescript; name = water1.tsx; path = "FableForge Shared/Prefabs/Maps/TSX/water1.tsx"; sourceTree = SOURCE_ROOT; };
+		67571A6B2F1F777E00511067 /* terrain1.tsx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.typescript; name = terrain1.tsx; path = "FableForge Shared/Prefabs/Maps/TSX/terrain1.tsx"; sourceTree = SOURCE_ROOT; };
+		67571A722F206F3000511067 /* ChestUI.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ChestUI.swift; path = UI/ChestUI.swift; sourceTree = "<group>"; };
+		67571A762F20953E00511067 /* outside_objects1.tsx */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.typescript; name = outside_objects1.tsx; path = "FableForge Shared/Prefabs/Maps/TSX/outside_objects1.tsx"; sourceTree = SOURCE_ROOT; };
+		67571A7A2F21952F00511067 /* GameScene_ObjectInteraction.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_ObjectInteraction.swift; sourceTree = "<group>"; };
+		67571A7B2F21952F00511067 /* GameScene_Collision.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_Collision.swift; sourceTree = "<group>"; };
+		67571A7C2F21952F00511067 /* GameScene_LoadingScreen.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_LoadingScreen.swift; sourceTree = "<group>"; };
+		67571A7D2F21952F00511067 /* GameScene_EntityManagement.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_EntityManagement.swift; sourceTree = "<group>"; };
+		67571A7E2F21952F00511067 /* GameScene_PlayerMovement.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_PlayerMovement.swift; sourceTree = "<group>"; };
+		67571A7F2F21952F00511067 /* GameScene_Building.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_Building.swift; sourceTree = "<group>"; };
+		67571A802F21952F00511067 /* GameScene_Inventory.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_Inventory.swift; sourceTree = "<group>"; };
+		67571A812F21952F00511067 /* GameScene_Camera.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_Camera.swift; sourceTree = "<group>"; };
+		67571A822F21952F00511067 /* GameScene_WorldRendering.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_WorldRendering.swift; sourceTree = "<group>"; };
+		67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene_EntitySpawning.swift; sourceTree = "<group>"; };
 		67C26A672F1334C200C97685 /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
 		67C26A6A2F1334C400C97685 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		67C26A6F2F1334C400C97685 /* FableForge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FableForge.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -250,6 +310,8 @@
 		6753AA4E2F1DABAF00DF0F1E /* Maps */ = {
 			isa = PBXGroup;
 			children = (
+				67571A612F1F742C00511067 /* TSX */,
+				67571A602F1F742400511067 /* TMX */,
 				6753AA4C2F1DABAF00DF0F1E /* prefabs_desert.json */,
 				6753AA4D2F1DABAF00DF0F1E /* prefabs_grassland.json */,
 			);
@@ -273,6 +335,25 @@
 			path = Prefabs;
 			sourceTree = "<group>";
 		};
+		67571A602F1F742400511067 /* TMX */ = {
+			isa = PBXGroup;
+			children = (
+				67C26AFC2F13365500C97685 /* Exterior.tmx */,
+				6753AA0F2F18C23000DF0F1E /* Interior1.tmx */,
+			);
+			path = TMX;
+			sourceTree = "<group>";
+		};
+		67571A612F1F742C00511067 /* TSX */ = {
+			isa = PBXGroup;
+			children = (
+				67571A6B2F1F777E00511067 /* terrain1.tsx */,
+				67571A762F20953E00511067 /* outside_objects1.tsx */,
+				67571A6A2F1F777E00511067 /* water1.tsx */,
+			);
+			path = TSX;
+			sourceTree = "<group>";
+		};
 		67C26A612F1334C200C97685 = {
 			isa = PBXGroup;
 			children = (
@@ -292,12 +373,21 @@
 				67C26AB22F13356100C97685 /* Systems */,
 				67C26AB32F13356900C97685 /* UI */,
 				67C26A672F1334C200C97685 /* Actions.sks */,
-				67C26AFC2F13365500C97685 /* Exterior.tmx */,
-				6753AA0F2F18C23000DF0F1E /* Interior1.tmx */,
+				67C26B102F133B4800C97685 /* GameScene.swift */,
+				67571A7F2F21952F00511067 /* GameScene_Building.swift */,
+				67571A812F21952F00511067 /* GameScene_Camera.swift */,
+				67571A7B2F21952F00511067 /* GameScene_Collision.swift */,
+				67571A9E2F2305DC00511067 /* GameScene_EntitySpawning.swift */,
+				67571A7D2F21952F00511067 /* GameScene_EntityManagement.swift */,
+				67571A802F21952F00511067 /* GameScene_Inventory.swift */,
+				67571A7C2F21952F00511067 /* GameScene_LoadingScreen.swift */,
+				67571A7A2F21952F00511067 /* GameScene_ObjectInteraction.swift */,
+				67571A7E2F21952F00511067 /* GameScene_PlayerMovement.swift */,
+				67571A822F21952F00511067 /* GameScene_WorldRendering.swift */,
 				67C26B002F13365B00C97685 /* CombatScene.swift */,
 				67C26B042F13365E00C97685 /* CharacterCreationScene.swift */,
+				67571A722F206F3000511067 /* ChestUI.swift */,
 				67C26B082F13366200C97685 /* AnimalEncounterScene.swift */,
-				67C26B102F133B4800C97685 /* GameScene.swift */,
 				6753AA072F145E7F00DF0F1E /* GameScene_iOS.swift */,
 				6753AA082F145E7F00DF0F1E /* GameScene_macOS.swift */,
 				67C26AF42F13363700C97685 /* StartScreenScene.swift */,
@@ -368,6 +458,7 @@
 				67C26ACA2F1335CD00C97685 /* DialogueSystem.swift */,
 				67C26ACE2F1335CD00C97685 /* GameState.swift */,
 				67C26AC92F1335CD00C97685 /* SaveManager.swift */,
+				6753AA7E2F1EEEFD00DF0F1E /* TerrainAutotiling.swift */,
 				6753AA032F13920B00DF0F1E /* SpriteGenerationService.swift */,
 				67C26ACD2F1335CD00C97685 /* TiledMapParser.swift */,
 				67C26AC82F1335CD00C97685 /* TileManager.swift */,
@@ -494,6 +585,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571A792F20957300511067 /* outside_objects1.tsx in Resources */,
+				67571A6C2F1F788000511067 /* terrain1.tsx in Resources */,
+				67571A6D2F1F788000511067 /* water1.tsx in Resources */,
 				6753AA622F1DABAF00DF0F1E /* races.json in Resources */,
 				67C26A782F1334C400C97685 /* Base in Resources */,
 				6753AA592F1DABAF00DF0F1E /* prefabs_desert.json in Resources */,
@@ -518,6 +612,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571A782F20956E00511067 /* outside_objects1.tsx in Resources */,
+				67571A6E2F1F788F00511067 /* terrain1.tsx in Resources */,
+				67571A6F2F1F788F00511067 /* water1.tsx in Resources */,
 				67C26A882F1334C500C97685 /* Base in Resources */,
 				67C26AFE2F13365500C97685 /* Exterior.tmx in Resources */,
 				67C26A9B2F1334C500C97685 /* Actions.sks in Resources */,
@@ -542,6 +639,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67571A772F20956300511067 /* outside_objects1.tsx in Resources */,
+				67571A702F1F789A00511067 /* terrain1.tsx in Resources */,
+				67571A712F1F789A00511067 /* water1.tsx in Resources */,
 				67C26A982F1334C500C97685 /* Base in Resources */,
 				6753AA122F18C23000DF0F1E /* Interior1.tmx in Resources */,
 				67C26AFF2F13365500C97685 /* Exterior.tmx in Resources */,
@@ -573,9 +673,13 @@
 				67C26ACF2F1335CD00C97685 /* TileManager.swift in Sources */,
 				67C26AC52F1335B700C97685 /* Animal.swift in Sources */,
 				67C26A752F1334C400C97685 /* GameViewController.swift in Sources */,
+				67571A982F21952F00511067 /* GameScene_Camera.swift in Sources */,
+				67571A9B2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */,
 				67C26AD22F1335CD00C97685 /* SaveManager.swift in Sources */,
+				67571A732F206F3000511067 /* ChestUI.swift in Sources */,
 				6753AA042F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AED2F1335D700C97685 /* GameUI.swift in Sources */,
+				67571A862F21952F00511067 /* GameScene_Collision.swift in Sources */,
 				67C26AF02F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA092F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B092F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
@@ -585,22 +689,30 @@
 				67C26ABC2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A732F1334C400C97685 /* AppDelegate.swift in Sources */,
 				6753AA7B2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
+				67571A832F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */,
 				67C26ADB2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC22F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE72F1335D700C97685 /* MenuStyling.swift in Sources */,
 				67C26ABF2F1335B700C97685 /* Player.swift in Sources */,
+				67571A8F2F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */,
+				67571A952F21952F00511067 /* GameScene_Inventory.swift in Sources */,
 				67C26B112F133B4800C97685 /* GameScene.swift in Sources */,
 				67C26AF52F13363700C97685 /* StartScreenScene.swift in Sources */,
 				67C26B052F13365E00C97685 /* CharacterCreationScene.swift in Sources */,
+				67571A892F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */,
+				67571A8C2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */,
 				67C26AE12F1335CD00C97685 /* GameState.swift in Sources */,
 				67C26AB92F1335B700C97685 /* Character.swift in Sources */,
 				67C26AD52F1335CD00C97685 /* DialogueSystem.swift in Sources */,
+				67571A922F21952F00511067 /* GameScene_Building.swift in Sources */,
 				646D664F31444818B92D9AC9 /* ChunkSystem.swift in Sources */,
 				2BF9D9322D964048891DEF15 /* WorldGenerator.swift in Sources */,
 				D749461343E24F719F3AA3F5 /* PrefabFactory.swift in Sources */,
 				6E4CEF3DADD44F2786D69F76 /* DeltaPersistence.swift in Sources */,
+				67571A9F2F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */,
 				C7F26D3C851C490EB095A54F /* TMXInstanceLoader.swift in Sources */,
 				A1B2C3D4E5F6789012345679 /* WorldConfig.swift in Sources */,
+				6753AA7F2F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -613,9 +725,13 @@
 				67C26AD02F1335CD00C97685 /* TileManager.swift in Sources */,
 				67C26AC62F1335B700C97685 /* Animal.swift in Sources */,
 				67C26A852F1334C500C97685 /* GameViewController.swift in Sources */,
+				67571A992F21952F00511067 /* GameScene_Camera.swift in Sources */,
+				67571A9C2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */,
 				67C26AD32F1335CD00C97685 /* SaveManager.swift in Sources */,
+				67571A742F206F3000511067 /* ChestUI.swift in Sources */,
 				6753AA052F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AEE2F1335D700C97685 /* GameUI.swift in Sources */,
+				67571A872F21952F00511067 /* GameScene_Collision.swift in Sources */,
 				67C26AF32F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA0A2F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B0A2F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
@@ -625,22 +741,30 @@
 				67C26ABD2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A832F1334C500C97685 /* AppDelegate.swift in Sources */,
 				6753AA7C2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
+				67571A842F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */,
 				67C26ADC2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC32F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE82F1335D700C97685 /* MenuStyling.swift in Sources */,
 				67C26AC02F1335B700C97685 /* Player.swift in Sources */,
+				67571A902F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */,
+				67571A962F21952F00511067 /* GameScene_Inventory.swift in Sources */,
 				67C26B122F133B4800C97685 /* GameScene.swift in Sources */,
 				67C26AF62F13363700C97685 /* StartScreenScene.swift in Sources */,
 				67C26B062F13365E00C97685 /* CharacterCreationScene.swift in Sources */,
+				67571A8A2F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */,
+				67571A8D2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */,
 				67C26AE22F1335CD00C97685 /* GameState.swift in Sources */,
 				67C26ABA2F1335B700C97685 /* Character.swift in Sources */,
 				67C26AD62F1335CD00C97685 /* DialogueSystem.swift in Sources */,
+				67571A932F21952F00511067 /* GameScene_Building.swift in Sources */,
 				646D664F31444818B92D9AD0 /* ChunkSystem.swift in Sources */,
 				2BF9D9322D964048891DEF16 /* WorldGenerator.swift in Sources */,
 				D749461343E24F719F3AA3F6 /* PrefabFactory.swift in Sources */,
 				6E4CEF3DADD44F2786D69F77 /* DeltaPersistence.swift in Sources */,
+				67571AA02F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */,
 				C7F26D3C851C490EB095A550 /* TMXInstanceLoader.swift in Sources */,
 				A1B2C3D4E5F6789012345680 /* WorldConfig.swift in Sources */,
+				6753AA802F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -653,9 +777,13 @@
 				67C26AD12F1335CD00C97685 /* TileManager.swift in Sources */,
 				67C26AC72F1335B700C97685 /* Animal.swift in Sources */,
 				67C26A952F1334C500C97685 /* GameViewController.swift in Sources */,
+				67571A9A2F21952F00511067 /* GameScene_Camera.swift in Sources */,
+				67571A9D2F21952F00511067 /* GameScene_WorldRendering.swift in Sources */,
 				67C26AD42F1335CD00C97685 /* SaveManager.swift in Sources */,
+				67571A752F206F3000511067 /* ChestUI.swift in Sources */,
 				6753AA062F13920B00DF0F1E /* SpriteGenerationService.swift in Sources */,
 				67C26AEF2F1335D700C97685 /* GameUI.swift in Sources */,
+				67571A882F21952F00511067 /* GameScene_Collision.swift in Sources */,
 				67C26AF42F1335D700C97685 /* CharacterUI.swift in Sources */,
 				6753AA0B2F145E8000DF0F1E /* GameScene_iOS.swift in Sources */,
 				67C26B0B2F13366200C97685 /* AnimalEncounterScene.swift in Sources */,
@@ -665,22 +793,30 @@
 				67C26ABE2F1335B700C97685 /* Structure.swift in Sources */,
 				67C26A932F1334C500C97685 /* AppDelegate.swift in Sources */,
 				6753AA7D2F1DD0AF00DF0F1E /* BuildUI.swift in Sources */,
+				67571A852F21952F00511067 /* GameScene_ObjectInteraction.swift in Sources */,
 				67C26ADD2F1335CD00C97685 /* WorldSystem.swift in Sources */,
 				67C26AC42F1335B700C97685 /* Item.swift in Sources */,
 				67C26AE92F1335D700C97685 /* MenuStyling.swift in Sources */,
 				67C26AC12F1335B700C97685 /* Player.swift in Sources */,
+				67571A912F21952F00511067 /* GameScene_PlayerMovement.swift in Sources */,
+				67571A972F21952F00511067 /* GameScene_Inventory.swift in Sources */,
 				67C26B132F133B4800C97685 /* GameScene.swift in Sources */,
 				67C26AF72F13363700C97685 /* StartScreenScene.swift in Sources */,
 				67C26B072F13365E00C97685 /* CharacterCreationScene.swift in Sources */,
+				67571A8B2F21952F00511067 /* GameScene_LoadingScreen.swift in Sources */,
+				67571A8E2F21952F00511067 /* GameScene_EntityManagement.swift in Sources */,
 				67C26AE32F1335CD00C97685 /* GameState.swift in Sources */,
 				67C26ABB2F1335B700C97685 /* Character.swift in Sources */,
 				67C26AD72F1335CD00C97685 /* DialogueSystem.swift in Sources */,
+				67571A942F21952F00511067 /* GameScene_Building.swift in Sources */,
 				646D664F31444818B92D9AD1 /* ChunkSystem.swift in Sources */,
 				2BF9D9322D964048891DEF17 /* WorldGenerator.swift in Sources */,
 				D749461343E24F719F3AA3F7 /* PrefabFactory.swift in Sources */,
 				6E4CEF3DADD44F2786D69F78 /* DeltaPersistence.swift in Sources */,
+				67571AA12F2305DC00511067 /* GameScene_EntitySpawning.swift in Sources */,
 				C7F26D3C851C490EB095A551 /* TMXInstanceLoader.swift in Sources */,
 				A1B2C3D4E5F6789012345681 /* WorldConfig.swift in Sources */,
+				6753AA812F1EEEFD00DF0F1E /* TerrainAutotiling.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -144,8 +144,8 @@ class CharacterUI {
         let isLandscape = viewSize.width > viewSize.height
         
         // Create background panel - full screen
-        let panelWidth = viewSize.width * 0.98
-        let panelHeight = viewSize.height * 0.98
+        let panelWidth = viewSize.width
+        let panelHeight = viewSize.height
         let panel = MenuStyling.createBookPage(size: CGSize(width: panelWidth, height: panelHeight))
         panel.position = CGPoint(x: 0, y: 0)
         panel.zPosition = 2000
@@ -209,7 +209,10 @@ class CharacterUI {
         closeButton.fillColor = MenuStyling.bookDanger
         closeButton.strokeColor = MenuStyling.parchmentBorder
         closeButton.lineWidth = 2
-        closeButton.position = CGPoint(x: panelWidth / 2 - closeButtonSize / 2 - 20, y: panelHeight / 2 - closeButtonSize / 2 - 20)
+        // Position relative to view bounds, ensuring it's always visible
+        // Use viewSize for positioning to ensure it's always within visible area
+        let closeButtonMargin: CGFloat = 15 // Margin from edge
+        closeButton.position = CGPoint(x: viewSize.width / 2 - closeButtonSize / 2 - closeButtonMargin, y: viewSize.height / 2 - closeButtonSize / 2 - closeButtonMargin)
         closeButton.zPosition = 2002
         closeButton.name = "closeCharacterUI"
         panel.addChild(closeButton)

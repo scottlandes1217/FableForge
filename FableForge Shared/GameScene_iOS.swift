@@ -12,6 +12,9 @@ extension GameScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
+        
+        print("👆 GameScene_iOS: touchesBegan at \(location), isGamePaused=\(isGamePaused), isInCombat=\(isInCombat), isInDialogue=\(isInDialogue)")
+        
         guard let camera = cameraNode else { return }
         
         // Store touch location for potential drag (will start drag if moved in touchesMoved)
@@ -192,9 +195,38 @@ extension GameScene {
             return
         }
         
+        // Check for chest UI interaction first
+        if chestUI?.isVisible == true {
+            print("📦 GameScene_iOS: Chest UI is visible, handling UI interaction")
+            handleChestUIInteraction(at: location)
+            return
+        }
+        
         // Start joystick movement - store initial touch location in screen/camera coordinates
         guard !isGamePaused, !isInCombat, !isInDialogue else { return }
         guard let camera = cameraNode else { return }
+        
+        // Check for chest clicks BEFORE joystick handling
+        // Find nodes at this location to check for chests
+        let touchedNodes = nodes(at: location)
+        print("🔍 GameScene_iOS: Checking for chests - found \(touchedNodes.count) nodes at \(location)")
+        for node in touchedNodes {
+            // Check if this is a chest entity container
+            if let name = node.name, name.hasPrefix("chest_entity_") {
+                print("✅ GameScene_iOS: Found chest node by name: \(name)")
+                handleChestClick(node: node, worldPosition: location)
+                return  // Don't start joystick movement if clicking a chest
+            }
+            // Also check userData for chest identification
+            if let userData = node.userData, userData["entityType"] as? String == "chest" {
+                print("✅ GameScene_iOS: Found chest node by userData")
+                handleChestClick(node: node, worldPosition: location)
+                return  // Don't start joystick movement if clicking a chest
+            }
+        }
+        
+        // Also check for question mark interactions (dialogue objects)
+        // Note: This might start joystick movement, but dialogue takes priority
         
         // Convert touch location to camera coordinates (screen space)
         let cameraLocation = convert(location, to: camera)

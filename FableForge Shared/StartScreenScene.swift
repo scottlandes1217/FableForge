@@ -109,11 +109,13 @@ class StartScreenScene: SKScene {
         }
         addChild(bookCover)
         
-        // "Tap to continue" prompt at bottom
-        let promptY: CGFloat = isLandscape ? 60 : 80
+        // "Tap to continue" prompt - positioned higher with consistent sizing
+        // Use percentage-based positioning for consistency across screen sizes
+        let promptY = size.height * 0.13  // Position at 18% from bottom (higher than before)
         let prompt = SKLabelNode(fontNamed: "Arial")
         prompt.text = "Tap to Continue"
-        prompt.fontSize = isLandscape ? min(18, size.width * 0.03) : min(20, size.height * 0.03)
+        // Use smaller, fixed font size that doesn't scale with screen size
+        prompt.fontSize = isLandscape ? 16 : 18  // Smaller and consistent
         prompt.fontColor = SKColor(white: 0.7, alpha: 0.8)
         prompt.position = CGPoint(x: size.width / 2, y: promptY)
         prompt.zPosition = 10
@@ -327,8 +329,8 @@ class StartScreenScene: SKScene {
         
         // Book page panel removed - no margins needed
         
-        // Book title - positioned with padding from top
-        let titleY = isLandscape ? size.height - 90 : size.height - 100
+        // Book title - positioned with percentage-based padding from top (works better in fullscreen)
+        let titleY = size.height * 0.75  // Position title at 75% from bottom (25% from top)
         let title = MenuStyling.createBookTitle(text: "Main Menu", position: CGPoint(x: size.width / 2, y: titleY))
         title.zPosition = 10
         addChild(title)
@@ -387,16 +389,11 @@ class StartScreenScene: SKScene {
         backgroundImage.name = "backgroundImage"
         addChild(backgroundImage)
         
-        // Book page panel
-        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
-        panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        panel.zPosition = 1
-        panel.name = "characterSelectionPanel"
-        addChild(panel)
+        // Book page panel removed - no panel needed
         
-        // Book title - positioned with more padding from top border
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
-        let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 24 : 28)
+        // Book title - positioned with percentage-based padding from top (works better in fullscreen)
+        let titleY = size.height * 0.85  // Position title at 85% from bottom (15% from top)
+        let title = MenuStyling.createBookTitle(text: "Select Character", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 22 : 26)
         title.zPosition = 10
         addChild(title)
         
@@ -404,12 +401,13 @@ class StartScreenScene: SKScene {
         let characters = SaveManager.getAllCharacters()
         
         // Back button (calculate position first to determine available space)
-        // Moved down to ensure it's below the border (border margin is 15px, button needs space)
-        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 75 : size.height / 2 - dims.panelHeight / 2 + 85
+        // Positioned near bottom with padding
+        let backY = size.height * 0.15  // 15% from bottom
         
         // Calculate available space for characters
         // Top boundary: below title (with some spacing)
-        let titleHeight: CGFloat = isLandscape ? 24 : 28
+        let titleFontSize: CGFloat = isLandscape ? 22 : 26
+        let titleHeight = titleFontSize * 1.2  // Approximate title height
         let titleBottom = titleY - titleHeight / 2
         let topSpacing: CGFloat = isLandscape ? 20 : 25
         let containerTop = titleBottom - topSpacing
@@ -424,14 +422,15 @@ class StartScreenScene: SKScene {
         let availableHeight = containerTop - containerBottom
         let containerCenterY = (containerTop + containerBottom) / 2
         
-        // Calculate card dimensions - ensure they fit properly in both orientations
-        let deleteButtonWidth: CGFloat = isLandscape ? 50 : 55
-        let deleteButtonSpacing: CGFloat = 8  // Space between card and delete button
-        let maxAvailableWidth = isLandscape ? min(380, size.width * 0.75) : size.width * 0.88
-        let totalCardWidth = min(dims.buttonWidth, maxAvailableWidth)
+        // Calculate card dimensions - make them smaller for better proportions
+        let deleteButtonWidth: CGFloat = isLandscape ? 35 : 40
+        let deleteButtonSpacing: CGFloat = 6  // Space between card and delete button
+        // Use smaller max width - cap at reasonable size
+        let maxAvailableWidth = isLandscape ? min(280, size.width * 0.5) : min(280, size.width * 0.75)
+        let totalCardWidth = maxAvailableWidth
         let cardWidth = totalCardWidth - deleteButtonWidth - deleteButtonSpacing
-        let cardHeight: CGFloat = isLandscape ? 70 : 80
-        let cardSpacing: CGFloat = isLandscape ? 12 : 14
+        let cardHeight: CGFloat = isLandscape ? 50 : 55  // Much smaller height
+        let cardSpacing: CGFloat = isLandscape ? 8 : 10
         
         // Create scrollable container with clipping
         let container = SKNode()
@@ -476,19 +475,21 @@ class StartScreenScene: SKScene {
                 subtitle: subtitle,
                 size: CGSize(width: cardWidth, height: cardHeight),
                 position: CGPoint(x: charButtonX, y: 0.0),
-                name: "character_\(character.id.uuidString)"
+                name: "character_\(character.id.uuidString)",
+                fontSize: isLandscape ? 16 : 18,  // Smaller text
+                subtitleFontSize: isLandscape ? 12 : 13  // Smaller subtitle
             )
             charCard.addChild(charButton)
             
             // Delete button (right side)
-            let deleteButtonSize = CGSize(width: deleteButtonWidth, height: cardHeight - 6)
+            let deleteButtonSize = CGSize(width: deleteButtonWidth, height: cardHeight - 4)
             let deleteButton = MenuStyling.createBookButton(
                 text: "✕",
                 size: deleteButtonSize,
                 color: MenuStyling.parchmentDark,
                 position: CGPoint(x: deleteButtonX, y: 0.0),
                 name: "deleteCharacter_\(character.id.uuidString)",
-                fontSize: isLandscape ? 22 : 24
+                fontSize: isLandscape ? 16 : 18  // Smaller delete button text
             )
             charCard.addChild(deleteButton)
             
@@ -569,25 +570,19 @@ class StartScreenScene: SKScene {
         backgroundImage.name = "backgroundImage"
         addChild(backgroundImage)
         
-        // Book page panel
-        let panel = MenuStyling.createBookPage(size: CGSize(width: dims.panelWidth, height: dims.panelHeight))
-        panel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        panel.zPosition = 1
-        panel.name = "saveSlotPanel"
-        addChild(panel)
+        // Book page panel removed - no panel needed
         
-        // Book title - moved down to avoid border overlap
-        // Book title - positioned with more padding from top border
-        let titleY = isLandscape ? size.height / 2 + dims.panelHeight / 2 - 110 : size.height / 2 + dims.panelHeight / 2 - 120
-        let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 24 : 28)
+        // Book title - positioned with percentage-based padding from top (works better in fullscreen)
+        let titleY = size.height * 0.85  // Position title at 85% from bottom (15% from top)
+        let title = MenuStyling.createBookTitle(text: "Select Save Slot", position: CGPoint(x: size.width / 2, y: titleY), fontSize: isLandscape ? 22 : 26)
         title.zPosition = 10
         addChild(title)
         
         // Character name
-        let charNameY = isLandscape ? titleY - 45 : titleY - 50
+        let charNameY = titleY - 35  // Position below title
         let charName = SKLabelNode(fontNamed: "Arial")
         charName.text = character.displayName
-        charName.fontSize = isLandscape ? 20 : 24
+        charName.fontSize = isLandscape ? 18 : 20  // Smaller character name
         charName.fontColor = MenuStyling.inkMuted
         charName.position = CGPoint(x: size.width / 2, y: charNameY)
         charName.zPosition = 10
@@ -597,12 +592,13 @@ class StartScreenScene: SKScene {
         let saveSlots = SaveManager.getAllSaveSlots(characterId: character.id)
         
         // Back button (calculate position first to determine available space)
-        // Moved down to ensure it's below the border (border margin is 15px, button needs space)
-        let backY = isLandscape ? size.height / 2 - dims.panelHeight / 2 + 75 : size.height / 2 - dims.panelHeight / 2 + 85
+        // Positioned near bottom with padding
+        let backY = size.height * 0.15  // 15% from bottom
         
         // Calculate available space for save slots
         // Top boundary: below character name (with some spacing)
-        let charNameHeight: CGFloat = isLandscape ? 20 : 24
+        let charNameFontSize: CGFloat = isLandscape ? 18 : 20
+        let charNameHeight = charNameFontSize * 1.2  // Approximate height
         let charNameBottom = charNameY - charNameHeight / 2
         let topSpacing: CGFloat = isLandscape ? 20 : 25
         let containerTop = charNameBottom - topSpacing
@@ -617,10 +613,12 @@ class StartScreenScene: SKScene {
         let availableHeight = containerTop - containerBottom
         let containerCenterY = (containerTop + containerBottom) / 2
         
-        // Card dimensions
-        let cardWidth = min(dims.buttonWidth, isLandscape ? 400 : size.width * 0.8)
-        let cardHeight: CGFloat = isLandscape ? 70 : 85
-        let cardSpacing: CGFloat = isLandscape ? 12 : 15
+        // Card dimensions - make them smaller for better proportions
+        // Use smaller max width - cap at reasonable size
+        let maxCardWidth = isLandscape ? min(280, size.width * 0.5) : min(280, size.width * 0.75)
+        let cardWidth = maxCardWidth
+        let cardHeight: CGFloat = isLandscape ? 50 : 55  // Much smaller height
+        let cardSpacing: CGFloat = isLandscape ? 8 : 10
         
         // Create scrollable container with clipping
         let container = SKNode()
@@ -651,7 +649,8 @@ class StartScreenScene: SKScene {
                 size: CGSize(width: cardWidth, height: cardHeight),
                 position: CGPoint(x: 0.0, y: slotY),
                 name: "saveSlot_\(slot.slotNumber)",
-                isEmpty: slot.isEmpty
+                isEmpty: slot.isEmpty,
+                fontSize: isLandscape ? 16 : 18  // Smaller text
             )
             container.addChild(slotButton)
             slotY -= (cardHeight + cardSpacing)
@@ -1167,7 +1166,23 @@ class StartScreenScene: SKScene {
         #endif
         
         // Present game scene with transition
+        print("🟢 StartScreenScene: Presenting GameScene with transition")
+        print("   GameScene.isUserInteractionEnabled=\(gameScene.isUserInteractionEnabled)")
+        print("   GameScene.isPaused=\(gameScene.isPaused)")
+        print("   skView.scene will be: \(type(of: gameScene))")
         skView.presentScene(gameScene, transition: SKTransition.fade(withDuration: 0.5))
+        
+        // Verify scene is set up after transition
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            print("🟢 StartScreenScene: After transition - verifying scene setup")
+            if let currentScene = skView.scene {
+                print("   Current scene: \(type(of: currentScene))")
+                print("   isUserInteractionEnabled=\(currentScene.isUserInteractionEnabled)")
+                print("   isPaused=\(currentScene.isPaused)")
+            } else {
+                print("   ⚠️ No scene found after transition!")
+            }
+        }
     }
     
     // Legacy method for backward compatibility
