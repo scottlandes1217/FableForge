@@ -1,0 +1,156 @@
+{
+  "classes": [
+    {
+      "id": "fighter",
+      "name": "Fighter",
+      "description": "A master of weapons and armor, excelling in combat",
+      "image": "class_fighter",
+      "hitDie": 10,
+      "primaryAbility": "strength",
+      "resourceType": "energy",
+      "startingSkills": ["athletics", "intimidation"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 3,
+        "dexterity": 1,
+        "constitution": 2,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "rogue",
+      "name": "Rogue",
+      "description": "A skilled sneak and expert at stealth and precision",
+      "image": "class_rogue",
+      "hitDie": 6,
+      "primaryAbility": "dexterity",
+      "resourceType": "energy",
+      "startingSkills": ["acrobatics", "stealth", "sleightOfHand", "investigation"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 0,
+        "dexterity": 3,
+        "constitution": 1,
+        "intelligence": 2,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "wizard",
+      "name": "Wizard",
+      "description": "A master of arcane magic and spells",
+      "image": "class_wizard",
+      "hitDie": 6,
+      "primaryAbility": "intelligence",
+      "resourceType": "mana",
+      "startingSkills": ["arcana", "history", "investigation"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 0,
+        "dexterity": 1,
+        "constitution": 0,
+        "intelligence": 3,
+        "wisdom": 2,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "cleric",
+      "name": "Cleric",
+      "description": "A divine spellcaster who channels the power of the gods",
+      "image": "class_cleric",
+      "hitDie": 8,
+      "primaryAbility": "wisdom",
+      "resourceType": "mana",
+      "startingSkills": ["insight", "medicine", "religion"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 1,
+        "dexterity": 0,
+        "constitution": 2,
+        "intelligence": 1,
+        "wisdom": 3,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "ranger",
+      "name": "Ranger",
+      "description": "A warrior who uses martial prowess and nature magic",
+      "image": "class_ranger",
+      "hitDie": 8,
+      "primaryAbility": "dexterity",
+      "resourceType": "energy",
+      "startingSkills": ["animalHandling", "nature", "perception", "survival"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 1,
+        "dexterity": 3,
+        "constitution": 1,
+        "intelligence": 0,
+        "wisdom": 2,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "paladin",
+      "name": "Paladin",
+      "description": "A holy warrior bound to a sacred oath",
+      "image": "class_paladin",
+      "hitDie": 10,
+      "primaryAbility": "strength",
+      "resourceType": "mana",
+      "startingSkills": ["athletics", "insight", "intimidation", "persuasion"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 3,
+        "dexterity": 0,
+        "constitution": 1,
+        "intelligence": 0,
+        "wisdom": 1,
+        "charisma": 2
+      }
+    },
+    {
+      "id": "barbarian",
+      "name": "Barbarian",
+      "description": "A fierce warrior of primitive background",
+      "image": "class_barbarian",
+      "hitDie": 12,
+      "primaryAbility": "strength",
+      "resourceType": "rage",
+      "startingSkills": ["athletics", "intimidation", "nature", "perception"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 3,
+        "dexterity": 1,
+        "constitution": 3,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "bard",
+      "name": "Bard",
+      "description": "An inspiring magician whose power echoes the music of creation",
+      "image": "class_bard",
+      "hitDie": 8,
+      "primaryAbility": "charisma",
+      "resourceType": "mana",
+      "startingSkills": ["deception", "performance", "persuasion"],
+      "startingEquipment": [],
+      "startingAttributes": {
+        "strength": 0,
+        "dexterity": 2,
+        "constitution": 1,
+        "intelligence": 1,
+        "wisdom": 0,
+        "charisma": 3
+      }
+    }
+  ]
+}

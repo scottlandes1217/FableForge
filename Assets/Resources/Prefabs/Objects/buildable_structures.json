@@ -1,0 +1,581 @@
+{
+  "structures": [
+    {
+      "id": "farm_01",
+      "name": "Farm",
+      "description": "A small farm plot for growing crops. Requires basic farming skills.",
+      "structureType": "Farm",
+      "tab": "Farming",
+      "image": "farm_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 10}
+        ],
+        "skills": [
+          {}
+        ]
+      },
+      "size": {"width": 96, "height": 96},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732"],
+            ["exterior-1733", "exterior-1734", "exterior-1735"],
+            ["exterior-1736", "exterior-1737", "exterior-1738"]
+          ],
+          "offset": {"x": -48, "y": 0},
+          "size": {"width": 96, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 96}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "shelter_01",
+      "name": "Shelter",
+      "description": "A basic shelter for protection from the elements. Requires carpentry skills.",
+      "structureType": "Shelter",
+      "tab": "Buildings",
+      "image": "shelter_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 15},
+          {"type": "Cloth", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 64, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731"],
+            ["exterior-1732", "exterior-1733"]
+          ],
+          "offset": {"x": -32, "y": 0},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "barn_01",
+      "name": "Barn",
+      "description": "A large barn for housing animals. Requires advanced carpentry and animal husbandry.",
+      "structureType": "Barn",
+      "tab": "Buildings",
+      "image": "barn_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 30},
+          {"type": "Nails", "quantity": 10},
+          {"type": "Iron", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 2},
+          {"type": "Animal Husbandry", "level": 1}
+        ]
+      },
+      "size": {"width": 128, "height": 96},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732", "exterior-1733"],
+            ["exterior-1734", "exterior-1735", "exterior-1736", "exterior-1737"],
+            ["exterior-1738", "exterior-1739", "exterior-1740", "exterior-1741"]
+          ],
+          "offset": {"x": -64, "y": 0},
+          "size": {"width": 128, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 128, "height": 96}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "house_01",
+      "name": "House",
+      "description": "A comfortable house for the player. Requires expert carpentry and masonry.",
+      "structureType": "House",
+      "tab": "Buildings",
+      "image": "house_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 50},
+          {"type": "Stone", "quantity": 20},
+          {"type": "Nails", "quantity": 15},
+          {"type": "Iron", "quantity": 10}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 3},
+          {"type": "Masonry", "level": 2}
+        ]
+      },
+      "size": {"width": 96, "height": 96},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732"],
+            ["exterior-1733", "exterior-1734", "exterior-1735"],
+            ["exterior-1736", "exterior-1737", "exterior-1738"]
+          ],
+          "offset": {"x": -48, "y": 0},
+          "size": {"width": 96, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            ["exterior-1800", "exterior-1801", "exterior-1802"],
+            ["exterior-1803", "exterior-1804", "exterior-1805"]
+          ],
+          "offset": {"x": -48, "y": 96},
+          "size": {"width": 96, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 96}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "workshop_01",
+      "name": "Workshop",
+      "description": "A workshop for crafting items. Requires carpentry and engineering skills.",
+      "structureType": "Workshop",
+      "tab": "Buildings",
+      "image": "workshop_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 25},
+          {"type": "Iron", "quantity": 10},
+          {"type": "Stone", "quantity": 10}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 2},
+          {"type": "Engineering", "level": 1}
+        ]
+      },
+      "size": {"width": 96, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732"],
+            ["exterior-1733", "exterior-1734", "exterior-1735"]
+          ],
+          "offset": {"x": -48, "y": 0},
+          "size": {"width": 96, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "storage_01",
+      "name": "Storage",
+      "description": "A storage building for items. Requires basic carpentry skills.",
+      "structureType": "Storage",
+      "tab": "Buildings",
+      "image": "storage_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 20},
+          {"type": "Nails", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 64, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731"],
+            ["exterior-1732", "exterior-1733"]
+          ],
+          "offset": {"x": -32, "y": 0},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "fence_01",
+      "name": "Fence",
+      "description": "A simple wooden fence. Requires basic carpentry skills.",
+      "structureType": "Fence",
+      "tab": "Interior",
+      "image": "fence_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 32, "height": 32},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-800"]
+          ],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 32, "height": 32}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "gate_01",
+      "name": "Gate",
+      "description": "A wooden gate for fencing. Requires carpentry and smithing skills.",
+      "structureType": "Gate",
+      "tab": "Interior",
+      "image": "gate_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 3},
+          {"type": "Iron", "quantity": 2}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1},
+          {"type": "Smithing", "level": 1}
+        ]
+      },
+      "size": {"width": 32, "height": 32},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-801"]
+          ],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 32, "height": 32}
+      },
+      "zPosition": 0
+    },
+
+    {
+      "id": "shelter_01",
+      "name": "Shelter",
+      "description": "A basic shelter for protection from the elements. Requires carpentry skills.",
+      "structureType": "Shelter",
+      "tab": "Buildings",
+      "image": "shelter_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 15},
+          {"type": "Cloth", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 64, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731"],
+            ["exterior-1732", "exterior-1733"]
+          ],
+          "offset": {"x": -32, "y": 0},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "barn_01",
+      "name": "Barn",
+      "description": "A large barn for housing animals. Requires advanced carpentry and animal husbandry.",
+      "structureType": "Barn",
+      "tab": "Buildings",
+      "image": "barn_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 30},
+          {"type": "Nails", "quantity": 10},
+          {"type": "Iron", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 2},
+          {"type": "Animal Husbandry", "level": 1}
+        ]
+      },
+      "size": {"width": 128, "height": 96},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732", "exterior-1733"],
+            ["exterior-1734", "exterior-1735", "exterior-1736", "exterior-1737"],
+            ["exterior-1738", "exterior-1739", "exterior-1740", "exterior-1741"]
+          ],
+          "offset": {"x": -64, "y": 0},
+          "size": {"width": 128, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 128, "height": 96}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "house_01",
+      "name": "House",
+      "description": "A comfortable house for the player. Requires expert carpentry and masonry.",
+      "structureType": "House",
+      "tab": "Buildings",
+      "image": "house_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 50},
+          {"type": "Stone", "quantity": 20},
+          {"type": "Nails", "quantity": 15},
+          {"type": "Iron", "quantity": 10}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 3},
+          {"type": "Masonry", "level": 2}
+        ]
+      },
+      "size": {"width": 96, "height": 96},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732"],
+            ["exterior-1733", "exterior-1734", "exterior-1735"],
+            ["exterior-1736", "exterior-1737", "exterior-1738"]
+          ],
+          "offset": {"x": -48, "y": 0},
+          "size": {"width": 96, "height": 96},
+          "zOffset": 0,
+          "tileSize": 32
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            ["exterior-1800", "exterior-1801", "exterior-1802"],
+            ["exterior-1803", "exterior-1804", "exterior-1805"]
+          ],
+          "offset": {"x": -48, "y": 96},
+          "size": {"width": 96, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 96}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "workshop_01",
+      "name": "Workshop",
+      "description": "A workshop for crafting items. Requires carpentry and engineering skills.",
+      "structureType": "Workshop",
+      "tab": "Buildings",
+      "image": "workshop_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 25},
+          {"type": "Iron", "quantity": 10},
+          {"type": "Stone", "quantity": 10}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 2},
+          {"type": "Engineering", "level": 1}
+        ]
+      },
+      "size": {"width": 96, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731", "exterior-1732"],
+            ["exterior-1733", "exterior-1734", "exterior-1735"]
+          ],
+          "offset": {"x": -48, "y": 0},
+          "size": {"width": 96, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "storage_01",
+      "name": "Storage",
+      "description": "A storage building for items. Requires basic carpentry skills.",
+      "structureType": "Storage",
+      "tab": "Buildings",
+      "image": "storage_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 20},
+          {"type": "Nails", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 64, "height": 64},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-1730", "exterior-1731"],
+            ["exterior-1732", "exterior-1733"]
+          ],
+          "offset": {"x": -32, "y": 0},
+          "size": {"width": 64, "height": 64},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 64, "height": 64}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "fence_01",
+      "name": "Fence",
+      "description": "A simple wooden fence. Requires basic carpentry skills.",
+      "structureType": "Fence",
+      "tab": "Interior",
+      "image": "fence_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 5}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1}
+        ]
+      },
+      "size": {"width": 32, "height": 32},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-800"]
+          ],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 32, "height": 32}
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "gate_01",
+      "name": "Gate",
+      "description": "A wooden gate for fencing. Requires carpentry and smithing skills.",
+      "structureType": "Gate",
+      "tab": "Interior",
+      "image": "gate_01",
+      "requirements": {
+        "materials": [
+          {"type": "Wood", "quantity": 3},
+          {"type": "Iron", "quantity": 2}
+        ],
+        "skills": [
+          {"type": "Carpentry", "level": 1},
+          {"type": "Smithing", "level": 1}
+        ]
+      },
+      "size": {"width": 32, "height": 32},
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["exterior-801"]
+          ],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 32, "height": 32}
+      },
+      "zPosition": 0
+    }
+  ]
+}

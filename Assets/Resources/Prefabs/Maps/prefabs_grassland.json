@@ -1,0 +1,314 @@
+{
+  "worldConfig": {
+    "name": "Default World",
+    "description": "A temperate grassland world with forests and rivers",
+    "seed": 12345,
+    "terrain": {
+      "waterThreshold": 0.15,
+      "grassThreshold": 0.9,
+      "dirtThreshold": 0.95,
+      "groundTiles": {
+        "water": [
+          "water1-water_full"
+        ],
+        "grass": [
+          "terrain1-1",
+          {
+            "tile_id": "terrain1-0",
+            "description": "green lush grass with long grass blades"
+          }
+        ],
+        "grassVariants": {
+          "base": [
+            "terrain1-grass_full"
+          ],
+          "edgeN": [
+            "terrain1-1737"
+          ],
+          "edgeS": [
+            "terrain1-44"
+          ],
+          "edgeE": [
+            "terrain1-348"
+          ],
+          "edgeW": [
+            "terrain1-356"
+          ],
+          "cornerNE": [
+            "terrain1-1267"
+          ],
+          "cornerNW": [
+            "terrain1-9"
+          ],
+          "cornerSE": [
+            "generate"
+          ],
+          "cornerSW": [
+            "generate"
+          ],
+          "innerCornerNE": [
+            "generate"
+          ],
+          "innerCornerNW": [
+            "generate"
+          ],
+          "innerCornerSE": [
+            "generate"
+          ],
+          "innerCornerSW": [
+            "generate"
+          ],
+          "transitionN": [
+            "generate"
+          ],
+          "transitionS": [
+            "generate"
+          ],
+          "transitionE": [
+            "generate"
+          ],
+          "transitionW": [
+            "generate"
+          ],
+          "transitionNE": [
+            "generate"
+          ],
+          "transitionNW": [
+            "generate"
+          ],
+          "transitionSE": [
+            "generate"
+          ],
+          "transitionSW": [
+            "generate"
+          ]
+        },
+        "dirt": [
+          "terrain1-665",
+          "terrain1-666",
+          "terrain1-667",
+          "terrain1-668",
+          "terrain1-669",
+          "terrain1-670",
+          "terrain1-671",
+          "terrain1-672"
+        ],
+        "stone": [
+          "terrain1-857",
+          "terrain1-858",
+          "terrain1-859",
+          "terrain1-860",
+          "terrain1-861",
+          "terrain1-862",
+          "terrain1-863",
+          "terrain1-864"
+        ]
+      },
+      "decorations": [
+        {
+          "terrainTypes": [
+            "grass"
+          ],
+          "tileGIDs": [
+            "generate",
+            "generate"
+          ],
+          "density": 0.05,
+          "allowOnEdges": false
+        },
+        {
+          "terrainTypes": [
+            "dirt"
+          ],
+          "tileGIDs": [
+            "generate",
+            "generate"
+          ],
+          "density": 0.05,
+          "allowOnEdges": false
+        }
+      ]
+    },
+    "entities": {
+      "treeDensity": 0.002,
+      "rockDensity": 0.005,
+      "treePrefabs": [
+        "tree_oak_01"
+      ],
+      "rockPrefabs": [
+        "rock_stone_01"
+      ],
+      "chests": [
+        {
+          "chestId": "chest_wooden_01",
+          "count": 5,
+          "blockedTerrainTypes": ["water"]
+        },
+        {
+          "chestId": "chest_treasure_01",
+          "count": 2,
+          "blockedTerrainTypes": ["water"]
+        }
+      ],
+      "treeBlockedTerrainTypes": ["water", "stone"],
+      "rockBlockedTerrainTypes": ["water"]
+    },
+    "enemies": {
+      "spawnRate": 0.001,
+      "types": [
+        "Goblin",
+        "Orc",
+        "Bandit",
+        "Wild Beast"
+      ],
+      "minLevel": 1,
+      "maxLevel": 5,
+      "blockedTerrainTypes": ["water"]
+    },
+    "companions": {
+      "spawnRate": 0.002,
+      "types": [
+        "wolf",
+        "fox",
+        "falcon"
+      ],
+      "friendlyChance": 0.7,
+      "blockedTerrainTypes": ["water"]
+    },
+    "waterFeatures": {
+      "type": "rivers",
+      "density": "medium"
+    },
+    "enterConfig": {
+      "x": 32,
+      "y": 32
+    },
+    "exitConfig": {
+      "hasExit": true,
+      "exits": [
+        {
+          "x": 0,
+          "y": -2,
+          "tileGID": null,
+          "targetPrefabFile": null,
+          "targetEntryOffset": null,
+          "targetDoorId": "world_grassland"
+        },
+        {
+          "x": 23,
+          "y": 10,
+          "tileGID": null,
+          "targetPrefabFile": "prefabs_desert",
+          "targetEntryOffset": {
+            "x": 0,
+            "y": 2
+          },
+          "targetTmxFile": null,
+          "targetDoorId": null
+        }
+      ]
+    }
+  },
+  "prefabs": [
+    {
+      "id": "tree_oak_01",
+      "type": "tree",
+      "description": "An weatherd oak tree with a trunk and no leaves.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["outside_objects1-treetrunk_1"]
+          ]
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            ["outside_objects1-treecanopy_1"]
+          ]
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 40,
+          "height": 150
+        }
+      },
+      "collisionOffset": {
+        "x": 0,
+        "y": 35
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "rock_stone_01",
+      "type": "rock",
+      "description": "A medium stone rock. Can be mined for stone materials. Found scattered in the wilderness.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            [
+              "exterior-800"
+            ]
+          ],
+          "assetName": null
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 22.4,
+          "height": 16
+        }
+      },
+      "zPosition": 0
+    },
+    {
+      "id": "cabin_small_01",
+      "type": "building",
+      "description": "A small wooden cabin with a thatched roof. Can house basic crafting stations. Buildable by players.",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            [
+              "exterior-1730",
+              "exterior-1731"
+            ],
+            [
+              "exterior-1732",
+              "exterior-1733"
+            ]
+          ],
+          "assetName": null
+        },
+        {
+          "layer": "high",
+          "tileGrid": [
+            [
+              "exterior-1800",
+              "exterior-1801",
+              "exterior-1802"
+            ],
+            [
+              null,
+              "exterior-1803",
+              null
+            ]
+          ],
+          "assetName": null
+        }
+      ],
+      "collision": {
+        "type": "rectangle",
+        "size": {
+          "width": 64,
+          "height": 64
+        }
+      },
+      "zPosition": 0
+    }
+  ]
+}

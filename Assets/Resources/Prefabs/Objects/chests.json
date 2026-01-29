@@ -1,0 +1,148 @@
+{
+  "chests": [
+    {
+      "id": "chest_wooden_01",
+      "name": "Wooden Chest",
+      "description": "A simple wooden chest. May contain basic items.",
+      "tileMap": "2,2",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["chest_atlas-36", "chest_atlas-37", "chest_atlas-38"],
+            ["chest_atlas-72", "chest_atlas-73", "chest_atlas-74"],
+            ["chest_atlas-108", "chest_atlas-109", "chest_atlas-110"],
+            ["chest_atlas-144", "chest_atlas-145", "chest_atlas-146"]
+          ]
+        }
+      ],
+      
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 80}
+      },
+      "collisionOffset": {"x": 0, "y": -15},
+      "zPosition": 10,
+      "lootTable": [
+        {
+          "itemId": "iron_sword",
+          "dropRate": 0.6,
+          "minQuantity": 1,
+          "maxQuantity": 1
+        },
+        {
+          "itemId": "health_potion",
+          "dropRate": 0.7,
+          "minQuantity": 1,
+          "maxQuantity": 3
+        },
+        {
+          "itemId": "mana_potion",
+          "dropRate": 0.5,
+          "minQuantity": 1,
+          "maxQuantity": 2
+        },
+        {
+          "itemId": "wood",
+          "dropRate": 0.8,
+          "minQuantity": 1,
+          "maxQuantity": 5
+        },
+        {
+          "itemId": "iron_ore",
+          "dropRate": 0.3,
+          "minQuantity": 1,
+          "maxQuantity": 3
+        }
+      ],
+      "fixedItems": [
+        {
+          "itemId": "health_potion",
+          "quantity": 1
+        }
+      ],
+      "randomItems": {
+        "count": "1-2",
+        "categories": ["consumable"],
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "lockLevel": null,
+      "requiredKey": null
+    },
+    {
+      "id": "chest_treasure_01",
+      "name": "Treasure Chest",
+      "description": "An ornate treasure chest. Contains valuable loot!",
+      "tileMap": "3,3,3",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [
+            ["generate", "generate", "generate"],
+            ["generate", "generate", "generate"],
+            ["generate", "generate", "generate"]
+          ]
+        }
+      ],
+      
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 96, "height": 55}
+      },
+      "collisionOffset": {"x": 0, "y": -30},
+      "zPosition": 10,
+      "lootTable": [
+        {
+          "itemId": "iron_sword",
+          "dropRate": 0.6,
+          "minQuantity": 1,
+          "maxQuantity": 1
+        },
+        {
+          "itemId": "magic_staff",
+          "dropRate": 0.4,
+          "minQuantity": 1,
+          "maxQuantity": 1
+        },
+        {
+          "itemId": "health_potion",
+          "dropRate": 1.0,
+          "minQuantity": 2,
+          "maxQuantity": 5
+        },
+        {
+          "itemId": "mana_potion",
+          "dropRate": 0.8,
+          "minQuantity": 2,
+          "maxQuantity": 4
+        },
+        {
+          "itemId": "iron_ore",
+          "dropRate": 0.9,
+          "minQuantity": 3,
+          "maxQuantity": 10
+        }
+      ],
+      "fixedItems": [
+        {
+          "itemId": "health_potion",
+          "quantity": 3
+        },
+        {
+          "itemId": "iron_ore",
+          "quantity": 5
+        }
+      ],
+      "randomItems": {
+        "count": "2-4",
+        "types": ["weapon", "armor"],
+        "minValue": 40,
+        "maxValue": 200,
+        "excludeItemIds": []
+      },
+      "lockLevel": 1,
+      "requiredKey": null
+    }
+  ]
+}

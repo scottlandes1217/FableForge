@@ -1,0 +1,676 @@
+fileFormatVersion: 2
+guid: 76555d705005a43d09c4458425e77db7
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: -4382243262064494438
+    second: fire_lights_0
+  - first:
+      213: -7820811691005697875
+    second: fire_lights_1
+  - first:
+      213: 7905633644484543262
+    second: fire_lights_2
+  - first:
+      213: -4812650179759960396
+    second: fire_lights_3
+  - first:
+      213: -6699772390720067225
+    second: fire_lights_4
+  - first:
+      213: -707146778806955602
+    second: fire_lights_5
+  - first:
+      213: -5867147591032105516
+    second: fire_lights_6
+  - first:
+      213: -7666990998957304607
+    second: fire_lights_7
+  - first:
+      213: -8205519354764316184
+    second: fire_lights_8
+  - first:
+      213: 2930733284427967850
+    second: fire_lights_9
+  - first:
+      213: 515855887318406203
+    second: fire_lights_10
+  - first:
+      213: -5993521614231302514
+    second: fire_lights_11
+  - first:
+      213: 2814149325996360692
+    second: fire_lights_12
+  - first:
+      213: -7548656745820568345
+    second: fire_lights_13
+  - first:
+      213: 2105512413413856650
+    second: fire_lights_14
+  - first:
+      213: 6662019796563319660
+    second: fire_lights_15
+  - first:
+      213: -6257708219021169403
+    second: fire_lights_16
+  - first:
+      213: -8305564768622291189
+    second: fire_lights_17
+  - first:
+      213: 3591303307575107921
+    second: fire_lights_18
+  - first:
+      213: -1548292319788718086
+    second: fire_lights_19
+  - first:
+      213: 1037694074783446020
+    second: fire_lights_20
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: fire_lights_0
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 671
+        width: 145
+        height: 78
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a98fb45a8f42f23c0800000000000000
+      internalID: -4382243262064494438
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_1
+      rect:
+        serializedVersion: 2
+        x: 151
+        y: 709
+        width: 34
+        height: 58
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: da022661435e67390800000000000000
+      internalID: -7820811691005697875
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_2
+      rect:
+        serializedVersion: 2
+        x: 198
+        y: 707
+        width: 39
+        height: 60
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e13c0efe9e376bd60800000000000000
+      internalID: 7905633644484543262
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_3
+      rect:
+        serializedVersion: 2
+        x: 247
+        y: 708
+        width: 36
+        height: 59
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4be0037f828063db0800000000000000
+      internalID: -4812650179759960396
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_4
+      rect:
+        serializedVersion: 2
+        x: 431
+        y: 703
+        width: 15
+        height: 35
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 769292fe180a503a0800000000000000
+      internalID: -6699772390720067225
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_5
+      rect:
+        serializedVersion: 2
+        x: 497
+        y: 691
+        width: 15
+        height: 39
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ea1562550c5bf26f0800000000000000
+      internalID: -707146778806955602
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_6
+      rect:
+        serializedVersion: 2
+        x: 562
+        y: 703
+        width: 14
+        height: 35
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4d51eb7f954b39ea0800000000000000
+      internalID: -5867147591032105516
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_7
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 572
+        width: 576
+        height: 91
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1e45803de40699590800000000000000
+      internalID: -7666990998957304607
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_8
+      rect:
+        serializedVersion: 2
+        x: 287
+        y: 479
+        width: 157
+        height: 67
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8e13ead1f93202e80800000000000000
+      internalID: -8205519354764316184
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_9
+      rect:
+        serializedVersion: 2
+        x: 447
+        y: 506
+        width: 34
+        height: 63
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a6d2ebdf46e0ca820800000000000000
+      internalID: 2930733284427967850
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_10
+      rect:
+        serializedVersion: 2
+        x: 495
+        y: 506
+        width: 34
+        height: 63
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b3458e64230b82700800000000000000
+      internalID: 515855887318406203
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_11
+      rect:
+        serializedVersion: 2
+        x: 543
+        y: 506
+        width: 33
+        height: 63
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e8e0e1ec8dbb2dca0800000000000000
+      internalID: -5993521614231302514
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_12
+      rect:
+        serializedVersion: 2
+        x: 287
+        y: 383
+        width: 178
+        height: 90
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4f30be8e6eddd0720800000000000000
+      internalID: 2814149325996360692
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_13
+      rect:
+        serializedVersion: 2
+        x: 479
+        y: 410
+        width: 34
+        height: 63
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7e442062fa8cd3790800000000000000
+      internalID: -7548656745820568345
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_14
+      rect:
+        serializedVersion: 2
+        x: 527
+        y: 410
+        width: 34
+        height: 63
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a8555bf6268483d10800000000000000
+      internalID: 2105512413413856650
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_15
+      rect:
+        serializedVersion: 2
+        x: 432
+        y: 297
+        width: 144
+        height: 85
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c6bd6c445bf347c50800000000000000
+      internalID: 6662019796563319660
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_16
+      rect:
+        serializedVersion: 2
+        x: 433
+        y: 201
+        width: 143
+        height: 82
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 50d633197872829a0800000000000000
+      internalID: -6257708219021169403
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_17
+      rect:
+        serializedVersion: 2
+        x: 429
+        y: 104
+        width: 146
+        height: 82
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b07d44309d4bcbc80800000000000000
+      internalID: -8305564768622291189
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_18
+      rect:
+        serializedVersion: 2
+        x: 431
+        y: 44
+        width: 32
+        height: 46
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 15123b8a45fd6d130800000000000000
+      internalID: 3591303307575107921
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_19
+      rect:
+        serializedVersion: 2
+        x: 496
+        y: 45
+        width: 18
+        height: 49
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: af7278e965c538ae0800000000000000
+      internalID: -1548292319788718086
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: fire_lights_20
+      rect:
+        serializedVersion: 2
+        x: 545
+        y: 44
+        width: 31
+        height: 46
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 404bef85341a66e00800000000000000
+      internalID: 1037694074783446020
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      fire_lights_0: -4382243262064494438
+      fire_lights_1: -7820811691005697875
+      fire_lights_10: 515855887318406203
+      fire_lights_11: -5993521614231302514
+      fire_lights_12: 2814149325996360692
+      fire_lights_13: -7548656745820568345
+      fire_lights_14: 2105512413413856650
+      fire_lights_15: 6662019796563319660
+      fire_lights_16: -6257708219021169403
+      fire_lights_17: -8305564768622291189
+      fire_lights_18: 3591303307575107921
+      fire_lights_19: -1548292319788718086
+      fire_lights_2: 7905633644484543262
+      fire_lights_20: 1037694074783446020
+      fire_lights_3: -4812650179759960396
+      fire_lights_4: -6699772390720067225
+      fire_lights_5: -707146778806955602
+      fire_lights_6: -5867147591032105516
+      fire_lights_7: -7666990998957304607
+      fire_lights_8: -8205519354764316184
+      fire_lights_9: 2930733284427967850
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

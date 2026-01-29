@@ -1,0 +1,1482 @@
+fileFormatVersion: 2
+guid: 7c2f6399caca744c6b9c137b3ea3ac20
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: 4562366785528318380
+    second: chest_atlas_0
+  - first:
+      213: -6172558990171106723
+    second: chest_atlas_1
+  - first:
+      213: 5155137039898788047
+    second: chest_atlas_2
+  - first:
+      213: -7150265678494054931
+    second: chest_atlas_3
+  - first:
+      213: -4621035727133519406
+    second: chest_atlas_4
+  - first:
+      213: -7042891198948525507
+    second: chest_atlas_5
+  - first:
+      213: 5166193698802460829
+    second: chest_atlas_6
+  - first:
+      213: -2516471447853297214
+    second: chest_atlas_7
+  - first:
+      213: -1745186441729272015
+    second: chest_atlas_8
+  - first:
+      213: -2016218217617050992
+    second: chest_atlas_9
+  - first:
+      213: -6180684007853650057
+    second: chest_atlas_10
+  - first:
+      213: -6621829159077439964
+    second: chest_atlas_11
+  - first:
+      213: 6828294451403084674
+    second: chest_atlas_12
+  - first:
+      213: -6228760959196811633
+    second: chest_atlas_13
+  - first:
+      213: -4774862855614531020
+    second: chest_atlas_14
+  - first:
+      213: -220453383727117347
+    second: chest_atlas_15
+  - first:
+      213: 4454192264943540602
+    second: chest_atlas_16
+  - first:
+      213: -8627876808217725639
+    second: chest_atlas_17
+  - first:
+      213: 5452761353870713519
+    second: chest_atlas_18
+  - first:
+      213: 6322813295772644919
+    second: chest_atlas_19
+  - first:
+      213: 3854577573372787665
+    second: chest_atlas_20
+  - first:
+      213: 6988918496876362456
+    second: chest_atlas_21
+  - first:
+      213: -3282407538640175419
+    second: chest_atlas_22
+  - first:
+      213: 8861060806559017704
+    second: chest_atlas_23
+  - first:
+      213: -4084633172276650894
+    second: chest_atlas_24
+  - first:
+      213: 6955743588191932558
+    second: chest_atlas_25
+  - first:
+      213: 3079031393634669400
+    second: chest_atlas_26
+  - first:
+      213: -2336177572906605925
+    second: chest_atlas_27
+  - first:
+      213: 7092929785026319195
+    second: chest_atlas_28
+  - first:
+      213: -174778428178641470
+    second: chest_atlas_29
+  - first:
+      213: 7662706134772017881
+    second: chest_atlas_30
+  - first:
+      213: -322547399739250260
+    second: chest_atlas_31
+  - first:
+      213: -237535866097599008
+    second: chest_atlas_32
+  - first:
+      213: 9105483821822544824
+    second: chest_atlas_33
+  - first:
+      213: -1192489601253608485
+    second: chest_atlas_34
+  - first:
+      213: 4116423557091058387
+    second: chest_atlas_35
+  - first:
+      213: -1748521325066809928
+    second: chest_atlas_36
+  - first:
+      213: -3525800499031057361
+    second: chest_atlas_37
+  - first:
+      213: -1472562619476973052
+    second: chest_atlas_38
+  - first:
+      213: 3724011451457827458
+    second: chest_atlas_39
+  - first:
+      213: 719377076383318157
+    second: chest_atlas_40
+  - first:
+      213: 5512563865328849555
+    second: chest_atlas_41
+  - first:
+      213: -7683887406097831130
+    second: chest_atlas_42
+  - first:
+      213: 2076917721134616465
+    second: chest_atlas_43
+  - first:
+      213: 3929574541091094513
+    second: chest_atlas_44
+  - first:
+      213: 2913251915734318471
+    second: chest_atlas_45
+  - first:
+      213: -5994713024957700999
+    second: chest_atlas_46
+  - first:
+      213: -8823977843589397690
+    second: chest_atlas_47
+  - first:
+      213: -8981117367734494961
+    second: chest_atlas_48
+  - first:
+      213: 2318294855005481962
+    second: chest_atlas_49
+  - first:
+      213: -7403342245323897341
+    second: chest_atlas_50
+  - first:
+      213: -744950972340614078
+    second: chest_atlas_51
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 0
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 2
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: chest_atlas_0
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 696
+        width: 289
+        height: 42
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ca9c4724b68c05f30800000000000000
+      internalID: 4562366785528318380
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_1
+      rect:
+        serializedVersion: 2
+        x: 296
+        y: 694
+        width: 40
+        height: 45
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d5215b35d4aa65aa0800000000000000
+      internalID: -6172558990171106723
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_2
+      rect:
+        serializedVersion: 2
+        x: 344
+        y: 694
+        width: 41
+        height: 47
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: fc040af13d9ba8740800000000000000
+      internalID: 5155137039898788047
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_3
+      rect:
+        serializedVersion: 2
+        x: 392
+        y: 694
+        width: 184
+        height: 47
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: de5c1b7cf3725cc90800000000000000
+      internalID: -7150265678494054931
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_4
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 600
+        width: 289
+        height: 43
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2d151dd4d78cedfb0800000000000000
+      internalID: -4621035727133519406
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_5
+      rect:
+        serializedVersion: 2
+        x: 296
+        y: 598
+        width: 41
+        height: 48
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d3ab2f6f4cf924e90800000000000000
+      internalID: -7042891198948525507
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_6
+      rect:
+        serializedVersion: 2
+        x: 344
+        y: 598
+        width: 41
+        height: 48
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d986bf12cc102b740800000000000000
+      internalID: 5166193698802460829
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_7
+      rect:
+        serializedVersion: 2
+        x: 392
+        y: 598
+        width: 184
+        height: 48
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2c19a4f0d82b31dd0800000000000000
+      internalID: -2516471447853297214
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_8
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 504
+        width: 289
+        height: 45
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 13716e97d2ad7c7e0800000000000000
+      internalID: -1745186441729272015
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_9
+      rect:
+        serializedVersion: 2
+        x: 296
+        y: 502
+        width: 41
+        height: 52
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 092b345a634f404e0800000000000000
+      internalID: -2016218217617050992
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_10
+      rect:
+        serializedVersion: 2
+        x: 344
+        y: 502
+        width: 41
+        height: 52
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 77f02fa34acc93aa0800000000000000
+      internalID: -6180684007853650057
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_11
+      rect:
+        serializedVersion: 2
+        x: 392
+        y: 502
+        width: 184
+        height: 52
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4269dd9b6798a14a0800000000000000
+      internalID: -6621829159077439964
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_12
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 408
+        width: 289
+        height: 48
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 283d6ad20a9f2ce50800000000000000
+      internalID: 6828294451403084674
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_13
+      rect:
+        serializedVersion: 2
+        x: 296
+        y: 406
+        width: 41
+        height: 53
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f8ea044b8eefe89a0800000000000000
+      internalID: -6228760959196811633
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_14
+      rect:
+        serializedVersion: 2
+        x: 344
+        y: 406
+        width: 41
+        height: 53
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 43a73e7f7874cbdb0800000000000000
+      internalID: -4774862855614531020
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_15
+      rect:
+        serializedVersion: 2
+        x: 392
+        y: 406
+        width: 184
+        height: 53
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ddb8965c0dac0fcf0800000000000000
+      internalID: -220453383727117347
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_16
+      rect:
+        serializedVersion: 2
+        x: 10
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a799041044870dd30800000000000000
+      internalID: 4454192264943540602
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_17
+      rect:
+        serializedVersion: 2
+        x: 58
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 935f95061cf934880800000000000000
+      internalID: -8627876808217725639
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_18
+      rect:
+        serializedVersion: 2
+        x: 106
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: fa22176bf891cab40800000000000000
+      internalID: 5452761353870713519
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_19
+      rect:
+        serializedVersion: 2
+        x: 154
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 73635ab51352fb750800000000000000
+      internalID: 6322813295772644919
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_20
+      rect:
+        serializedVersion: 2
+        x: 202
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1db721c61e53e7530800000000000000
+      internalID: 3854577573372787665
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_21
+      rect:
+        serializedVersion: 2
+        x: 250
+        y: 287
+        width: 39
+        height: 68
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8daf8721850adf060800000000000000
+      internalID: 6988918496876362456
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_22
+      rect:
+        serializedVersion: 2
+        x: 291
+        y: 312
+        width: 46
+        height: 40
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5ceb94b0cbb8272d0800000000000000
+      internalID: -3282407538640175419
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_23
+      rect:
+        serializedVersion: 2
+        x: 339
+        y: 312
+        width: 46
+        height: 40
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8ea261c0bdfc8fa70800000000000000
+      internalID: 8861060806559017704
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_24
+      rect:
+        serializedVersion: 2
+        x: 387
+        y: 312
+        width: 189
+        height: 42
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 27c5ca865c77057c0800000000000000
+      internalID: -4084633172276650894
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_25
+      rect:
+        serializedVersion: 2
+        x: 10
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e8091eab0f3c78060800000000000000
+      internalID: 6955743588191932558
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_26
+      rect:
+        serializedVersion: 2
+        x: 58
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 853ded53dbaeaba20800000000000000
+      internalID: 3079031393634669400
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_27
+      rect:
+        serializedVersion: 2
+        x: 106
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b92eaa200ea349fd0800000000000000
+      internalID: -2336177572906605925
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_28
+      rect:
+        serializedVersion: 2
+        x: 154
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b53184d3f062f6260800000000000000
+      internalID: 7092929785026319195
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_29
+      rect:
+        serializedVersion: 2
+        x: 202
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2cdc20212ff039df0800000000000000
+      internalID: -174778428178641470
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_30
+      rect:
+        serializedVersion: 2
+        x: 250
+        y: 191
+        width: 39
+        height: 69
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9daea4d71a6675a60800000000000000
+      internalID: 7662706134772017881
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_31
+      rect:
+        serializedVersion: 2
+        x: 291
+        y: 216
+        width: 46
+        height: 40
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ca9e05f49d4168bf0800000000000000
+      internalID: -322547399739250260
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_32
+      rect:
+        serializedVersion: 2
+        x: 339
+        y: 216
+        width: 46
+        height: 40
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 0ed76d7636a14bcf0800000000000000
+      internalID: -237535866097599008
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_33
+      rect:
+        serializedVersion: 2
+        x: 387
+        y: 216
+        width: 189
+        height: 43
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8bb8cc30b4d2d5e70800000000000000
+      internalID: 9105483821822544824
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_34
+      rect:
+        serializedVersion: 2
+        x: 10
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bd37ee6960d637fe0800000000000000
+      internalID: -1192489601253608485
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_35
+      rect:
+        serializedVersion: 2
+        x: 58
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3d266795a69702930800000000000000
+      internalID: 4116423557091058387
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_36
+      rect:
+        serializedVersion: 2
+        x: 106
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8bd82317e110cb7e0800000000000000
+      internalID: -1748521325066809928
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_37
+      rect:
+        serializedVersion: 2
+        x: 154
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f2cdb5a6027d11fc0800000000000000
+      internalID: -3525800499031057361
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_38
+      rect:
+        serializedVersion: 2
+        x: 202
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 40a6e8c7918609be0800000000000000
+      internalID: -1472562619476973052
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_39
+      rect:
+        serializedVersion: 2
+        x: 250
+        y: 95
+        width: 39
+        height: 72
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 28271a73fa85ea330800000000000000
+      internalID: 3724011451457827458
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_40
+      rect:
+        serializedVersion: 2
+        x: 291
+        y: 120
+        width: 46
+        height: 39
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d800369b3adbbf900800000000000000
+      internalID: 719377076383318157
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_41
+      rect:
+        serializedVersion: 2
+        x: 339
+        y: 120
+        width: 46
+        height: 39
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3929492f0af808c40800000000000000
+      internalID: 5512563865328849555
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_42
+      rect:
+        serializedVersion: 2
+        x: 387
+        y: 120
+        width: 189
+        height: 45
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 62be0797d195d5590800000000000000
+      internalID: -7683887406097831130
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_43
+      rect:
+        serializedVersion: 2
+        x: 10
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 19f41f3d9a1b2dc10800000000000000
+      internalID: 2076917721134616465
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_44
+      rect:
+        serializedVersion: 2
+        x: 58
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1ff3720b937a88630800000000000000
+      internalID: 3929574541091094513
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_45
+      rect:
+        serializedVersion: 2
+        x: 106
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 78df19aae23fd6820800000000000000
+      internalID: 2913251915734318471
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_46
+      rect:
+        serializedVersion: 2
+        x: 154
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9742df0e3408ecca0800000000000000
+      internalID: -5994713024957700999
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_47
+      rect:
+        serializedVersion: 2
+        x: 202
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 643cfe617eeea8580800000000000000
+      internalID: -8823977843589397690
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_48
+      rect:
+        serializedVersion: 2
+        x: 250
+        y: 0
+        width: 39
+        height: 73
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f09181a8659ac5380800000000000000
+      internalID: -8981117367734494961
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_49
+      rect:
+        serializedVersion: 2
+        x: 291
+        y: 24
+        width: 46
+        height: 43
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: aeba73543ec3c2020800000000000000
+      internalID: 2318294855005481962
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_50
+      rect:
+        serializedVersion: 2
+        x: 339
+        y: 24
+        width: 46
+        height: 43
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 30683d4d37b024990800000000000000
+      internalID: -7403342245323897341
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: chest_atlas_51
+      rect:
+        serializedVersion: 2
+        x: 387
+        y: 24
+        width: 189
+        height: 48
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 24c4e8e990769a5f0800000000000000
+      internalID: -744950972340614078
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      chest_atlas_0: 4562366785528318380
+      chest_atlas_1: -6172558990171106723
+      chest_atlas_10: -6180684007853650057
+      chest_atlas_11: -6621829159077439964
+      chest_atlas_12: 6828294451403084674
+      chest_atlas_13: -6228760959196811633
+      chest_atlas_14: -4774862855614531020
+      chest_atlas_15: -220453383727117347
+      chest_atlas_16: 4454192264943540602
+      chest_atlas_17: -8627876808217725639
+      chest_atlas_18: 5452761353870713519
+      chest_atlas_19: 6322813295772644919
+      chest_atlas_2: 5155137039898788047
+      chest_atlas_20: 3854577573372787665
+      chest_atlas_21: 6988918496876362456
+      chest_atlas_22: -3282407538640175419
+      chest_atlas_23: 8861060806559017704
+      chest_atlas_24: -4084633172276650894
+      chest_atlas_25: 6955743588191932558
+      chest_atlas_26: 3079031393634669400
+      chest_atlas_27: -2336177572906605925
+      chest_atlas_28: 7092929785026319195
+      chest_atlas_29: -174778428178641470
+      chest_atlas_3: -7150265678494054931
+      chest_atlas_30: 7662706134772017881
+      chest_atlas_31: -322547399739250260
+      chest_atlas_32: -237535866097599008
+      chest_atlas_33: 9105483821822544824
+      chest_atlas_34: -1192489601253608485
+      chest_atlas_35: 4116423557091058387
+      chest_atlas_36: -1748521325066809928
+      chest_atlas_37: -3525800499031057361
+      chest_atlas_38: -1472562619476973052
+      chest_atlas_39: 3724011451457827458
+      chest_atlas_4: -4621035727133519406
+      chest_atlas_40: 719377076383318157
+      chest_atlas_41: 5512563865328849555
+      chest_atlas_42: -7683887406097831130
+      chest_atlas_43: 2076917721134616465
+      chest_atlas_44: 3929574541091094513
+      chest_atlas_45: 2913251915734318471
+      chest_atlas_46: -5994713024957700999
+      chest_atlas_47: -8823977843589397690
+      chest_atlas_48: -8981117367734494961
+      chest_atlas_49: 2318294855005481962
+      chest_atlas_5: -7042891198948525507
+      chest_atlas_50: -7403342245323897341
+      chest_atlas_51: -744950972340614078
+      chest_atlas_6: 5166193698802460829
+      chest_atlas_7: -2516471447853297214
+      chest_atlas_8: -1745186441729272015
+      chest_atlas_9: -2016218217617050992
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -1,0 +1,112 @@
+{
+  "races": [
+    {
+      "id": "human",
+      "name": "Human",
+      "description": "Versatile and ambitious, humans are the most adaptable of races",
+      "image": "race_human",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 1,
+        "dexterity": 1,
+        "constitution": 1,
+        "intelligence": 1,
+        "wisdom": 1,
+        "charisma": 1
+      }
+    },
+    {
+      "id": "elf",
+      "name": "Elf",
+      "description": "Graceful and long-lived, elves are masters of magic and archery",
+      "image": "race_elf",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 0,
+        "dexterity": 2,
+        "constitution": 0,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "dwarf",
+      "name": "Dwarf",
+      "description": "Hardy and resilient, dwarves are known for their craftsmanship",
+      "image": "race_dwarf",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 0,
+        "dexterity": 0,
+        "constitution": 2,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "halfling",
+      "name": "Halfling",
+      "description": "Small but brave, halflings are known for their luck and courage",
+      "image": "race_halfling",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 0,
+        "dexterity": 2,
+        "constitution": 0,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "orc",
+      "name": "Orc",
+      "description": "Strong and fierce, orcs are powerful warriors",
+      "image": "race_orc",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 2,
+        "dexterity": 0,
+        "constitution": 1,
+        "intelligence": 0,
+        "wisdom": 0,
+        "charisma": 0
+      }
+    },
+    {
+      "id": "tiefling",
+      "name": "Tiefling",
+      "description": "Descendants of fiends, tieflings have an otherworldly presence",
+      "image": "race_tiefling",
+      "baseHitPoints": 10,
+      "baseMana": 0,
+      "baseEnergy": 0,
+      "baseRage": 0,
+      "abilityScoreBonuses": {
+        "strength": 0,
+        "dexterity": 0,
+        "constitution": 0,
+        "intelligence": 1,
+        "wisdom": 0,
+        "charisma": 2
+      }
+    }
+  ]
+}

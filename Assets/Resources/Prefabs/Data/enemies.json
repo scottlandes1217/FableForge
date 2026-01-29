@@ -1,0 +1,112 @@
+{
+  "enemies": [
+    {
+      "id": "goblin_01",
+      "name": "Goblin",
+      "description": "A small, aggressive goblin. Weak but fast. Found in groups.",
+      "tileMap": "2,2,2",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["generate"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 8,
+      "attackPoints": 3,
+      "defensePoints": 12,
+      "energyPoints": 10,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 0,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "experienceReward": 10,
+      "goldReward": 5,
+      "speed": 30,
+      "lootTable": ["goblin_ear", "rusty_dagger"]
+    },
+    {
+      "id": "orc_warrior_01",
+      "name": "Orc Warrior",
+      "description": "A large orc warrior. Strong and durable. Wields a crude axe.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1050"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 25,
+      "attackPoints": 8,
+      "defensePoints": 15,
+      "energyPoints": 15,
+      "manaPoints": null,
+      "ragePoints": 20,
+      "friendPoints": null,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 28, "height": 28}
+      },
+      "zPosition": 10,
+      "level": 3,
+      "experienceReward": 50,
+      "goldReward": 25,
+      "speed": 25,
+      "lootTable": ["orc_tooth", "crude_axe", "leather_armor"]
+    },
+    {
+      "id": "bandit_01",
+      "name": "Bandit",
+      "description": "A human bandit. Opportunistic and quick. Armed with a short sword.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1100"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 15,
+      "attackPoints": 5,
+      "defensePoints": 13,
+      "energyPoints": 12,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": null,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 24, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 2,
+      "experienceReward": 25,
+      "goldReward": 15,
+      "speed": 35,
+      "lootTable": ["short_sword", "coin_purse", "bandit_mask"]
+    }
+  ]
+}

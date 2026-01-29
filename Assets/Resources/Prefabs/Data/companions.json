@@ -1,0 +1,148 @@
+{
+  "animals": [
+    {
+      "id": "wolf_01",
+      "name": "Wolf",
+      "description": "A wild wolf. Can be befriended with meat. Strong combat companion.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1200"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 11,
+      "attackPoints": 4,
+      "defensePoints": 13,
+      "energyPoints": 15,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 50,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 28, "height": 24}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "speed": 40,
+      "requiredBefriendingItem": "meat",
+      "skillIds": ["bite", "howl", "pounce"],
+      "moves": ["bite", "howl", "pounce"]
+    },
+    {
+      "id": "deer_01",
+      "name": "Deer",
+      "description": "A graceful deer. Timid but can be befriended with berries. Fast and agile.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1250"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 32, "height": 32},
+          "zOffset": 0,
+          "tileSize": 32
+        }
+      ],
+      "size": {"width": 32, "height": 32},
+      "hitPoints": 4,
+      "attackPoints": 2,
+      "defensePoints": 13,
+      "energyPoints": 20,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 70,
+      "zOffset": 0,
+      "tileSize": 32,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 28, "height": 28}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "speed": 50,
+      "requiredBefriendingItem": "berries",
+      "skillIds": ["charge", "tackle"],
+      "moves": ["charge", "tackle"]
+    },
+    {
+      "id": "rabbit_01",
+      "name": "Rabbit",
+      "description": "A small rabbit. Very timid but can be befriended with a carrot. Quick and evasive.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1300"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 24, "height": 24},
+          "zOffset": 0,
+          "tileSize": 24
+        }
+      ],
+      "size": {"width": 24, "height": 24},
+      "hitPoints": 1,
+      "attackPoints": 0,
+      "defensePoints": 12,
+      "energyPoints": 25,
+      "manaPoints": null,
+      "ragePoints": null,
+      "friendPoints": 80,
+      "zOffset": 0,
+      "tileSize": 24,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 20, "height": 20}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "speed": 40,
+      "requiredBefriendingItem": "carrot",
+      "skillIds": ["bite", "pounce"],
+      "moves": ["bite", "pounce"]
+    },
+    {
+      "id": "bear_01",
+      "name": "Bear",
+      "description": "A large bear. Powerful but slow. Can be befriended with honey.",
+      "tileMap": "1",
+      "parts": [
+        {
+          "layer": "low",
+          "tileGrid": [["exterior-1350"]],
+          "offset": {"x": 0, "y": 0},
+          "size": {"width": 48, "height": 48},
+          "zOffset": 0,
+          "tileSize": 48
+        }
+      ],
+      "size": {"width": 48, "height": 48},
+      "hitPoints": 34,
+      "attackPoints": 6,
+      "defensePoints": 11,
+      "energyPoints": 12,
+      "manaPoints": null,
+      "ragePoints": 15,
+      "friendPoints": 40,
+      "zOffset": 0,
+      "tileSize": 48,
+      "collision": {
+        "type": "rectangle",
+        "size": {"width": 40, "height": 40}
+      },
+      "zPosition": 10,
+      "level": 1,
+      "speed": 30,
+      "requiredBefriendingItem": "honey",
+      "skillIds": ["claw", "roar", "charge"],
+      "moves": ["claw", "roar", "charge"]
+    }
+  ]
+}
