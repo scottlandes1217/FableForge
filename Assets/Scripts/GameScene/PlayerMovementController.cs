@@ -6,8 +6,14 @@ using UnityEngine.InputSystem;
 public class PlayerMovementController : MonoBehaviour
 {
     [SerializeField] private float tilesPerSecond = 4f;
+    [Tooltip("Max deltaTime per frame to avoid movement jump after frame spikes (e.g. block loading).")]
+    [SerializeField] private float maxDeltaTime = 0.05f;
     private float tileScale = 1f;
     private Vector3 lastPosition;
+    private Vector2 lastMovementInput;
+
+    /// <summary>Used by CharacterWalkAnimator to know if the character is moving.</summary>
+    public float LastMovementInputSqrMagnitude => lastMovementInput.sqrMagnitude;
 
     public void SetTileScale(float scale)
     {
@@ -35,16 +41,23 @@ public class PlayerMovementController : MonoBehaviour
             input.Normalize();
         }
 
+        if (input.sqrMagnitude > 0.01f)
+        {
+            lastMovementInput = input;
+        }
+
         var startPosition = transform.position;
 
+        var dt = Mathf.Min(Time.deltaTime, maxDeltaTime > 0f ? maxDeltaTime : 0.05f);
         var speed = tilesPerSecond * tileScale;
-        var delta = (Vector3)(input * speed * Time.deltaTime);
+        var delta = (Vector3)(input * speed * dt);
         var target = transform.position + delta;
 
         sceneController = GameSceneController.Instance;
         if (sceneController == null || sceneController.CanMoveTo(target))
         {
             transform.position = target;
+            UpdateFacingFromMovement();
             CloseChestOnMove(input, startPosition);
             return;
         }
@@ -58,6 +71,7 @@ public class PlayerMovementController : MonoBehaviour
         if (sceneController.CanMoveTo(xOnly))
         {
             transform.position = xOnly;
+            UpdateFacingFromMovement();
             CloseChestOnMove(input, startPosition);
             return;
         }
@@ -66,11 +80,21 @@ public class PlayerMovementController : MonoBehaviour
         if (sceneController.CanMoveTo(yOnly))
         {
             transform.position = yOnly;
+            UpdateFacingFromMovement();
             CloseChestOnMove(input, startPosition);
         }
         else
         {
             CloseChestOnMove(input, startPosition);
+        }
+    }
+
+    private void UpdateFacingFromMovement()
+    {
+        var customizer = GetComponent<CharacterCustomizer>();
+        if (customizer != null)
+        {
+            customizer.SetFacingFromMovement(lastMovementInput);
         }
     }
 

@@ -12,9 +12,10 @@ public class GameSceneController : MonoBehaviour
 
     private const float TargetTilePixelSize = 32f;
     private const float DefaultTilePixelSize = 16f;
-    private const float TargetTilesOnScreenY = 18f;
+    [Tooltip("Vertical number of tiles visible; larger = more zoomed out. Used for both TMX and procedural maps.")]
+    [SerializeField] private float targetTilesOnScreenY = 22f;
     private const float DoorTriggerCooldownSeconds = 0.35f;
-    [SerializeField] private float playerColliderWidthFactor = 0.7f;
+    [SerializeField] private float playerColliderWidthFactor = 0.3f;
     [SerializeField] private float playerColliderHeightFactor = 0.25f;
     [SerializeField] private bool showPlayerColliderOutline = true;
     [SerializeField] private float playerColliderYOffset = 0.0f;
@@ -42,6 +43,9 @@ public class GameSceneController : MonoBehaviour
     private Vector2Int? tiledSpawnTile;
     private BoxCollider2D playerCollider;
     private bool loggedColliderState;
+
+    /// <summary>Base sorting order for the player so they draw in front of the map. Set when applying sort order; CharacterCustomizer uses this so it isn't overwritten every frame.</summary>
+    public static int PlayerSortingBaseOrder { get; private set; }
     private float lastCollisionLogTime;
     private float nextColliderAuditTime;
     private Dictionary<string, PrefabDefinition> cachedChestPrefabs;
@@ -53,6 +57,7 @@ public class GameSceneController : MonoBehaviour
     private bool isInBattle;
     private readonly Dictionary<Transform, Vector3> battleOriginalPositions = new Dictionary<Transform, Vector3>();
     private readonly List<CompanionFollower> battleFollowers = new List<CompanionFollower>();
+    private Coroutine proceduralRefreshRoutine;
     private readonly HashSet<string> loggedTileWarnings = new HashSet<string>();
     private static Material prefabColliderMaterial;
     private struct TileSpriteInstance
@@ -199,18 +204,33 @@ public class GameSceneController : MonoBehaviour
         EnsureWorldCamera(worldSystem.Config);
         proceduralWorldRoot = new GameObject("WorldPreview");
         proceduralBlocks.Clear();
-        proceduralCenterBlock = Vector2Int.zero;
-
-        for (var offsetX = -ProceduralBlockRadius; offsetX <= ProceduralBlockRadius; offsetX++)
+        if (proceduralEntitiesRoot == null)
         {
-            for (var offsetY = -ProceduralBlockRadius; offsetY <= ProceduralBlockRadius; offsetY++)
-            {
-                var coord = new Vector2Int(proceduralCenterBlock.Value.x + offsetX, proceduralCenterBlock.Value.y + offsetY);
-                EnsureProceduralBlock(coord, worldSystem);
-            }
+            proceduralEntitiesRoot = new GameObject("WorldEntities");
         }
+        proceduralEntityBlocks.Clear();
 
-        RefreshProceduralBlocks(proceduralCenterBlock.Value);
+        var tileScale = GetProceduralTileScale();
+        var width = Mathf.Max(1, worldSystem.Config.width);
+        var height = Mathf.Max(1, worldSystem.Config.height);
+        var blockWorldSizeX = width * tileScale;
+        var blockWorldSizeY = height * tileScale;
+        var enter = worldSystem.CurrentPrefabData?.enterConfig;
+        var spawnX = enter != null ? enter.x : worldSystem.Config.width / 2;
+        var spawnY = enter != null ? enter.y : worldSystem.Config.height / 2;
+        var spawnWorldX = spawnX * tileScale;
+        var spawnWorldY = spawnY * tileScale;
+        var centerBlock = new Vector2Int(
+            Mathf.FloorToInt(spawnWorldX / blockWorldSizeX),
+            Mathf.FloorToInt(spawnWorldY / blockWorldSizeY));
+        proceduralCenterBlock = centerBlock;
+
+        if (proceduralRefreshRoutine != null)
+        {
+            StopCoroutine(proceduralRefreshRoutine);
+            proceduralRefreshRoutine = null;
+        }
+        proceduralRefreshRoutine = StartCoroutine(RefreshProceduralBlocksOverFrames(centerBlock));
     }
 
     private string GetGroundTileSpec(PrefabGroundTiles groundTiles, int tileValue, int seed, int x, int y)
@@ -667,8 +687,232 @@ public class GameSceneController : MonoBehaviour
         if (!proceduralCenterBlock.HasValue || proceduralCenterBlock.Value != center)
         {
             proceduralCenterBlock = center;
-            RefreshProceduralBlocks(center);
+            if (proceduralRefreshRoutine != null)
+            {
+                StopCoroutine(proceduralRefreshRoutine);
+                proceduralRefreshRoutine = null;
+            }
+            proceduralRefreshRoutine = StartCoroutine(RefreshProceduralBlocksOverFrames(center));
         }
+    }
+
+    private System.Collections.IEnumerator RefreshProceduralBlocksOverFrames(Vector2Int centerBlock)
+    {
+        yield return null;
+        yield return new WaitForEndOfFrame();
+
+        var worldSystem = WorldSystem.Instance;
+        if (worldSystem == null)
+        {
+            proceduralRefreshRoutine = null;
+            yield break;
+        }
+
+        var frameStart = Time.realtimeSinceStartup;
+
+        var tileScale = GetProceduralTileScale();
+        if (tileScale <= 0f)
+        {
+            tileScale = 1f;
+        }
+
+        var width = Mathf.Max(1, worldSystem.Config.width);
+        var height = Mathf.Max(1, worldSystem.Config.height);
+        var blockWorldSizeX = width * tileScale;
+        var blockWorldSizeY = height * tileScale;
+
+        var desiredCoords = new HashSet<Vector2Int>();
+        for (var offsetX = -ProceduralBlockRadius; offsetX <= ProceduralBlockRadius; offsetX++)
+        {
+            for (var offsetY = -ProceduralBlockRadius; offsetY <= ProceduralBlockRadius; offsetY++)
+            {
+                desiredCoords.Add(new Vector2Int(centerBlock.x + offsetX, centerBlock.y + offsetY));
+            }
+        }
+
+        var orderedTerrainCoords = new List<Vector2Int>();
+        orderedTerrainCoords.Add(centerBlock);
+        foreach (var c in desiredCoords)
+        {
+            if (c != centerBlock)
+            {
+                orderedTerrainCoords.Add(c);
+            }
+        }
+
+        var terrainToRemove = new List<Vector2Int>();
+        foreach (var coord in proceduralBlocks.Keys)
+        {
+            if (!desiredCoords.Contains(coord))
+            {
+                terrainToRemove.Add(coord);
+            }
+        }
+
+        for (var i = 0; i < terrainToRemove.Count; i++)
+        {
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+
+            var coord = terrainToRemove[i];
+            if (proceduralBlocks.TryGetValue(coord, out var block))
+            {
+                proceduralBlocks.Remove(coord);
+                if (block != null && block.gameObject != null)
+                {
+                    yield return DestroyBlockChildrenOverFrames(block.gameObject, 120);
+                    Destroy(block.gameObject);
+                }
+            }
+        }
+
+        var terrainHeight = worldSystem.Tiles != null ? worldSystem.Tiles.GetLength(1) : 64;
+
+        foreach (var coord in orderedTerrainCoords)
+        {
+            if (proceduralBlocks.ContainsKey(coord))
+            {
+                continue;
+            }
+
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+
+            var root = CreateProceduralBlockRootOnly(coord, proceduralWorldRoot.transform);
+            if (root != null)
+            {
+                proceduralBlocks[coord] = root;
+                for (var yStart = 0; yStart < terrainHeight; yStart += TerrainRowsPerFrame)
+                {
+                    if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+                    {
+                        yield return null;
+                        frameStart = Time.realtimeSinceStartup;
+                    }
+                    var rowCount = Mathf.Min(TerrainRowsPerFrame, terrainHeight - yStart);
+                    CreateProceduralBlockTilesForRowRange(root, coord, worldSystem, yStart, rowCount);
+                }
+            }
+        }
+
+        foreach (var kvp in proceduralBlocks)
+        {
+            SetBlockTransformPosition(kvp.Value, kvp.Key, blockWorldSizeX, blockWorldSizeY, "WorldBlock");
+        }
+
+        yield return null;
+
+        var data = worldSystem.CurrentPrefabData;
+        if (data == null || data.entities == null)
+        {
+            proceduralRefreshRoutine = null;
+            yield break;
+        }
+
+        var prefabLookup = BuildPrefabLookup(data);
+        var treePrefabs = ResolveEntityPrefabs(data, data.entities.treePrefabs, "tree");
+        var rockPrefabs = ResolveEntityPrefabs(data, data.entities.rockPrefabs, "rock");
+
+        var entityToRemove = new List<Vector2Int>();
+        foreach (var coord in proceduralEntityBlocks.Keys)
+        {
+            if (!desiredCoords.Contains(coord))
+            {
+                entityToRemove.Add(coord);
+            }
+        }
+
+        for (var i = 0; i < entityToRemove.Count; i++)
+        {
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+
+            var coord = entityToRemove[i];
+            if (proceduralEntityBlocks.TryGetValue(coord, out var blockRoot))
+            {
+                proceduralEntityBlocks.Remove(coord);
+                if (blockRoot != null && blockRoot.gameObject != null)
+                {
+                    yield return DestroyBlockChildrenOverFrames(blockRoot.gameObject, 80);
+                    Destroy(blockRoot.gameObject);
+                }
+            }
+        }
+
+        var orderedEntityCoords = new List<Vector2Int>();
+        orderedEntityCoords.Add(centerBlock);
+        foreach (var c in desiredCoords)
+        {
+            if (c != centerBlock)
+            {
+                orderedEntityCoords.Add(c);
+            }
+        }
+
+        foreach (var coord in orderedEntityCoords)
+        {
+            if (proceduralEntityBlocks.ContainsKey(coord))
+            {
+                continue;
+            }
+
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+
+            var blockRootObj = new GameObject($"EntitiesBlock_{coord.x}_{coord.y}");
+            blockRootObj.transform.SetParent(proceduralEntitiesRoot.transform, false);
+            var blockRoot = blockRootObj.transform;
+            proceduralEntityBlocks[coord] = blockRoot;
+
+            var entityTileScale = GetProceduralTileScale();
+            var entityRandom = GetEntityBlockRandom(coord, data);
+            var entityLowOrder = ResolvePlayerSortingOrder() - 1;
+
+            RebuildProceduralEntityBlockTrees(blockRoot, coord, worldSystem, data, prefabLookup, treePrefabs, entityTileScale, entityRandom, entityLowOrder);
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+            RebuildProceduralEntityBlockRocks(blockRoot, coord, worldSystem, data, prefabLookup, rockPrefabs, entityTileScale, entityRandom, entityLowOrder);
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+            RebuildProceduralEntityBlockChests(blockRoot, coord, worldSystem, data, entityTileScale, entityRandom, entityLowOrder);
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+            RebuildProceduralEntityBlockCompanions(blockRoot, coord, worldSystem, data, entityTileScale, entityRandom, entityLowOrder);
+            if (Time.realtimeSinceStartup - frameStart >= ProceduralLoadMaxSecondsPerFrame)
+            {
+                yield return null;
+                frameStart = Time.realtimeSinceStartup;
+            }
+            RebuildProceduralEntityBlockEnemies(blockRoot, coord, worldSystem, data, entityTileScale, entityRandom, entityLowOrder);
+        }
+
+        foreach (var kvp in proceduralEntityBlocks)
+        {
+            SetBlockTransformPosition(kvp.Value, kvp.Key, blockWorldSizeX, blockWorldSizeY, "EntitiesBlock");
+        }
+
+        proceduralRefreshRoutine = null;
     }
 
     private void RefreshProceduralBlocks(Vector2Int centerBlock)
@@ -809,6 +1053,30 @@ public class GameSceneController : MonoBehaviour
         transform.name = $"{prefix}_{coord.x}_{coord.y}";
     }
 
+    private static System.Collections.IEnumerator DestroyBlockChildrenOverFrames(GameObject blockRoot, int chunkSize)
+    {
+        if (blockRoot == null)
+        {
+            yield break;
+        }
+
+        var tr = blockRoot.transform;
+        while (tr.childCount > 0)
+        {
+            var n = Mathf.Min(chunkSize, tr.childCount);
+            for (var i = 0; i < n; i++)
+            {
+                var child = tr.GetChild(0);
+                if (child != null)
+                {
+                    Destroy(child.gameObject);
+                }
+            }
+
+            yield return null;
+        }
+    }
+
     private void EnsureProceduralBlock(Vector2Int coord, WorldSystem worldSystem)
     {
         if (proceduralWorldRoot == null || proceduralBlocks.ContainsKey(coord))
@@ -851,7 +1119,31 @@ public class GameSceneController : MonoBehaviour
         List<string> treePrefabs,
         List<string> rockPrefabs)
     {
-        if (blockRoot == null || worldSystem == null || data == null || data.entities == null)
+        RebuildProceduralEntityBlockClear(blockRoot);
+        var random = GetEntityBlockRandom(coord, data);
+        var tileScale = GetProceduralTileScale();
+        var lowOrder = ResolvePlayerSortingOrder() - 1;
+        RebuildProceduralEntityBlockTrees(blockRoot, coord, worldSystem, data, prefabLookup, treePrefabs, tileScale, random, lowOrder);
+        RebuildProceduralEntityBlockRocks(blockRoot, coord, worldSystem, data, prefabLookup, rockPrefabs, tileScale, random, lowOrder);
+        RebuildProceduralEntityBlockChests(blockRoot, coord, worldSystem, data, tileScale, random, lowOrder);
+        RebuildProceduralEntityBlockCompanions(blockRoot, coord, worldSystem, data, tileScale, random, lowOrder);
+        RebuildProceduralEntityBlockEnemies(blockRoot, coord, worldSystem, data, tileScale, random, lowOrder);
+    }
+
+    private static System.Random GetEntityBlockRandom(Vector2Int coord, PrefabWorldData data)
+    {
+        var baseSeed = (data != null && data.seed != 0 ? data.seed : UnityEngine.Random.Range(0, 100000)) + 7919;
+        unchecked
+        {
+            var blockSeed = (baseSeed * 397) ^ coord.x;
+            blockSeed = (blockSeed * 397) ^ coord.y;
+            return new System.Random(blockSeed);
+        }
+    }
+
+    private void RebuildProceduralEntityBlockClear(Transform blockRoot)
+    {
+        if (blockRoot == null)
         {
             return;
         }
@@ -860,37 +1152,85 @@ public class GameSceneController : MonoBehaviour
         {
             Destroy(blockRoot.GetChild(i).gameObject);
         }
+    }
 
-        var tileScale = GetProceduralTileScale();
-        var baseSeed = (data.seed != 0 ? data.seed : UnityEngine.Random.Range(0, 100000)) + 7919;
-        var blockSeed = baseSeed;
-        unchecked
+    private void RebuildProceduralEntityBlockTrees(
+        Transform blockRoot,
+        Vector2Int coord,
+        WorldSystem worldSystem,
+        PrefabWorldData data,
+        Dictionary<string, PrefabDefinition> prefabLookup,
+        List<string> treePrefabs,
+        float tileScale,
+        System.Random random,
+        int lowOrder)
+    {
+        if (blockRoot == null || worldSystem == null || data?.entities == null)
         {
-            blockSeed = (blockSeed * 397) ^ coord.x;
-            blockSeed = (blockSeed * 397) ^ coord.y;
+            return;
         }
-        var random = new System.Random(blockSeed);
-        var playerOrder = ResolvePlayerSortingOrder();
-        var lowOrder = playerOrder - 1;
 
         PlacePrefabDensityEntities(blockRoot, worldSystem, data.entities.treeDensity, data.entities.treeBlockedTerrainTypes, treePrefabs, prefabLookup, tileScale, random, lowOrder, "Tree", coord);
-        PlacePrefabDensityEntities(blockRoot, worldSystem, data.entities.rockDensity, data.entities.rockBlockedTerrainTypes, rockPrefabs, prefabLookup, tileScale, random, lowOrder, "Rock", coord);
+    }
 
-        if (data.entities.chests != null)
+    private void RebuildProceduralEntityBlockRocks(
+        Transform blockRoot,
+        Vector2Int coord,
+        WorldSystem worldSystem,
+        PrefabWorldData data,
+        Dictionary<string, PrefabDefinition> prefabLookup,
+        List<string> rockPrefabs,
+        float tileScale,
+        System.Random random,
+        int lowOrder)
+    {
+        if (blockRoot == null || worldSystem == null || data?.entities == null)
         {
-            foreach (var chest in data.entities.chests)
+            return;
+        }
+
+        PlacePrefabDensityEntities(blockRoot, worldSystem, data.entities.rockDensity, data.entities.rockBlockedTerrainTypes, rockPrefabs, prefabLookup, tileScale, random, lowOrder, "Rock", coord);
+    }
+
+    private void RebuildProceduralEntityBlockChests(Transform blockRoot, Vector2Int coord, WorldSystem worldSystem, PrefabWorldData data, float tileScale, System.Random random, int lowOrder)
+    {
+        if (blockRoot == null || worldSystem == null || data?.entities?.chests == null)
+        {
+            return;
+        }
+
+        foreach (var chest in data.entities.chests)
+        {
+            var count = chest.count;
+            if (count > 0)
             {
-                var count = chest.count;
-                if (count > 0)
-                {
-                    PlaceChestEntities(blockRoot, worldSystem, count, chest.blockedTerrainTypes, chest.chestId, tileScale, random, lowOrder, coord);
-                }
+                PlaceChestEntities(blockRoot, worldSystem, count, chest.blockedTerrainTypes, chest.chestId, tileScale, random, lowOrder, coord);
             }
+        }
+    }
+
+    private void RebuildProceduralEntityBlockCompanions(Transform blockRoot, Vector2Int coord, WorldSystem worldSystem, PrefabWorldData data, float tileScale, System.Random random, int lowOrder)
+    {
+        if (blockRoot == null || worldSystem == null || data?.companions == null)
+        {
+            return;
         }
 
         PlaceCompanionEntities(blockRoot, worldSystem, data.companions, tileScale, random, lowOrder, coord);
+    }
+
+    private void RebuildProceduralEntityBlockEnemies(Transform blockRoot, Vector2Int coord, WorldSystem worldSystem, PrefabWorldData data, float tileScale, System.Random random, int lowOrder)
+    {
+        if (blockRoot == null || worldSystem == null || data?.enemies == null)
+        {
+            return;
+        }
+
         PlaceEnemyEntities(blockRoot, worldSystem, data.enemies, tileScale, random, lowOrder, coord);
     }
+
+    private const int TerrainRowsPerFrame = 3;
+    private const float ProceduralLoadMaxSecondsPerFrame = 0.001f;
 
     private Transform CreateProceduralBlock(Vector2Int coord, Transform parent, WorldSystem worldSystem)
     {
@@ -904,13 +1244,27 @@ public class GameSceneController : MonoBehaviour
 
         var width = worldSystem.Tiles.GetLength(0);
         var height = worldSystem.Tiles.GetLength(1);
+        CreateProceduralBlockTilesForRowRange(root.transform, coord, worldSystem, 0, height);
+        return root.transform;
+    }
+
+    private void CreateProceduralBlockTilesForRowRange(Transform root, Vector2Int coord, WorldSystem worldSystem, int yStart, int yCount)
+    {
+        if (root == null || worldSystem == null || worldSystem.Tiles == null)
+        {
+            return;
+        }
+
+        var width = worldSystem.Tiles.GetLength(0);
+        var height = worldSystem.Tiles.GetLength(1);
         var groundTiles = worldSystem.CurrentPrefabData?.groundTiles;
         var seed = worldSystem.Config.seed;
         var fallbackScale = GetProceduralTileScale();
+        var yEnd = Mathf.Min(yStart + yCount, height);
 
         for (var x = 0; x < width; x++)
         {
-            for (var y = 0; y < height; y++)
+            for (var y = yStart; y < yEnd; y++)
             {
                 var globalX = coord.x * width + x;
                 var globalY = coord.y * height + y;
@@ -922,10 +1276,11 @@ public class GameSceneController : MonoBehaviour
                     if (!string.IsNullOrWhiteSpace(spec) && TryCreateProceduralTileSprite(spec, seed, x, y, out var sprite, out var tileScale))
                     {
                         var tileObject = new GameObject($"Tile_{x}_{y}");
-                        tileObject.transform.SetParent(root.transform, false);
+                        tileObject.transform.SetParent(root, false);
                         tileObject.transform.localPosition = new Vector3(x * tileScale, y * tileScale, 0f);
                         var renderer = tileObject.AddComponent<SpriteRenderer>();
                         renderer.sprite = sprite;
+                        renderer.sortingOrder = 0; // Keep ground behind entity low (playerOrder - 20) and character
                         tileObject.transform.localScale = new Vector3(tileScale, tileScale, 1f);
                         created = true;
                     }
@@ -941,11 +1296,21 @@ public class GameSceneController : MonoBehaviour
                         _ => new Color(0.55f, 0.55f, 0.6f, 1f)
                     };
                     var quad = PrefabFactory.CreatePlaceholder(new Vector3(x * fallbackScale, y * fallbackScale, 0f), color, fallbackScale);
-                    quad.transform.SetParent(root.transform, true);
+                    quad.transform.SetParent(root, true);
                 }
             }
         }
+    }
 
+    private Transform CreateProceduralBlockRootOnly(Vector2Int coord, Transform parent)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+
+        var root = new GameObject($"WorldBlock_{coord.x}_{coord.y}");
+        root.transform.SetParent(parent, false);
         return root.transform;
     }
 
@@ -1597,7 +1962,8 @@ public class GameSceneController : MonoBehaviour
                 var playerOrder = ResolvePlayerSortingOrder();
                 var isHighLayer = !string.IsNullOrWhiteSpace(part.layer)
                     && part.layer.Equals("high", StringComparison.OrdinalIgnoreCase);
-                partOrder = isHighLayer ? playerOrder + 1 : playerOrder - 1;
+                // Entity low must be strictly behind the character's lowest part (playerOrder - 1 after SetSortingOrder shift). Use a large gap so it never overlaps.
+                partOrder = isHighLayer ? playerOrder + 10 : playerOrder - 20;
             }
 
             RenderPrefabPart(root.transform, part, tileCoord, seed, partOrder, tilesetAnchors);
@@ -2310,7 +2676,8 @@ public class GameSceneController : MonoBehaviour
             var hasCharacterLayer = GetBoolProperty(properties, "characterLayer", false) || GetFloatProperty(properties, "characterLayer", -1f) >= 0f;
             if (hasCharacterLayer)
             {
-                tiledCharacterSortingOrder = Mathf.Max(layerOrder + 1, tiledCharacterSortingOrder);
+                // Use the lowest characterLayer order + 1 so the character is just in front of the walk layer; all higher-order layers (foreground, etc.) draw in front of the character
+                tiledCharacterSortingOrder = Mathf.Min(layerOrder + 1, tiledCharacterSortingOrder);
                 if (tiledSpawnTile == null
                     && TryGetIntProperty(properties, "spawnX", out var spawnX)
                     && TryGetIntProperty(properties, "spawnY", out var spawnY))
@@ -2383,6 +2750,7 @@ public class GameSceneController : MonoBehaviour
             }
         }
 
+        // Character draws in front of the layer marked characterLayer (where they walk) but behind higher-order layers (foreground, etc.)
         if (tiledCharacterSortingOrder <= 0)
         {
             tiledCharacterSortingOrder = maxLayerOrder + 1;
@@ -2681,28 +3049,7 @@ public class GameSceneController : MonoBehaviour
             RefreshProceduralBlocks(targetCoord);
         }
 
-        if (proceduralBlocks.Count == 0)
-        {
-            return true;
-        }
-
-        var minCoord = new Vector2Int(int.MaxValue, int.MaxValue);
-        var maxCoord = new Vector2Int(int.MinValue, int.MinValue);
-        foreach (var coord in proceduralBlocks.Keys)
-        {
-            if (coord.x < minCoord.x) minCoord.x = coord.x;
-            if (coord.y < minCoord.y) minCoord.y = coord.y;
-            if (coord.x > maxCoord.x) maxCoord.x = coord.x;
-            if (coord.y > maxCoord.y) maxCoord.y = coord.y;
-        }
-
-        var minX = minCoord.x * blockWorldSizeX;
-        var maxX = (maxCoord.x + 1) * blockWorldSizeX;
-        var minY = minCoord.y * blockWorldSizeY;
-        var maxY = (maxCoord.y + 1) * blockWorldSizeY;
-
-        return worldPosition.x >= minX && worldPosition.x <= maxX &&
-               worldPosition.y >= minY && worldPosition.y <= maxY;
+        return true;
     }
 
     public bool TryAddCompanionToParty(CompanionInstance companion)
@@ -2757,7 +3104,29 @@ public class GameSceneController : MonoBehaviour
         if (playerTransform != null)
         {
             battleOriginalPositions[playerTransform] = playerTransform.position;
-            playerTransform.position = center + new Vector3(-2.5f * tileScale, 0f, 0f);
+            var battlePosition = center + new Vector3(-2.5f * tileScale, 0f, 0f);
+            if (CanMoveTo(battlePosition))
+            {
+                playerTransform.position = battlePosition;
+            }
+            else
+            {
+                var offsets = new[] { new Vector3(0f, 0.5f * tileScale, 0f), new Vector3(0f, -0.5f * tileScale, 0f), new Vector3(0f, tileScale, 0f), new Vector3(0f, -tileScale, 0f), new Vector3(0.5f * tileScale, 0f, 0f), new Vector3(-0.5f * tileScale, 0f, 0f) };
+                var moved = false;
+                for (var i = 0; i < offsets.Length && !moved; i++)
+                {
+                    var candidate = battlePosition + offsets[i];
+                    if (CanMoveTo(candidate))
+                    {
+                        playerTransform.position = candidate;
+                        moved = true;
+                    }
+                }
+                if (!moved)
+                {
+                    playerTransform.position = battleOriginalPositions[playerTransform];
+                }
+            }
         }
 
         for (var i = 0; i < enemies.Count; i++)
@@ -2811,6 +3180,8 @@ public class GameSceneController : MonoBehaviour
             }
         }
 
+        TrySnapPlayerToWalkable();
+
         for (var i = 0; i < battleFollowers.Count; i++)
         {
             if (battleFollowers[i] != null)
@@ -2832,6 +3203,43 @@ public class GameSceneController : MonoBehaviour
             }
         }
         isInBattle = false;
+    }
+
+    private void TrySnapPlayerToWalkable()
+    {
+        if (playerTransform == null || isTiledMapActive)
+        {
+            return;
+        }
+
+        var current = playerTransform.position;
+        if (CanMoveTo(current))
+        {
+            return;
+        }
+
+        var tileScale = GetProceduralTileScale();
+        if (tileScale <= 0f)
+        {
+            tileScale = 1f;
+        }
+
+        var radii = new[] { 0.5f * tileScale, tileScale, 1.5f * tileScale };
+        for (var r = 0; r < radii.Length; r++)
+        {
+            var radius = radii[r];
+            for (var i = 0; i < 8; i++)
+            {
+                var angle = i * Mathf.PI * 0.25f;
+                var offset = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
+                var candidate = current + offset;
+                if (CanMoveTo(candidate))
+                {
+                    playerTransform.position = candidate;
+                    return;
+                }
+            }
+        }
     }
 
     private void SpawnCompanionFollower(CompanionDefinitionData definition, int index)
@@ -3000,6 +3408,7 @@ public class GameSceneController : MonoBehaviour
         if (playerTransform != null)
         {
             ApplyPlayerScale(playerTransform);
+            SetSortingOrder(playerTransform.gameObject, ResolvePlayerSortingOrder());
             EnsurePlayerMovement(playerTransform.gameObject);
             var enter = worldSystem.CurrentPrefabData?.enterConfig;
             var spawnX = enter != null ? enter.x : worldSystem.Config.width / 2;
@@ -3164,26 +3573,11 @@ public class GameSceneController : MonoBehaviour
             return;
         }
 
-        proceduralEntitiesRoot = new GameObject("WorldEntities");
+        if (proceduralEntitiesRoot == null)
+        {
+            proceduralEntitiesRoot = new GameObject("WorldEntities");
+        }
         proceduralEntityBlocks.Clear();
-
-        var prefabLookup = BuildPrefabLookup(data);
-        var treePrefabs = ResolveEntityPrefabs(data, data.entities.treePrefabs, "tree");
-        var rockPrefabs = ResolveEntityPrefabs(data, data.entities.rockPrefabs, "rock");
-
-        for (var offsetX = -ProceduralBlockRadius; offsetX <= ProceduralBlockRadius; offsetX++)
-        {
-            for (var offsetY = -ProceduralBlockRadius; offsetY <= ProceduralBlockRadius; offsetY++)
-            {
-                var coord = new Vector2Int((proceduralCenterBlock ?? Vector2Int.zero).x + offsetX, (proceduralCenterBlock ?? Vector2Int.zero).y + offsetY);
-                EnsureProceduralEntityBlock(coord, worldSystem, data, prefabLookup, treePrefabs, rockPrefabs);
-            }
-        }
-
-        if (proceduralCenterBlock.HasValue)
-        {
-            RefreshProceduralBlocks(proceduralCenterBlock.Value);
-        }
     }
 
     private void SpawnPlayerFromSave()
@@ -3284,7 +3678,7 @@ public class GameSceneController : MonoBehaviour
         camera.clearFlags = CameraClearFlags.SolidColor;
         camera.backgroundColor = new Color(0.08f, 0.08f, 0.1f, 1f);
         camera.cullingMask = ~0;
-        var targetSize = Mathf.Max(8f, (TargetTilesOnScreenY * tileScale) * 0.5f);
+        var targetSize = Mathf.Max(8f, (targetTilesOnScreenY * tileScale) * 0.5f);
         camera.orthographicSize = targetSize;
         camera.transform.position = new Vector3(focusPosition.x, focusPosition.y, -10f);
     }
@@ -3635,17 +4029,35 @@ public class GameSceneController : MonoBehaviour
         }
     }
 
-    private void SetSortingOrder(GameObject target, int sortingOrder)
+    /// <summary>
+    /// Applies base sorting order so the character draws in front of the map, while preserving
+    /// relative order of parts (body &lt; bottom &lt; top &lt; hair/face). Without this, all parts
+    /// would get the same order and the map could cover the character.
+    /// </summary>
+    private void SetSortingOrder(GameObject target, int baseOrder)
     {
+        PlayerSortingBaseOrder = baseOrder;
         if (target == null)
         {
             return;
         }
 
         var renderers = target.GetComponentsInChildren<SpriteRenderer>(true);
+        if (renderers == null || renderers.Length == 0)
+        {
+            return;
+        }
+
+        int minOrder = int.MaxValue;
+        foreach (var r in renderers)
+        {
+            if (r != null && r.sortingOrder < minOrder)
+                minOrder = r.sortingOrder;
+        }
         foreach (var renderer in renderers)
         {
-            renderer.sortingOrder = sortingOrder;
+            if (renderer != null)
+                renderer.sortingOrder = baseOrder + (renderer.sortingOrder - minOrder);
         }
     }
 

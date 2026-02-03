@@ -20,6 +20,14 @@ namespace FableForge.UI
         private const float StatusPanelWidth = 720f;
         private const float NameplateHeight = 220f;
         private const float StatusBarWidth = 575f;
+        private const float PartyHudStatusBarWidth = 296f;
+        private const float ActionBarPanelWidth = 980f;
+        private const float ActionBarContentPaddingH = 56f;
+        private const float ActionBarSlotSpacing = 8f;
+        private const int ActionBarSlotCount = 10;
+        private static readonly float ActionBarSlotWidth = (ActionBarPanelWidth - ActionBarContentPaddingH - (ActionBarSlotCount - 1) * ActionBarSlotSpacing) / ActionBarSlotCount;
+        private const float ActionBarContentPaddingV = 16f;
+        private static readonly float ActionBarPanelHeightSingleRow = ActionBarSlotWidth + ActionBarContentPaddingV;
         private const float StatusBarHeight = 31f;
         private const float ExperienceBarHeight = 8f;
         private const float StatusBarSpacing = 10f;
@@ -59,6 +67,9 @@ namespace FableForge.UI
         private Canvas rootCanvas;
         private readonly Dictionary<string, ItemDefinition> itemDefinitions = new Dictionary<string, ItemDefinition>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, SkillDefinition> skillDefinitions = new Dictionary<string, SkillDefinition>(StringComparer.OrdinalIgnoreCase);
+        private Transform partyHudRoot;
+        private Transform partyCompanionRoot;
+        private readonly Dictionary<string, BattleActorStatus> partyHudActorStatus = new Dictionary<string, BattleActorStatus>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Button> inventoryFilterButtons = new List<Button>();
         private readonly List<GameObject> inventoryFilterPanels = new List<GameObject>();
         private readonly List<Button> buildTypeButtons = new List<Button>();
@@ -99,7 +110,20 @@ namespace FableForge.UI
         private readonly HashSet<string> battleActorsActed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private BattleActor selectedBattleActor;
         private readonly Dictionary<string, CompanionSkillDefinition> companionSkillDefinitions = new Dictionary<string, CompanionSkillDefinition>(StringComparer.OrdinalIgnoreCase);
+        private GameObject itemActionPanel;
+        private TextMeshProUGUI itemActionTitle;
+        private Button itemUseButton;
+        private Button itemEquipButton;
+        private Button itemDropButton;
+        private Item selectedItem;
+        private ItemDefinition selectedItemDefinition;
+        private readonly Dictionary<string, Transform> equipmentSlotRoots = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
         private Transform companionsListRoot;
+        private GameObject actionBarPanel;
+        private RectTransform actionBarContent;
+        private GridLayoutGroup actionBarGrid;
+        private bool actionBarExpanded;
+        private readonly Dictionary<string, List<BattleAction>> actionBarAssignments = new Dictionary<string, List<BattleAction>>(StringComparer.OrdinalIgnoreCase);
 
         private enum SettingsView
         {
@@ -120,6 +144,7 @@ namespace FableForge.UI
         private SettingsView settingsView = SettingsView.Main;
         private CombinedTab combinedTab = CombinedTab.Inventory;
         private float nextCombinedRefreshTime;
+        private float nextActionBarRefreshTime;
 
         private Font defaultFont;
         private Image healthFill;
@@ -193,6 +218,208 @@ namespace FableForge.UI
             CreateNameplate(hudObject.transform);
         }
 
+        private void CreatePartyHud(Transform parent)
+        {
+            var rootObject = new GameObject("PartyHud");
+            rootObject.transform.SetParent(parent, false);
+            var rect = rootObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(16f, -16f);
+            rect.sizeDelta = new Vector2(340f, 0f);
+
+            var layout = rootObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 10f;
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            partyHudRoot = rootObject.transform;
+
+            var playerPlate = CreatePartyHudPlayerPlate(rootObject.transform);
+
+            var companionRootObj = new GameObject("CompanionPlates");
+            var companionRect = companionRootObj.AddComponent<RectTransform>();
+            var companionImage = companionRootObj.AddComponent<Image>();
+            companionImage.color = new Color(1f, 1f, 1f, 0f);
+            companionImage.raycastTarget = false;
+            var companionFitter = companionRootObj.AddComponent<ContentSizeFitter>();
+            companionFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            companionFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            var companionLayout = companionRootObj.AddComponent<VerticalLayoutGroup>();
+            companionLayout.spacing = 6f;
+            companionLayout.childAlignment = TextAnchor.UpperLeft;
+            companionLayout.childControlWidth = false;
+            companionLayout.childControlHeight = false;
+            companionLayout.childForceExpandWidth = false;
+            companionLayout.childForceExpandHeight = false;
+
+            partyCompanionRoot = companionRect;
+            partyCompanionRoot.SetParent(rootObject.transform, false);
+
+            playerPlate.SetAsFirstSibling();
+            partyCompanionRoot.SetSiblingIndex(1);
+
+            var fitter = rootObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        }
+
+        private Transform CreatePartyHudPlayerPlate(Transform parent)
+        {
+            var plateObject = new GameObject("PlayerPlate");
+            plateObject.transform.SetParent(parent, false);
+            var rect = plateObject.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(320f, 84f);
+
+            var image = plateObject.AddComponent<Image>();
+            image.sprite = MenuStyling.GetRoundedButtonSprite();
+            image.type = Image.Type.Sliced;
+            image.color = new Color(0.2f, 0.25f, 0.35f, 0.75f);
+
+            var button = plateObject.AddComponent<Button>();
+            button.onClick.AddListener(() => SelectBattleActorByKey("player"));
+
+            var titleObject = new GameObject("Name");
+            titleObject.transform.SetParent(plateObject.transform, false);
+            var titleRect = titleObject.AddComponent<RectTransform>();
+            titleRect.anchorMin = new Vector2(0f, 1f);
+            titleRect.anchorMax = new Vector2(1f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.anchoredPosition = new Vector2(0f, -6f);
+            titleRect.sizeDelta = new Vector2(-16f, 24f);
+
+            nameplateTitle = titleObject.AddComponent<TextMeshProUGUI>();
+            nameplateTitle.fontSize = 18f;
+            nameplateTitle.alignment = TextAlignmentOptions.Left;
+            nameplateTitle.color = Color.white;
+
+            var barsObject = new GameObject("Bars");
+            barsObject.transform.SetParent(plateObject.transform, false);
+            var barsRect = barsObject.AddComponent<RectTransform>();
+            barsRect.anchorMin = new Vector2(0f, 0f);
+            barsRect.anchorMax = new Vector2(1f, 1f);
+            barsRect.offsetMin = new Vector2(12f, 8f);
+            barsRect.offsetMax = new Vector2(-12f, -32f);
+
+            var barsLayout = barsObject.AddComponent<VerticalLayoutGroup>();
+            barsLayout.spacing = 6f;
+            barsLayout.childAlignment = TextAnchor.UpperLeft;
+            barsLayout.childControlWidth = false;
+            barsLayout.childControlHeight = false;
+            barsLayout.childForceExpandWidth = false;
+            barsLayout.childForceExpandHeight = false;
+
+            CreateStatusBars(barsObject.transform, PartyHudStatusBarWidth);
+
+            partyHudActorStatus["player"] = new BattleActorStatus
+            {
+                actor = new BattleActor { key = "player", kind = BattleActorKind.Player, name = "Player" },
+                button = button,
+                background = image,
+                label = nameplateTitle,
+                hpFill = healthFill,
+                resourceFill = resourceFill
+            };
+            return plateObject.transform;
+        }
+
+        private void RefreshPartyHud()
+        {
+            if (partyCompanionRoot == null)
+            {
+                return;
+            }
+
+            var keysToRemove = new List<string>();
+            foreach (var key in partyHudActorStatus.Keys)
+            {
+                if (!string.Equals(key, "player", StringComparison.OrdinalIgnoreCase))
+                {
+                    keysToRemove.Add(key);
+                }
+            }
+            for (var i = 0; i < keysToRemove.Count; i++)
+            {
+                partyHudActorStatus.Remove(keysToRemove[i]);
+            }
+
+            for (var i = partyCompanionRoot.childCount - 1; i >= 0; i--)
+            {
+                Destroy(partyCompanionRoot.GetChild(i).gameObject);
+            }
+
+            var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+            if (player == null || player.companions == null)
+            {
+                return;
+            }
+
+            var index = 0;
+            foreach (var companion in player.companions)
+            {
+                if (companion == null)
+                {
+                    continue;
+                }
+
+                var key = $"companion_{index}_{companion.id}";
+                CreatePartyHudCompanionPlate(partyCompanionRoot, companion, key);
+                index++;
+            }
+        }
+
+        private Transform CreatePartyHudCompanionPlate(Transform parent, Animal companion, string key)
+        {
+            var plateObject = new GameObject($"{companion.id}_Plate");
+            plateObject.transform.SetParent(parent, false);
+            var rect = plateObject.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(320f, 60f);
+
+            var image = plateObject.AddComponent<Image>();
+            image.sprite = MenuStyling.GetRoundedButtonSprite();
+            image.type = Image.Type.Sliced;
+            image.color = new Color(0.2f, 0.25f, 0.35f, 0.6f);
+
+            var button = plateObject.AddComponent<Button>();
+            button.onClick.AddListener(() => SelectBattleActorByKey(key));
+
+            var nameObject = new GameObject("Name");
+            nameObject.transform.SetParent(plateObject.transform, false);
+            var nameRect = nameObject.AddComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0f, 1f);
+            nameRect.anchorMax = new Vector2(1f, 1f);
+            nameRect.pivot = new Vector2(0.5f, 1f);
+            nameRect.anchoredPosition = new Vector2(0f, -6f);
+            nameRect.sizeDelta = new Vector2(-16f, 20f);
+
+            var nameText = nameObject.AddComponent<TextMeshProUGUI>();
+            nameText.text = !string.IsNullOrWhiteSpace(companion.name) ? companion.name : companion.id;
+            nameText.fontSize = 16f;
+            nameText.alignment = TextAlignmentOptions.Left;
+            nameText.color = Color.white;
+
+            var hpBar = CreateInlineBar(plateObject.transform, new Vector2(296f, 10f), new Color(0.2f, 0.85f, 0.2f, 1f), out _);
+            hpBar.transform.localPosition = new Vector3(0f, -18f, 0f);
+            var maxHp = GetCompanionMaxHp(companion.id);
+            hpBar.fillAmount = maxHp > 0 ? 1f : 0f;
+
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                partyHudActorStatus[key] = new BattleActorStatus
+                {
+                    actor = new BattleActor { key = key, kind = BattleActorKind.Companion, name = companion.name },
+                    button = button,
+                    background = image,
+                    label = nameText,
+                    hpFill = hpBar
+                };
+            }
+            return plateObject.transform;
+        }
+
         private void CreateNameplate(Transform parent)
         {
             var plateObject = new GameObject("Nameplate");
@@ -249,26 +476,31 @@ namespace FableForge.UI
             barsLayout.childForceExpandWidth = false;
             barsLayout.childForceExpandHeight = false;
 
-            CreateStatusBars(barsObject.transform);
+            CreateStatusBars(barsObject.transform, StatusBarWidth);
         }
 
         private void CreateStatusBars(Transform parent)
         {
-            healthFill = CreateStatusBar(parent, "HealthBar", new Color(0.1f, 0.1f, 0.1f, 0.85f), new Color(0.2f, 0.85f, 0.2f, 1f), StatusBarHeight, true, out healthLabel);
-            resourceFill = CreateStatusBar(parent, "ResourceBar", new Color(0.25f, 0.25f, 0.25f, 0.85f), new Color(0.25f, 0.55f, 0.95f, 1f), StatusBarHeight, true, out resourceLabel);
-            resourceBarRoot = resourceFill != null ? resourceFill.transform.parent.gameObject : null;
-            experienceFill = CreateStatusBar(parent, "ExperienceBar", new Color(1f, 1f, 1f, 0.2f), Color.white, ExperienceBarHeight, false, out _);
+            CreateStatusBars(parent, StatusBarWidth);
         }
 
-        private Image CreateStatusBar(Transform parent, string name, Color backgroundColor, Color fillColor, float height, bool showText, out TextMeshProUGUI label)
+        private void CreateStatusBars(Transform parent, float barWidth)
+        {
+            healthFill = CreateStatusBar(parent, "HealthBar", new Color(0.1f, 0.1f, 0.1f, 0.85f), new Color(0.2f, 0.85f, 0.2f, 1f), StatusBarHeight, barWidth, true, out healthLabel);
+            resourceFill = CreateStatusBar(parent, "ResourceBar", new Color(0.25f, 0.25f, 0.25f, 0.85f), new Color(0.25f, 0.55f, 0.95f, 1f), StatusBarHeight, barWidth, true, out resourceLabel);
+            resourceBarRoot = resourceFill != null ? resourceFill.transform.parent.gameObject : null;
+            experienceFill = CreateStatusBar(parent, "ExperienceBar", new Color(1f, 1f, 1f, 0.2f), Color.white, ExperienceBarHeight, barWidth, false, out _);
+        }
+
+        private Image CreateStatusBar(Transform parent, string name, Color backgroundColor, Color fillColor, float height, float width, bool showText, out TextMeshProUGUI label)
         {
             var barObject = new GameObject(name);
             barObject.transform.SetParent(parent, false);
             var rect = barObject.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(StatusBarWidth, height);
+            rect.sizeDelta = new Vector2(width, height);
 
             var layout = barObject.AddComponent<LayoutElement>();
-            layout.preferredWidth = StatusBarWidth;
+            layout.preferredWidth = width;
             layout.preferredHeight = height;
 
             var background = barObject.AddComponent<Image>();
@@ -311,6 +543,39 @@ namespace FableForge.UI
                 label.color = Color.white;
             }
 
+            return fillImage;
+        }
+
+        private Image CreateInlineBar(Transform parent, Vector2 size, Color fillColor, out TextMeshProUGUI label)
+        {
+            label = null;
+            var barObject = new GameObject("InlineBar");
+            barObject.transform.SetParent(parent, false);
+            var rect = barObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = size;
+
+            var background = barObject.AddComponent<Image>();
+            background.sprite = MenuStyling.GetRoundedButtonSprite();
+            background.type = Image.Type.Sliced;
+            background.color = new Color(0.1f, 0.1f, 0.12f, 0.85f);
+
+            var fillObject = new GameObject("Fill");
+            fillObject.transform.SetParent(barObject.transform, false);
+            var fillRect = fillObject.AddComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = new Vector2(4f, 2f);
+            fillRect.offsetMax = new Vector2(-4f, -2f);
+
+            var fillImage = fillObject.AddComponent<Image>();
+            fillImage.sprite = GetSolidSprite();
+            fillImage.type = Image.Type.Filled;
+            fillImage.fillMethod = Image.FillMethod.Horizontal;
+            fillImage.color = fillColor;
+            fillImage.fillAmount = 1f;
             return fillImage;
         }
 
@@ -548,7 +813,7 @@ namespace FableForge.UI
 
             var canvas = CreateCanvas();
             rootCanvas = canvas;
-            CreateStatusHUD(canvas.transform);
+            CreatePartyHud(canvas.transform);
             var settingsButton = CreateTopRightButton(canvas.transform, "Settings", () => TogglePanel(settingsPanel));
             CreateBottomRightButton(canvas.transform, "Menu", () => TogglePanel(combinedPanel));
 
@@ -557,6 +822,8 @@ namespace FableForge.UI
             chestPanel = CreateChestPanel(canvas.transform);
             companionPanel = CreateCompanionPanel(canvas.transform);
             battlePanel = CreateBattlePanel(canvas.transform);
+            itemActionPanel = CreateItemActionPanel(canvas.transform);
+            actionBarPanel = CreateActionBar(canvas.transform);
 
             HideAllPanels();
         }
@@ -570,6 +837,7 @@ namespace FableForge.UI
 
             nextStatusRefreshTime = Time.unscaledTime + 0.1f;
             RefreshStatusBars();
+            RefreshPartyHud();
 
             if (Time.unscaledTime >= nextCombinedRefreshTime)
             {
@@ -579,6 +847,40 @@ namespace FableForge.UI
                 {
                     RefreshAttributesView();
                 }
+            }
+
+            HandleItemActionDismiss();
+
+            if (Time.unscaledTime >= nextActionBarRefreshTime)
+            {
+                nextActionBarRefreshTime = Time.unscaledTime + 0.5f;
+                RefreshActionBarForCurrentActor();
+            }
+        }
+
+        private void HandleItemActionDismiss()
+        {
+            if (itemActionPanel == null || !itemActionPanel.activeSelf)
+            {
+                return;
+            }
+
+            if (!Input.GetMouseButtonDown(0))
+            {
+                return;
+            }
+
+            var rect = itemActionPanel.GetComponent<RectTransform>();
+            if (rect == null || rootCanvas == null)
+            {
+                CloseItemActionMenu();
+                return;
+            }
+
+            var camera = rootCanvas.renderMode == RenderMode.ScreenSpaceCamera ? rootCanvas.worldCamera : null;
+            if (!RectTransformUtility.RectangleContainsScreenPoint(rect, Input.mousePosition, camera))
+            {
+                CloseItemActionMenu();
             }
         }
 
@@ -901,61 +1203,44 @@ namespace FableForge.UI
             rect.offsetMax = Vector2.zero;
 
             var background = panelObject.AddComponent<Image>();
-            background.color = new Color(0f, 0f, 0f, 0.35f);
-
-            var container = new GameObject("BattleContainer");
-            container.transform.SetParent(panelObject.transform, false);
-            var containerRect = container.AddComponent<RectTransform>();
-            containerRect.anchorMin = new Vector2(0.5f, 0.5f);
-            containerRect.anchorMax = new Vector2(0.5f, 0.5f);
-            containerRect.pivot = new Vector2(0.5f, 0.5f);
-            containerRect.sizeDelta = new Vector2(980f, 520f);
-
-            MenuStyling.CreateBookPage(container.transform, Vector2.zero, "BattlePage");
-            CreatePanelTitle(container.transform, "Battle");
-            CreateCloseButton(container.transform, CloseBattlePanel);
+            background.color = new Color(0f, 0f, 0f, 0.55f);
 
             var leftObject = new GameObject("BattleLeft");
-            leftObject.transform.SetParent(container.transform, false);
+            leftObject.transform.SetParent(panelObject.transform, false);
             var leftRect = leftObject.AddComponent<RectTransform>();
-            leftRect.anchorMin = new Vector2(0f, 0f);
-            leftRect.anchorMax = new Vector2(0f, 1f);
+            leftRect.anchorMin = new Vector2(0f, 0.5f);
+            leftRect.anchorMax = new Vector2(0f, 0.5f);
             leftRect.pivot = new Vector2(0f, 0.5f);
-            leftRect.anchoredPosition = new Vector2(40f, 0f);
-            leftRect.sizeDelta = new Vector2(360f, 360f);
+            leftRect.anchoredPosition = new Vector2(16f, 0f);
+            leftRect.sizeDelta = new Vector2(320f, 200f);
             var leftLayout = leftObject.AddComponent<VerticalLayoutGroup>();
-            leftLayout.spacing = 8f;
+            leftLayout.spacing = 10f;
             leftLayout.childAlignment = TextAnchor.UpperLeft;
+            leftLayout.childControlHeight = false;
+            leftLayout.childControlWidth = false;
+            leftLayout.childForceExpandHeight = false;
+            leftLayout.childForceExpandWidth = false;
             battleLeftRoot = leftObject.transform;
+            leftObject.SetActive(false);
 
             var rightObject = new GameObject("BattleRight");
-            rightObject.transform.SetParent(container.transform, false);
+            rightObject.transform.SetParent(panelObject.transform, false);
             var rightRect = rightObject.AddComponent<RectTransform>();
-            rightRect.anchorMin = new Vector2(1f, 0f);
-            rightRect.anchorMax = new Vector2(1f, 1f);
+            rightRect.anchorMin = new Vector2(1f, 0.5f);
+            rightRect.anchorMax = new Vector2(1f, 0.5f);
             rightRect.pivot = new Vector2(1f, 0.5f);
-            rightRect.anchoredPosition = new Vector2(-40f, 0f);
-            rightRect.sizeDelta = new Vector2(360f, 360f);
+            rightRect.anchoredPosition = new Vector2(-16f, 0f);
+            rightRect.sizeDelta = new Vector2(320f, 200f);
             var rightLayout = rightObject.AddComponent<VerticalLayoutGroup>();
-            rightLayout.spacing = 8f;
+            rightLayout.spacing = 10f;
             rightLayout.childAlignment = TextAnchor.UpperLeft;
+            rightLayout.childControlHeight = false;
+            rightLayout.childControlWidth = false;
+            rightLayout.childForceExpandHeight = false;
+            rightLayout.childForceExpandWidth = false;
             battleRightRoot = rightObject.transform;
 
-            var actionsObject = new GameObject("BattleActions");
-            actionsObject.transform.SetParent(container.transform, false);
-            var actionsRect = actionsObject.AddComponent<RectTransform>();
-            actionsRect.anchorMin = new Vector2(0.5f, 0f);
-            actionsRect.anchorMax = new Vector2(0.5f, 0f);
-            actionsRect.pivot = new Vector2(0.5f, 0f);
-            actionsRect.anchoredPosition = new Vector2(0f, 24f);
-            actionsRect.sizeDelta = new Vector2(820f, 60f);
-            var actionsLayout = actionsObject.AddComponent<HorizontalLayoutGroup>();
-            actionsLayout.spacing = 12f;
-            actionsLayout.childAlignment = TextAnchor.MiddleCenter;
-            actionsLayout.childControlWidth = false;
-            actionsLayout.childControlHeight = true;
-            actionsLayout.childForceExpandWidth = false;
-            battleActionsRoot = actionsObject.transform;
+            CreateCloseButton(panelObject.transform, CloseBattlePanel, new Vector2(-16f, -16f));
 
             return panelObject;
         }
@@ -1155,6 +1440,12 @@ namespace FableForge.UI
             var dropTarget = slotObject.AddComponent<EquipmentSlotDropTarget>();
             dropTarget.slotLabel = label;
             dropTarget.ui = this;
+
+            var normalized = NormalizeSlotLabel(label);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                equipmentSlotRoots[normalized] = slotObject.transform;
+            }
         }
 
         private void CreateInventoryFilterRow(Transform parent)
@@ -1499,6 +1790,7 @@ namespace FableForge.UI
             image.sprite = GetSolidSprite();
             image.type = Image.Type.Simple;
             image.color = new Color(0.75f, 0.7f, 0.55f, 0.9f);
+            image.raycastTarget = true;
 
             var labelObject = new GameObject("Label");
             labelObject.transform.SetParent(iconObject.transform, false);
@@ -1513,6 +1805,10 @@ namespace FableForge.UI
             text.fontSize = 10f;
             text.alignment = TextAlignmentOptions.Center;
             text.color = new Color(0.15f, 0.1f, 0.05f, 1f);
+
+            var button = iconObject.AddComponent<Button>();
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OpenItemActionMenu(item, definition));
 
             if (quantity > 1)
             {
@@ -3010,6 +3306,7 @@ namespace FableForge.UI
             if (chestPanel != null) chestPanel.SetActive(false);
             if (companionPanel != null) companionPanel.SetActive(false);
             if (battlePanel != null) battlePanel.SetActive(false);
+            if (itemActionPanel != null) itemActionPanel.SetActive(false);
         }
 
         public void OpenChest(ChestInstance chest)
@@ -3181,11 +3478,6 @@ namespace FableForge.UI
                 return;
             }
 
-            for (var i = battleLeftRoot.childCount - 1; i >= 0; i--)
-            {
-                Destroy(battleLeftRoot.GetChild(i).gameObject);
-            }
-
             for (var i = battleRightRoot.childCount - 1; i >= 0; i--)
             {
                 Destroy(battleRightRoot.GetChild(i).gameObject);
@@ -3204,7 +3496,8 @@ namespace FableForge.UI
             {
                 battlePlayerHp = Mathf.Max(1, player.hitPoints);
                 BuildBattlePartyActors(player);
-                RenderBattlePartyEntries();
+                UpdateBattleActorHighlight();
+                RefreshBattleActionsForActor(selectedBattleActor);
             }
 
             if (activeEnemy != null)
@@ -3223,9 +3516,11 @@ namespace FableForge.UI
                     var status = new BattleEnemyStatus
                     {
                         enemy = enemy,
+                        maxHp = Mathf.Max(1, baseHp),
                         hp = Mathf.Max(1, baseHp)
                     };
-                    status.label = CreateBattleEnemyEntry(battleRightRoot, enemy.DisplayName, status.hp, enemy);
+                    status.label = CreateBattleEnemyEntry(battleRightRoot, enemy.DisplayName, status.hp, status.maxHp, enemy, out var hpFill);
+                    status.hpFill = hpFill;
                     battleEnemyStatus[enemy] = status;
                 }
             }
@@ -3248,7 +3543,7 @@ namespace FableForge.UI
             var entryObject = new GameObject("Entry");
             entryObject.transform.SetParent(parent, false);
             var rect = entryObject.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(320f, 36f);
+            rect.sizeDelta = new Vector2(320f, 76f);
 
             var text = entryObject.AddComponent<TextMeshProUGUI>();
             text.text = $"{label}  HP {value}";
@@ -3258,8 +3553,9 @@ namespace FableForge.UI
             return text;
         }
 
-        private TextMeshProUGUI CreateBattleEnemyEntry(Transform parent, string label, int value, EnemyInstance enemy)
+        private TextMeshProUGUI CreateBattleEnemyEntry(Transform parent, string label, int value, int maxValue, EnemyInstance enemy, out Image hpFill)
         {
+            hpFill = null;
             if (parent == null)
             {
                 return null;
@@ -3268,7 +3564,7 @@ namespace FableForge.UI
             var entryObject = new GameObject("EnemyEntry");
             entryObject.transform.SetParent(parent, false);
             var rect = entryObject.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(320f, 36f);
+            rect.sizeDelta = new Vector2(320f, 76f);
 
             var image = entryObject.AddComponent<Image>();
             image.color = new Color(0.35f, 0.2f, 0.2f, 0.6f);
@@ -3282,19 +3578,36 @@ namespace FableForge.UI
                 UpdateBattleTargetHighlight();
             });
 
+            var portraitObject = new GameObject("Portrait");
+            portraitObject.transform.SetParent(entryObject.transform, false);
+            var portraitRect = portraitObject.AddComponent<RectTransform>();
+            portraitRect.anchorMin = new Vector2(0f, 0.5f);
+            portraitRect.anchorMax = new Vector2(0f, 0.5f);
+            portraitRect.pivot = new Vector2(0f, 0.5f);
+            portraitRect.anchoredPosition = new Vector2(8f, 8f);
+            portraitRect.sizeDelta = new Vector2(44f, 44f);
+            var portraitImage = portraitObject.AddComponent<Image>();
+            portraitImage.sprite = GetSolidSprite();
+            portraitImage.color = new Color(0.55f, 0.35f, 0.35f, 0.9f);
+
             var textObject = new GameObject("Label");
             textObject.transform.SetParent(entryObject.transform, false);
             var textRect = textObject.AddComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(8f, 0f);
-            textRect.offsetMax = new Vector2(-8f, 0f);
+            textRect.anchorMin = new Vector2(0f, 1f);
+            textRect.anchorMax = new Vector2(1f, 1f);
+            textRect.pivot = new Vector2(0.5f, 1f);
+            textRect.anchoredPosition = new Vector2(0f, -6f);
+            textRect.sizeDelta = new Vector2(-72f, 24f);
 
             var text = textObject.AddComponent<TextMeshProUGUI>();
             text.text = $"{label}  HP {value}";
-            text.fontSize = 18f;
+            text.fontSize = 16f;
             text.alignment = TextAlignmentOptions.Left;
             text.color = new Color(0.92f, 0.88f, 0.8f, 1f);
+
+            hpFill = CreateInlineBar(entryObject.transform, new Vector2(240f, 10f), new Color(0.2f, 0.85f, 0.2f, 1f), out _);
+            hpFill.transform.localPosition = new Vector3(20f, -22f, 0f);
+            hpFill.fillAmount = maxValue > 0 ? Mathf.Clamp01((float)value / maxValue) : 0f;
 
             if (enemy != null && battleEnemyStatus.TryGetValue(enemy, out var status))
             {
@@ -3309,7 +3622,9 @@ namespace FableForge.UI
                     button = button,
                     background = image,
                     label = text,
-                    hp = value
+                    hp = value,
+                    maxHp = maxValue,
+                    hpFill = hpFill
                 };
             }
             return text;
@@ -3327,6 +3642,25 @@ namespace FableForge.UI
                 entry.background.color = entry.enemy == battleTargetEnemy
                     ? new Color(0.55f, 0.25f, 0.25f, 0.85f)
                     : new Color(0.35f, 0.2f, 0.2f, 0.6f);
+            }
+        }
+
+        private void SelectBattleActorByKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key) || battlePanel == null || !battlePanel.activeSelf)
+            {
+                return;
+            }
+
+            for (var i = 0; i < battlePartyActors.Count; i++)
+            {
+                if (string.Equals(battlePartyActors[i].key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedBattleActor = battlePartyActors[i];
+                    UpdateBattleActorHighlight();
+                    RefreshBattleActionsForActor(selectedBattleActor);
+                    return;
+                }
             }
         }
 
@@ -3418,27 +3752,66 @@ namespace FableForge.UI
                 RefreshBattleActionsForActor(actor);
             });
 
+            var portraitObject = new GameObject("Portrait");
+            portraitObject.transform.SetParent(entryObject.transform, false);
+            var portraitRect = portraitObject.AddComponent<RectTransform>();
+            portraitRect.anchorMin = new Vector2(0f, 0.5f);
+            portraitRect.anchorMax = new Vector2(0f, 0.5f);
+            portraitRect.pivot = new Vector2(0f, 0.5f);
+            portraitRect.anchoredPosition = new Vector2(8f, 8f);
+            portraitRect.sizeDelta = new Vector2(44f, 44f);
+            var portraitImage = portraitObject.AddComponent<Image>();
+            portraitImage.sprite = GetSolidSprite();
+            portraitImage.color = new Color(0.35f, 0.45f, 0.6f, 0.9f);
+
             var textObject = new GameObject("Label");
             textObject.transform.SetParent(entryObject.transform, false);
             var textRect = textObject.AddComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(8f, 0f);
-            textRect.offsetMax = new Vector2(-8f, 0f);
+            textRect.anchorMin = new Vector2(0f, 1f);
+            textRect.anchorMax = new Vector2(1f, 1f);
+            textRect.pivot = new Vector2(0.5f, 1f);
+            textRect.anchoredPosition = new Vector2(0f, -6f);
+            textRect.sizeDelta = new Vector2(-72f, 24f);
 
             var text = textObject.AddComponent<TextMeshProUGUI>();
-            text.text = $"{actor.name}";
-            text.fontSize = 18f;
+            text.text = actor.kind == BattleActorKind.Player
+                ? $"{actor.name}  HP {battlePlayerHp}"
+                : actor.name;
+            text.fontSize = 16f;
             text.alignment = TextAlignmentOptions.Left;
             text.color = new Color(0.92f, 0.88f, 0.8f, 1f);
 
-            return new BattleActorStatus
+            var status = new BattleActorStatus
             {
                 actor = actor,
                 button = button,
                 background = image,
                 label = text
             };
+            if (actor.kind == BattleActorKind.Player)
+            {
+                battlePlayerEntry = text;
+            }
+
+            var hpFill = CreateInlineBar(entryObject.transform, new Vector2(240f, 10f), new Color(0.2f, 0.85f, 0.2f, 1f), out _);
+            hpFill.transform.localPosition = new Vector3(20f, -22f, 0f);
+            var maxHp = actor.kind == BattleActorKind.Player
+                ? Mathf.Max(1, (GameState.Instance?.CurrentSave?.player?.maxHitPoints ?? battlePlayerHp))
+                : Mathf.Max(1, GetCompanionMaxHp(actor));
+            hpFill.fillAmount = maxHp > 0 ? Mathf.Clamp01((float)battlePlayerHp / maxHp) : 0f;
+            status.hpFill = hpFill;
+
+            if (actor.kind == BattleActorKind.Player)
+            {
+                var resourceFill = CreateInlineBar(entryObject.transform, new Vector2(240f, 10f), new Color(0.25f, 0.55f, 0.95f, 1f), out _);
+                resourceFill.transform.localPosition = new Vector3(20f, -36f, 0f);
+                var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+                var maxMana = player != null && player.maxMana > 0 ? player.maxMana : (player?.mana ?? 0);
+                resourceFill.fillAmount = maxMana > 0 ? Mathf.Clamp01((float)player.mana / maxMana) : 0f;
+                status.resourceFill = resourceFill;
+            }
+
+            return status;
         }
 
         private void RefreshBattleActionsForActor(BattleActor actor)
@@ -3459,10 +3832,184 @@ namespace FableForge.UI
             }
 
             var actions = GetBattleActionsForActor(actor);
-            foreach (var action in actions)
+            RenderActionBarSlots(actor, actions);
+        }
+
+        private void RefreshActionBarForCurrentActor()
+        {
+            if (battlePanel != null && battlePanel.activeSelf)
             {
-                CreateBattleActionButton(battleActionsRoot, action);
+                RefreshBattleActionsForActor(selectedBattleActor);
+                return;
             }
+
+            var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+            if (player == null)
+            {
+                return;
+            }
+
+            var actor = new BattleActor
+            {
+                key = "player",
+                kind = BattleActorKind.Player,
+                name = $"{player.name} (You)",
+                level = player.level,
+                skillIds = GetPlayerSkillIds(player)
+            };
+            var actions = GetBattleActionsForActor(actor);
+            RenderActionBarSlots(actor, actions);
+        }
+
+        private void RenderActionBarSlots(BattleActor actor, List<BattleAction> defaultActions)
+        {
+            if (actionBarGrid == null || actor == null)
+            {
+                return;
+            }
+
+            for (var i = actionBarGrid.transform.childCount - 1; i >= 0; i--)
+            {
+                Destroy(actionBarGrid.transform.GetChild(i).gameObject);
+            }
+
+            var slots = GetActionBarAssignments(actor.key, defaultActions);
+            var visibleSlots = actionBarExpanded ? 40 : 10;
+
+            for (var i = 0; i < visibleSlots; i++)
+            {
+                var slotObject = new GameObject($"Slot_{i + 1}");
+                slotObject.transform.SetParent(actionBarGrid.transform, false);
+                var image = slotObject.AddComponent<Image>();
+                image.sprite = GetSolidSprite();
+                image.color = new Color(0.08f, 0.08f, 0.1f, 0.9f);
+
+                var dropTarget = slotObject.AddComponent<ActionBarSlotDropTarget>();
+                dropTarget.ui = this;
+                dropTarget.actorKey = actor.key;
+                dropTarget.slotIndex = i;
+
+                var action = slots.Count > i ? slots[i] : null;
+                if (action != null)
+                {
+                    CreateActionBarButton(slotObject.transform, actor.key, i, action);
+                }
+            }
+        }
+
+        private List<BattleAction> GetActionBarAssignments(string actorKey, List<BattleAction> defaults)
+        {
+            if (string.IsNullOrWhiteSpace(actorKey))
+            {
+                actorKey = "player";
+            }
+
+            if (!actionBarAssignments.TryGetValue(actorKey, out var slots))
+            {
+                slots = new List<BattleAction>();
+                for (var i = 0; i < 40; i++)
+                {
+                    slots.Add(null);
+                }
+
+                actionBarAssignments[actorKey] = slots;
+            }
+
+            var hasAny = false;
+            for (var i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] != null)
+                {
+                    hasAny = true;
+                    break;
+                }
+            }
+
+            if (!hasAny && defaults != null)
+            {
+                for (var i = 0; i < defaults.Count && i < slots.Count; i++)
+                {
+                    slots[i] = defaults[i];
+                }
+            }
+
+            return slots;
+        }
+
+        private void CreateActionBarButton(Transform parent, string actorKey, int slotIndex, BattleAction action)
+        {
+            var buttonObject = new GameObject($"{action.id}_Action");
+            buttonObject.transform.SetParent(parent, false);
+            var rect = buttonObject.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(2f, 2f);
+            rect.offsetMax = new Vector2(-2f, -2f);
+
+            var image = buttonObject.AddComponent<Image>();
+            image.sprite = GetSolidSprite();
+            image.color = new Color(0.16f, 0.16f, 0.2f, 0.95f);
+
+            var button = buttonObject.AddComponent<Button>();
+            button.onClick.AddListener(() => ResolveBattleAction(action));
+
+            var labelObject = new GameObject("Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+            var labelRect = labelObject.AddComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+            var text = labelObject.AddComponent<TextMeshProUGUI>();
+            text.text = action.label;
+            text.fontSize = 12f;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = new Color(0.92f, 0.88f, 0.8f, 1f);
+
+            var dragHandler = buttonObject.AddComponent<ActionBarActionDragHandler>();
+            dragHandler.ui = this;
+            dragHandler.actorKey = actorKey;
+            dragHandler.slotIndex = slotIndex;
+            dragHandler.action = action;
+            dragHandler.rectTransform = rect;
+            dragHandler.canvasGroup = buttonObject.AddComponent<CanvasGroup>();
+        }
+
+        private void MoveActionBarAction(string actorKey, int sourceIndex, int targetIndex)
+        {
+            if (!actionBarAssignments.TryGetValue(actorKey, out var slots))
+            {
+                return;
+            }
+
+            if (sourceIndex < 0 || sourceIndex >= slots.Count || targetIndex < 0 || targetIndex >= slots.Count)
+            {
+                return;
+            }
+
+            var temp = slots[targetIndex];
+            slots[targetIndex] = slots[sourceIndex];
+            slots[sourceIndex] = temp;
+            RefreshActionBarForCurrentActor();
+        }
+
+        private int GetCompanionMaxHp(BattleActor actor)
+        {
+            if (actor == null)
+            {
+                return 10;
+            }
+
+            EnsureCompanionSkillDefinitionsLoaded();
+            foreach (var entry in companionSkillDefinitions.Values)
+            {
+                if (entry != null && string.Equals(entry.name, actor.name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Mathf.Max(1, entry.hitPoints);
+                }
+            }
+
+            return 10;
         }
 
         private List<BattleAction> GetBattleActionsForActor(BattleActor actor)
@@ -3487,7 +4034,6 @@ namespace FableForge.UI
             {
                 var consumables = GetBattleConsumables();
                 result.AddRange(consumables);
-                result.Add(new BattleAction { kind = BattleActionKind.Skill, id = "Defend", label = "Defend" });
             }
 
             return result;
@@ -3496,6 +4042,22 @@ namespace FableForge.UI
         private void UpdateBattleActorHighlight()
         {
             foreach (var entry in battleActorStatus.Values)
+            {
+                if (entry == null || entry.background == null)
+                {
+                    continue;
+                }
+
+                var isSelected = selectedBattleActor != null && entry.actor.key == selectedBattleActor.key;
+                var hasActed = battleActorsActed.Contains(entry.actor.key);
+                entry.background.color = hasActed
+                    ? new Color(0.2f, 0.2f, 0.2f, 0.35f)
+                    : isSelected
+                        ? new Color(0.25f, 0.4f, 0.55f, 0.85f)
+                        : new Color(0.2f, 0.25f, 0.35f, 0.6f);
+            }
+
+            foreach (var entry in partyHudActorStatus.Values)
             {
                 if (entry == null || entry.background == null)
                 {
@@ -3574,6 +4136,22 @@ namespace FableForge.UI
             return new List<string>();
         }
 
+        private int GetCompanionMaxHp(string companionId)
+        {
+            if (string.IsNullOrWhiteSpace(companionId))
+            {
+                return 10;
+            }
+
+            EnsureCompanionSkillDefinitionsLoaded();
+            if (companionSkillDefinitions.TryGetValue(companionId, out var definition))
+            {
+                return Mathf.Max(1, definition.hitPoints);
+            }
+
+            return 10;
+        }
+
         private void EnsureCompanionSkillDefinitionsLoaded()
         {
             if (companionSkillDefinitions.Count > 0)
@@ -3611,12 +4189,37 @@ namespace FableForge.UI
                 return;
             }
 
-            var button = MenuStyling.CreateBookButton(parent, action.label, new Vector2(140f, 40f), $"{action.id}Action");
+            var buttonObject = new GameObject($"{action.id}Action");
+            buttonObject.transform.SetParent(parent, false);
+            var rect = buttonObject.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(56f, 56f);
+            var layout = buttonObject.AddComponent<LayoutElement>();
+            layout.preferredWidth = 56f;
+            layout.preferredHeight = 56f;
+
+            var image = buttonObject.AddComponent<Image>();
+            image.sprite = GetSolidSprite();
+            image.color = new Color(0.12f, 0.12f, 0.16f, 0.95f);
+
+            var button = buttonObject.AddComponent<Button>();
             button.onClick.RemoveAllListeners();
             button.onClick.AddListener(() =>
             {
                 ResolveBattleAction(action);
             });
+
+            var labelObject = new GameObject("Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+            var labelRect = labelObject.AddComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+            var text = labelObject.AddComponent<TextMeshProUGUI>();
+            text.text = action.label;
+            text.fontSize = 12f;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = new Color(0.92f, 0.88f, 0.8f, 1f);
         }
 
         private void ResolveBattleAction(BattleAction action)
@@ -3836,6 +4439,7 @@ namespace FableForge.UI
             {
                 targetStatus.label.text = $"{targetStatus.enemy.DisplayName}  HP {targetStatus.hp}";
             }
+            UpdateEnemyHpBar(targetStatus);
 
             ApplySkillEffectsToEnemy(skill, targetStatus);
 
@@ -3956,6 +4560,8 @@ namespace FableForge.UI
                     {
                         status.label.text = $"{status.enemy.DisplayName}  HP {status.hp}";
                     }
+                    UpdateEnemyHpBar(status);
+                    UpdateEnemyHpBar(status);
 
                     if (status.hp <= 0)
                     {
@@ -4004,6 +4610,8 @@ namespace FableForge.UI
                 {
                     battlePlayerEntry.text = $"{player.name} (You)  HP {battlePlayerHp}";
                 }
+                UpdatePlayerBattleBars();
+                UpdatePlayerBattleBars();
 
                 player.hitPoints = Mathf.Max(0, battlePlayerHp);
                 if (battlePlayerHp <= 0)
@@ -4012,6 +4620,47 @@ namespace FableForge.UI
                     CloseBattlePanel();
                     return;
                 }
+            }
+        }
+
+        private void UpdateEnemyHpBar(BattleEnemyStatus status)
+        {
+            if (status == null || status.hpFill == null)
+            {
+                return;
+            }
+
+            status.hpFill.fillAmount = status.maxHp > 0 ? Mathf.Clamp01((float)status.hp / status.maxHp) : 0f;
+        }
+
+        private void UpdatePlayerBattleBars()
+        {
+            if (!battleActorStatus.TryGetValue("player", out var status) || status == null)
+            {
+                partyHudActorStatus.TryGetValue("player", out status);
+            }
+
+            if (status == null)
+            {
+                return;
+            }
+
+            var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+            if (player == null)
+            {
+                return;
+            }
+
+            if (status.hpFill != null)
+            {
+                var maxHp = player.maxHitPoints > 0 ? player.maxHitPoints : battlePlayerHp;
+                status.hpFill.fillAmount = maxHp > 0 ? Mathf.Clamp01((float)battlePlayerHp / maxHp) : 0f;
+            }
+
+            if (status.resourceFill != null)
+            {
+                var maxMana = player.maxMana > 0 ? player.maxMana : player.mana;
+                status.resourceFill.fillAmount = maxMana > 0 ? Mathf.Clamp01((float)player.mana / maxMana) : 0f;
             }
         }
 
@@ -4276,6 +4925,367 @@ namespace FableForge.UI
             CreateInventoryItemIcon(slotObject.transform, item, definition, quantity);
         }
 
+        private GameObject CreateItemActionPanel(Transform parent)
+        {
+            var panelObject = new GameObject("ItemActionPanel");
+            panelObject.transform.SetParent(parent, false);
+            var rect = panelObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, 0f);
+            rect.sizeDelta = new Vector2(320f, 220f);
+
+            var image = panelObject.AddComponent<Image>();
+            image.color = new Color(0.08f, 0.08f, 0.1f, 0.85f);
+            image.sprite = MenuStyling.GetRoundedButtonSprite();
+            image.type = Image.Type.Sliced;
+
+            itemActionTitle = CreatePanelTitleText(panelObject.transform, "Item");
+            if (itemActionTitle != null)
+            {
+                itemActionTitle.fontSize = 20f;
+                itemActionTitle.color = Color.white;
+            }
+
+            itemUseButton = CreateItemActionButton(panelObject.transform, "Use Item");
+            var useRect = itemUseButton.GetComponent<RectTransform>();
+            useRect.anchorMin = new Vector2(0.5f, 0.5f);
+            useRect.anchorMax = new Vector2(0.5f, 0.5f);
+            useRect.pivot = new Vector2(0.5f, 0.5f);
+            useRect.anchoredPosition = new Vector2(0f, 30f);
+            itemUseButton.onClick.RemoveAllListeners();
+            itemUseButton.onClick.AddListener(UseSelectedItem);
+
+            itemEquipButton = CreateItemActionButton(panelObject.transform, "Equip Item");
+            var equipRect = itemEquipButton.GetComponent<RectTransform>();
+            equipRect.anchorMin = new Vector2(0.5f, 0.5f);
+            equipRect.anchorMax = new Vector2(0.5f, 0.5f);
+            equipRect.pivot = new Vector2(0.5f, 0.5f);
+            equipRect.anchoredPosition = new Vector2(0f, -20f);
+            itemEquipButton.onClick.RemoveAllListeners();
+            itemEquipButton.onClick.AddListener(EquipSelectedItem);
+
+            itemDropButton = CreateItemActionButton(panelObject.transform, "Drop Item");
+            var dropRect = itemDropButton.GetComponent<RectTransform>();
+            dropRect.anchorMin = new Vector2(0.5f, 0.5f);
+            dropRect.anchorMax = new Vector2(0.5f, 0.5f);
+            dropRect.pivot = new Vector2(0.5f, 0.5f);
+            dropRect.anchoredPosition = new Vector2(0f, -70f);
+            itemDropButton.onClick.RemoveAllListeners();
+            itemDropButton.onClick.AddListener(DropSelectedItem);
+
+            panelObject.SetActive(false);
+            return panelObject;
+        }
+
+        private GameObject CreateActionBar(Transform parent)
+        {
+            var panelObject = new GameObject("ActionBar");
+            panelObject.transform.SetParent(parent, false);
+            var rect = panelObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0f);
+            rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = new Vector2(0f, 12f);
+            rect.sizeDelta = new Vector2(ActionBarPanelWidth, ActionBarPanelHeightSingleRow);
+
+            var background = panelObject.AddComponent<Image>();
+            background.color = new Color(0.08f, 0.08f, 0.1f, 0.85f);
+            background.sprite = MenuStyling.GetRoundedButtonSprite();
+            background.type = Image.Type.Sliced;
+
+            var contentObject = new GameObject("ActionBarContent");
+            contentObject.transform.SetParent(panelObject.transform, false);
+            actionBarContent = contentObject.AddComponent<RectTransform>();
+            actionBarContent.anchorMin = new Vector2(0f, 0f);
+            actionBarContent.anchorMax = new Vector2(1f, 1f);
+            actionBarContent.offsetMin = new Vector2(12f, 8f);
+            actionBarContent.offsetMax = new Vector2(-44f, -8f);
+
+            actionBarGrid = contentObject.AddComponent<GridLayoutGroup>();
+            actionBarGrid.cellSize = new Vector2(ActionBarSlotWidth, ActionBarSlotWidth);
+            actionBarGrid.spacing = new Vector2(ActionBarSlotSpacing, ActionBarSlotSpacing);
+            actionBarGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            actionBarGrid.constraintCount = ActionBarSlotCount;
+            actionBarGrid.childAlignment = TextAnchor.MiddleLeft;
+            battleActionsRoot = contentObject.transform;
+
+            var toggleObject = new GameObject("ActionBarToggle");
+            toggleObject.transform.SetParent(panelObject.transform, false);
+            var toggleRect = toggleObject.AddComponent<RectTransform>();
+            toggleRect.anchorMin = new Vector2(1f, 0.5f);
+            toggleRect.anchorMax = new Vector2(1f, 0.5f);
+            toggleRect.pivot = new Vector2(1f, 0.5f);
+            toggleRect.anchoredPosition = new Vector2(-12f, 0f);
+            toggleRect.sizeDelta = new Vector2(24f, 24f);
+
+            var toggleImage = toggleObject.AddComponent<Image>();
+            toggleImage.sprite = GetSolidSprite();
+            toggleImage.color = new Color(0.2f, 0.2f, 0.25f, 0.9f);
+
+            var toggleLabel = new GameObject("Label");
+            toggleLabel.transform.SetParent(toggleObject.transform, false);
+            var toggleLabelRect = toggleLabel.AddComponent<RectTransform>();
+            toggleLabelRect.anchorMin = Vector2.zero;
+            toggleLabelRect.anchorMax = Vector2.one;
+            toggleLabelRect.offsetMin = Vector2.zero;
+            toggleLabelRect.offsetMax = Vector2.zero;
+
+            var toggleText = toggleLabel.AddComponent<TextMeshProUGUI>();
+            toggleText.text = "▾";
+            toggleText.fontSize = 16f;
+            toggleText.alignment = TextAlignmentOptions.Center;
+            toggleText.color = Color.white;
+
+            var toggleButton = toggleObject.AddComponent<Button>();
+            toggleButton.onClick.AddListener(ToggleActionBarExpand);
+
+            UpdateActionBarLayout();
+            panelObject.SetActive(true);
+            return panelObject;
+        }
+
+        private void ToggleActionBarExpand()
+        {
+            actionBarExpanded = !actionBarExpanded;
+            UpdateActionBarLayout();
+            RefreshActionBarForCurrentActor();
+        }
+
+        private void UpdateActionBarLayout()
+        {
+            if (actionBarPanel == null || actionBarContent == null || actionBarGrid == null)
+            {
+                return;
+            }
+
+            var rows = actionBarExpanded ? 4 : 1;
+            var height = ActionBarContentPaddingV + rows * ActionBarSlotWidth + (rows - 1) * ActionBarSlotSpacing;
+            var rect = actionBarPanel.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(ActionBarPanelWidth, height);
+
+            actionBarContent.offsetMin = new Vector2(12f, 8f);
+            actionBarContent.offsetMax = new Vector2(-44f, -8f);
+        }
+
+        private Button CreateItemActionButton(Transform parent, string label)
+        {
+            var buttonObject = new GameObject($"{label.Replace(" ", string.Empty)}Button");
+            buttonObject.transform.SetParent(parent, false);
+            var rect = buttonObject.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(220f, 40f);
+
+            var image = buttonObject.AddComponent<Image>();
+            image.sprite = GetSolidSprite();
+            image.color = new Color(0f, 0f, 0f, 0.25f);
+
+            var button = buttonObject.AddComponent<Button>();
+
+            var labelObject = new GameObject("Label");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+            var labelRect = labelObject.AddComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var text = labelObject.AddComponent<TextMeshProUGUI>();
+            text.text = label;
+            text.fontSize = 18f;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = Color.white;
+
+            return button;
+        }
+
+        private void OpenItemActionMenu(Item item, ItemDefinition definition)
+        {
+            if (item == null || itemActionPanel == null)
+            {
+                return;
+            }
+
+            selectedItem = item;
+            selectedItemDefinition = definition ?? GetItemDefinition(item);
+            if (itemActionTitle != null)
+            {
+                var label = !string.IsNullOrWhiteSpace(selectedItemDefinition?.name) ? selectedItemDefinition.name : item.id;
+                itemActionTitle.text = label ?? "Item";
+            }
+
+            var canUse = selectedItemDefinition != null && selectedItemDefinition.consumableData != null;
+            var canEquip = selectedItemDefinition != null && (selectedItemDefinition.weaponData != null || selectedItemDefinition.armorData != null);
+            if (itemUseButton != null) itemUseButton.interactable = canUse;
+            if (itemEquipButton != null) itemEquipButton.interactable = canEquip;
+
+            itemActionPanel.SetActive(true);
+            itemActionPanel.transform.SetAsLastSibling();
+        }
+
+        private void CloseItemActionMenu()
+        {
+            if (itemActionPanel != null)
+            {
+                itemActionPanel.SetActive(false);
+            }
+
+            selectedItem = null;
+            selectedItemDefinition = null;
+        }
+
+        private void UseSelectedItem()
+        {
+            if (selectedItem == null || selectedItemDefinition == null || selectedItemDefinition.consumableData == null)
+            {
+                return;
+            }
+
+            var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+            if (player == null)
+            {
+                return;
+            }
+
+            ApplyConsumableEffect(selectedItemDefinition);
+            RemoveItemById(selectedItem.id);
+            RefreshInventoryUI();
+            CloseItemActionMenu();
+        }
+
+        private void EquipSelectedItem()
+        {
+            if (selectedItem == null || selectedItemDefinition == null)
+            {
+                return;
+            }
+
+            var slotLabel = ResolveEquipSlot(selectedItemDefinition);
+            if (string.IsNullOrWhiteSpace(slotLabel))
+            {
+                return;
+            }
+
+            if (EquipItemToSlot(selectedItem, selectedItemDefinition, slotLabel))
+            {
+                RefreshInventoryUI();
+                CloseItemActionMenu();
+            }
+        }
+
+        private void DropSelectedItem()
+        {
+            if (selectedItem == null)
+            {
+                return;
+            }
+
+            RemoveItemFromInventory(selectedItem);
+            RefreshInventoryUI();
+            CloseItemActionMenu();
+        }
+
+        private string ResolveEquipSlot(ItemDefinition definition)
+        {
+            if (definition == null)
+            {
+                return null;
+            }
+
+            if (definition.armorData != null && !string.IsNullOrWhiteSpace(definition.armorData.slot))
+            {
+                return definition.armorData.slot;
+            }
+
+            if (definition.weaponData != null)
+            {
+                if (string.Equals(definition.weaponData.weaponType, "bow", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Bow";
+                }
+
+                if (string.Equals(definition.weaponData.weaponType, "shield", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(definition.weaponData.weaponType, "offhand", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Off-Hand";
+                }
+
+                return "Main Hand";
+            }
+
+            return null;
+        }
+
+        private bool EquipItemToSlot(Item item, ItemDefinition definition, string slotLabel)
+        {
+            if (item == null || definition == null || string.IsNullOrWhiteSpace(slotLabel))
+            {
+                return false;
+            }
+
+            var normalized = NormalizeSlotLabel(slotLabel);
+            if (!equipmentSlotRoots.TryGetValue(normalized, out var slotTransform) || slotTransform == null)
+            {
+                return false;
+            }
+
+            if (slotTransform.GetComponentInChildren<InventoryItemDragHandler>() != null)
+            {
+                return false;
+            }
+
+            if (!RemoveItemFromInventory(item))
+            {
+                return false;
+            }
+
+            CreateInventoryItemIcon(slotTransform, item, definition, Mathf.Max(1, item.quantity));
+            var dragHandler = slotTransform.GetComponentInChildren<InventoryItemDragHandler>();
+            if (dragHandler != null)
+            {
+                dragHandler.IsEquipped = true;
+                dragHandler.EquippedSlotLabel = slotLabel;
+                var rect = dragHandler.rectTransform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = new Vector2(6f, 6f);
+                rect.offsetMax = new Vector2(-6f, -6f);
+                rect.sizeDelta = Vector2.zero;
+            }
+
+            ApplyEquipmentToCharacter(slotLabel, definition);
+            return true;
+        }
+
+        private void ApplyConsumableEffect(ItemDefinition definition)
+        {
+            var player = GameState.Instance != null ? GameState.Instance.CurrentSave?.player : null;
+            if (player == null || definition?.consumableData == null)
+            {
+                return;
+            }
+
+            var effectType = definition.consumableData.effectType;
+            var effectValue = definition.consumableData.effectValue;
+            if (string.Equals(effectType, "heal", StringComparison.OrdinalIgnoreCase))
+            {
+                var maxHp = player.maxHitPoints > 0 ? player.maxHitPoints : player.hitPoints;
+                player.hitPoints = Mathf.Min(maxHp, player.hitPoints + effectValue);
+                battlePlayerHp = player.hitPoints;
+                if (battlePlayerEntry != null)
+                {
+                    battlePlayerEntry.text = $"{player.name} (You)  HP {battlePlayerHp}";
+                }
+                UpdatePlayerBattleBars();
+            }
+            else if (string.Equals(effectType, "restoreMana", StringComparison.OrdinalIgnoreCase))
+            {
+                var maxMana = player.maxMana > 0 ? player.maxMana : player.mana;
+                player.mana = Mathf.Min(maxMana, player.mana + effectValue);
+                UpdatePlayerBattleBars();
+            }
+        }
+
         private TextMeshProUGUI CreateChestTitle(Transform parent)
         {
             var titleObject = new GameObject("ChestTitle");
@@ -4532,6 +5542,7 @@ namespace FableForge.UI
         {
             public EnemyInstance enemy;
             public int hp;
+            public int maxHp;
             public int stunTurns;
             public int attackModifier;
             public int attackDebuffTurns;
@@ -4540,6 +5551,7 @@ namespace FableForge.UI
             public TextMeshProUGUI label;
             public Button button;
             public Image background;
+            public Image hpFill;
         }
 
         private enum BattleActorKind
@@ -4563,6 +5575,97 @@ namespace FableForge.UI
             public Button button;
             public Image background;
             public TextMeshProUGUI label;
+            public Image hpFill;
+            public Image resourceFill;
+        }
+
+        private class ActionBarSlotDropTarget : MonoBehaviour, IDropHandler
+        {
+            public RuntimeGameUIBootstrap ui;
+            public string actorKey;
+            public int slotIndex;
+
+            public void OnDrop(PointerEventData eventData)
+            {
+                if (eventData == null || eventData.pointerDrag == null || ui == null)
+                {
+                    return;
+                }
+
+                var dragHandler = eventData.pointerDrag.GetComponent<ActionBarActionDragHandler>();
+                if (dragHandler == null)
+                {
+                    return;
+                }
+
+                if (!string.Equals(dragHandler.actorKey, actorKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                ui.MoveActionBarAction(actorKey, dragHandler.slotIndex, slotIndex);
+                dragHandler.DropHandled = true;
+            }
+        }
+
+        private class ActionBarActionDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+        {
+            public RuntimeGameUIBootstrap ui;
+            public string actorKey;
+            public int slotIndex;
+            public BattleAction action;
+            public RectTransform rectTransform;
+            public CanvasGroup canvasGroup;
+            public bool DropHandled { get; set; }
+
+            private Transform originalParent;
+            private Vector2 originalPosition;
+
+            public void OnBeginDrag(PointerEventData eventData)
+            {
+                if (rectTransform == null || ui == null || ui.rootCanvas == null)
+                {
+                    return;
+                }
+
+                DropHandled = false;
+                originalParent = rectTransform.parent;
+                originalPosition = rectTransform.anchoredPosition;
+                rectTransform.SetParent(ui.rootCanvas.transform, true);
+                if (canvasGroup != null)
+                {
+                    canvasGroup.blocksRaycasts = false;
+                }
+            }
+
+            public void OnDrag(PointerEventData eventData)
+            {
+                if (rectTransform == null || ui == null || ui.rootCanvas == null || eventData == null)
+                {
+                    return;
+                }
+
+                rectTransform.anchoredPosition += eventData.delta / ui.rootCanvas.scaleFactor;
+            }
+
+            public void OnEndDrag(PointerEventData eventData)
+            {
+                if (rectTransform == null)
+                {
+                    return;
+                }
+
+                if (!DropHandled && originalParent != null)
+                {
+                    rectTransform.SetParent(originalParent, false);
+                    rectTransform.anchoredPosition = originalPosition;
+                }
+
+                if (canvasGroup != null)
+                {
+                    canvasGroup.blocksRaycasts = true;
+                }
+            }
         }
 
         [Serializable]
@@ -4577,6 +5680,7 @@ namespace FableForge.UI
             public string id;
             public string name;
             public List<string> skillIds;
+            public int hitPoints;
         }
 
         private class InventoryDisplayItem

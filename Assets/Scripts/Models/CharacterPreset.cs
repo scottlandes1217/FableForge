@@ -13,12 +13,17 @@ public class CharacterPreset
     public static CharacterPreset FromSelections(
         string rigId,
         IReadOnlyList<AppearanceSelection> selections,
-        IReadOnlyList<AppearanceCategoryDefinition> definitions)
+        IReadOnlyList<AppearanceCategoryDefinition> definitions,
+        string raceId = null,
+        string gender = null)
     {
         var preset = new CharacterPreset
         {
             rig = string.IsNullOrWhiteSpace(rigId) ? "humanoid_v1" : rigId
         };
+
+        var raceSlug = string.IsNullOrWhiteSpace(raceId) ? "human" : raceId.Trim().ToLowerInvariant();
+        var genderSlug = string.IsNullOrWhiteSpace(gender) ? "male" : gender.Trim().ToLowerInvariant();
 
         if (definitions != null)
         {
@@ -60,12 +65,60 @@ public class CharacterPreset
 
         if (!preset.slots.ContainsKey("Body"))
         {
-            preset.slots["Body"] = "placeholder";
+            preset.slots["Body"] = $"body_{raceSlug}_{genderSlug}_front_01";
+        }
+
+        if (!preset.slots.ContainsKey("Top"))
+        {
+            preset.slots["Top"] = $"top_{raceSlug}_{genderSlug}_front_01";
+        }
+
+        if (!preset.slots.ContainsKey("Bottom"))
+        {
+            preset.slots["Bottom"] = $"bottom_{raceSlug}_{genderSlug}_front_01";
         }
 
         if (!preset.slots.ContainsKey("Head"))
         {
             preset.slots["Head"] = "placeholder";
+        }
+
+        // Default face parts so they always show in preview (use exact asset labels)
+        if (!preset.slots.ContainsKey("Eyes"))
+        {
+            preset.slots["Eyes"] = "eyes_round_01";
+        }
+
+        if (!preset.slots.ContainsKey("Eyebrows"))
+        {
+            preset.slots["Eyebrows"] = "eyebrows_straight_01";
+        }
+
+        if (!preset.slots.ContainsKey("Mouth"))
+        {
+            preset.slots["Mouth"] = "mouth_neutral_01";
+        }
+
+        if (!preset.slots.ContainsKey("Nose"))
+        {
+            preset.slots["Nose"] = "nose_straight_01";
+        }
+
+        // Default hair so it always shows in preview
+        if (!preset.slots.ContainsKey("HairFront"))
+        {
+            preset.slots["HairFront"] = "hair_front_short_01";
+        }
+
+        if (!preset.slots.ContainsKey("HairBack"))
+        {
+            preset.slots["HairBack"] = "hair_back_short_01";
+        }
+
+        // Derive HairSide from HairFront so side-facing view has hair (same style, use hair_side_* asset; left = same sprite flipped)
+        if (preset.slots.TryGetValue("HairFront", out var hairFrontLabel) && !string.IsNullOrWhiteSpace(hairFrontLabel) && hairFrontLabel.Contains("hair_front_"))
+        {
+            preset.slots["HairSide"] = hairFrontLabel.Replace("hair_front_", "hair_side_");
         }
 
         return preset;
@@ -96,6 +149,32 @@ public class CharacterPreset
             {
                 preset.slots[entry.Key] = entry.Value as string;
             }
+        }
+
+        if (!preset.slots.ContainsKey("Eyes"))
+        {
+            preset.slots["Eyes"] = "eyes_round_01";
+        }
+
+        if (!preset.slots.ContainsKey("Eyebrows"))
+        {
+            preset.slots["Eyebrows"] = "eyebrows_straight_01";
+        }
+
+        if (!preset.slots.ContainsKey("Mouth"))
+        {
+            preset.slots["Mouth"] = "mouth_neutral_01";
+        }
+
+        if (!preset.slots.ContainsKey("Nose"))
+        {
+            preset.slots["Nose"] = "nose_straight_01";
+        }
+
+        // Derive HairSide from HairFront for side-facing view
+        if (!preset.slots.ContainsKey("HairSide") && preset.slots.TryGetValue("HairFront", out var hairFront) && !string.IsNullOrWhiteSpace(hairFront) && hairFront.Contains("hair_front_"))
+        {
+            preset.slots["HairSide"] = hairFront.Replace("hair_front_", "hair_side_");
         }
 
         if (parsed.TryGetValue("tints", out var tintsValue) && tintsValue is Dictionary<string, object> tintsDict)

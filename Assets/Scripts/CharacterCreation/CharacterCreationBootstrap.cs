@@ -25,7 +25,12 @@ public class CharacterCreationBootstrap : MonoBehaviour
     [SerializeField] private GameObject previewRigPrefab;
     [SerializeField] private string previewLayerName = "CharacterPreviewRig";
     [SerializeField] private bool debugPreview = true;
-    [SerializeField] private Vector2 previewSize = new Vector2(360f, 520f);
+    [SerializeField] private Vector2 previewSize = new Vector2(360f, 640f);
+    [Header("Preview Alignment (Top + Bottom stacked exactly, same position)")]
+    [Tooltip("Offset to shift Top and Bottom together (e.g. X = -2 to move character left if art is right-of-center in 512x512).")]
+    [SerializeField] private Vector2 previewCharacterOffset = Vector2.zero;
+    [Tooltip("Override per-slot positions. If empty, Top and Bottom are placed at the same position (previewCharacterOffset) so they layer exactly.")]
+    [SerializeField] private List<SlotOffset> previewSlotOffsets = new List<SlotOffset>();
     [Header("AI Generation")]
     [SerializeField] private ReplicateImageService replicateService;
     [SerializeField] private string generatedOutputFolder = "GeneratedParts";
@@ -42,7 +47,13 @@ public class CharacterCreationBootstrap : MonoBehaviour
     private Button startGameButton;
     private bool isInitialized;
     private Sprite fallbackPreviewSprite;
+    /// <summary>1x1 white sprite used so UI Image shows tint color (Image with null sprite often doesn't render color).</summary>
+    private static Sprite whiteSpriteForTint;
     private FacingDirection currentFacing = FacingDirection.Front;
+    /// <summary>0=Front, 1=Right, 2=Back, 3=Left (Side with flipX). Ensures all four sides show when rotating.</summary>
+    private int currentRotationIndex = 0;
+    /// <summary>Restore appearance scroll position after rebuild so carousel arrow doesn't jump to top.</summary>
+    private float savedAppearanceScrollPosition = 1f;
 #if UNITY_EDITOR
     private Dictionary<string, string> manifestSpriteLookup;
 #endif
@@ -76,6 +87,16 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void BuildCurrentStep()
     {
+        var step = controller.CurrentStep;
+        if (step == CharacterCreationController.CreationStep.Appearance && panelRoot != null)
+        {
+            var scroll = panelRoot.GetComponentInChildren<ScrollRect>(true);
+            if (scroll != null)
+            {
+                savedAppearanceScrollPosition = scroll.verticalNormalizedPosition;
+            }
+        }
+
         ClearPanel();
         panelRoot = CreatePanel(canvas.transform);
 
@@ -86,14 +107,38 @@ public class CharacterCreationBootstrap : MonoBehaviour
             return;
         }
 
-        switch (controller.CurrentStep)
+        switch (step)
         {
             case CharacterCreationController.CreationStep.RaceSelection:
                 BuildRaceGenderScreen();
                 break;
             case CharacterCreationController.CreationStep.Appearance:
                 BuildAppearanceScreen();
+                RestoreAppearanceScrollPosition();
                 break;
+        }
+    }
+
+    private void RestoreAppearanceScrollPosition()
+    {
+        if (panelRoot == null)
+        {
+            return;
+        }
+        var scroll = panelRoot.GetComponentInChildren<ScrollRect>(true);
+        if (scroll != null)
+        {
+            scroll.verticalNormalizedPosition = savedAppearanceScrollPosition;
+            StartCoroutine(RestoreAppearanceScrollPositionNextFrame(scroll));
+        }
+    }
+
+    private System.Collections.IEnumerator RestoreAppearanceScrollPositionNextFrame(ScrollRect scroll)
+    {
+        yield return null;
+        if (scroll != null)
+        {
+            scroll.verticalNormalizedPosition = savedAppearanceScrollPosition;
         }
     }
 
@@ -312,6 +357,7 @@ public class CharacterCreationBootstrap : MonoBehaviour
         }
 
         CreateSpritePreview(rightColumn);
+        CreateSpacer(rightColumn, 20f);
         CreateFacingControls(rightColumn);
         CreateSpacer(rightColumn, 12f);
 
@@ -566,14 +612,11 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void RotateFacing(int direction)
     {
-        var order = new[] { FacingDirection.Front, FacingDirection.Side, FacingDirection.Back };
-        var index = Array.IndexOf(order, currentFacing);
-        if (index < 0)
-        {
-            index = 0;
-        }
-        index = (index + direction + order.Length) % order.Length;
-        currentFacing = order[index];
+        // Four steps: Front, Right (Side), Back, Left (Side + flipX). Left reuses right sprite, flipped.
+        currentRotationIndex = (currentRotationIndex + direction + 4) % 4;
+        currentFacing = currentRotationIndex == 0 ? FacingDirection.Front
+            : currentRotationIndex == 2 ? FacingDirection.Back
+            : FacingDirection.Side;
         ApplyFacingToPreview();
     }
 
@@ -587,7 +630,9 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var preset = CharacterPreset.FromSelections(
             rigId,
             controller.AppearanceSelections,
-            controller.GetAppearanceDefinitions());
+            controller.GetAppearanceDefinitions(),
+            controller.SelectedRace?.id,
+            controller.SelectedGender?.ToString());
 
         var resolver = previewRigInstance.GetComponent<FacingDirectionResolver>();
         if (resolver == null)
@@ -597,11 +642,177 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
         resolver.SetFacing(currentFacing, preset.slots);
 #if UNITY_EDITOR
-        ApplyManifestSpriteOverride(preset.slots);
+        var resolvedSlots = BuildResolvedSlotsForFacing(preset.slots, currentFacing);
+        ApplyManifestSpriteOverride(resolvedSlots);
+        resolver.ApplyHairVisibilityOnly(); // only visibility — do not re-run resolvers (would overwrite hair sprites)
 #endif
+        HidePreviewBodySlot();
+        // Left side = right-facing sprite with flipX (same as in-game).
+        var flipForLeft = (currentFacing == FacingDirection.Side && currentRotationIndex == 3);
+        var renderers = previewRigInstance.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var r in renderers)
+        {
+            if (r != null)
+            {
+                r.flipX = flipForLeft;
+            }
+        }
+        // Re-apply Top/Bottom stacking after every facing change so layering is identical for Front, Side, and Back.
+        // (SpriteResolver/SpriteLibrary can affect transforms; this resets positions so Top and Bottom stay aligned.)
+        ApplyPreviewSlotOffsets();
         if (previewCamera != null)
         {
             previewCamera.Render();
+        }
+    }
+
+#if UNITY_EDITOR
+    // Face (Eyes, Eyebrows, Mouth, Nose) use facing variants: front + side (same naming as body: _front_, _side_). Hair/Head stay single.
+    private static readonly HashSet<string> SlotsThatDontUseFacingVariants = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "HairFront", "HairBack", "HairSide", "Head"
+    };
+
+    private static readonly HashSet<string> FaceSlotCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Eyes", "Eyebrows", "Mouth", "Nose"
+    };
+
+    private Dictionary<string, string> BuildResolvedSlotsForFacing(Dictionary<string, string> baseSlots, FacingDirection facing)
+    {
+        var result = new Dictionary<string, string>();
+        if (baseSlots == null)
+        {
+            return result;
+        }
+
+        var suffix = facing == FacingDirection.Back ? "back" : (facing == FacingDirection.Side ? "right" : "front");
+        foreach (var entry in baseSlots)
+        {
+            var label = entry.Value ?? "";
+            if (!string.IsNullOrWhiteSpace(label) && !SlotsThatDontUseFacingVariants.Contains(entry.Key))
+            {
+                // Face slots: use same naming as body — direction in name (e.g. eyes_side_round_01, eyes_round_01 = front)
+                if (FaceSlotCategories.Contains(entry.Key) && facing == FacingDirection.Side)
+                {
+                    var firstUnderscore = label.IndexOf('_');
+                    if (firstUnderscore > 0)
+                        label = label.Substring(0, firstUnderscore) + "_side_" + label.Substring(firstUnderscore + 1);
+                    else
+                        label = label + "_side";
+                }
+                else if (label.Contains("_front_")) label = label.Replace("_front_", $"_{suffix}_");
+                else if (label.Contains("_back_")) label = label.Replace("_back_", $"_{suffix}_");
+                else if (label.Contains("_right_")) label = label.Replace("_right_", $"_{suffix}_");
+                else if (label.Contains("_side_")) label = label.Replace("_side_", $"_{suffix}_");
+                else if (suffix != "front") label = $"{label}_{suffix}";
+            }
+            result[entry.Key] = label;
+        }
+
+        // Do not swap HairFront/HairBack labels here. Manifest lookup is by category+label (e.g. HairFront|hair_front_short_01).
+        // Assignment of which slot transform gets which sprite is done in ApplyManifestSpriteOverride using currentFacing.
+
+        return result;
+    }
+#endif
+
+    private void HidePreviewBodySlot()
+    {
+        if (previewRigInstance == null)
+        {
+            return;
+        }
+
+        var slotsRoot = previewRigInstance.transform.Find("Slots");
+        if (slotsRoot == null)
+        {
+            return;
+        }
+
+        var body = slotsRoot.Find("Body");
+        if (body != null)
+        {
+            var renderer = body.GetComponent<SpriteRenderer>();
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
+        }
+    }
+
+    private void ApplyPreviewSlotOffsets()
+    {
+        if (previewRigInstance == null)
+        {
+            return;
+        }
+
+        var slotsRoot = previewRigInstance.transform.Find("Slots");
+        if (slotsRoot == null)
+        {
+            return;
+        }
+
+        slotsRoot.localPosition = Vector3.zero;
+        slotsRoot.localScale = Vector3.one;
+        slotsRoot.localRotation = Quaternion.identity;
+
+        if (previewSlotOffsets != null && previewSlotOffsets.Count > 0)
+        {
+            foreach (var entry in previewSlotOffsets)
+            {
+                if (string.IsNullOrWhiteSpace(entry.slotName))
+                {
+                    continue;
+                }
+                // Top and Bottom are always controlled by StackTopBottomAtPosition below.
+                if (string.Equals(entry.slotName, "Top", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(entry.slotName, "Bottom", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var slotTransform = slotsRoot.Find(entry.slotName);
+                if (slotTransform != null)
+                {
+                    slotTransform.localPosition = new Vector3(entry.offset.x, entry.offset.y, 0f);
+                }
+            }
+        }
+
+        StackTopBottomAtPosition(slotsRoot, previewCharacterOffset);
+    }
+
+    /// <summary>
+    /// Places Body at origin. Top and Bottom at the exact same local position, scale, and rotation
+    /// so they stack directly on top of each other. Art must use the same pivot (e.g. Bottom Center).
+    /// </summary>
+    private void StackTopBottomAtPosition(Transform slotsRoot, Vector2 userOffset)
+    {
+        var body = slotsRoot.Find("Body");
+        var top = slotsRoot.Find("Top");
+        var bottom = slotsRoot.Find("Bottom");
+
+        if (body != null)
+        {
+            body.localPosition = Vector3.zero;
+            body.localScale = Vector3.one;
+            body.localRotation = Quaternion.identity;
+        }
+
+        var samePos = new Vector3(userOffset.x, userOffset.y, 0f);
+        if (top != null)
+        {
+            top.localPosition = samePos;
+            top.localScale = Vector3.one;
+            top.localRotation = Quaternion.identity;
+        }
+        if (bottom != null)
+        {
+            bottom.localPosition = samePos;
+            bottom.localScale = Vector3.one;
+            bottom.localRotation = Quaternion.identity;
         }
     }
 
@@ -612,6 +823,7 @@ public class CharacterCreationBootstrap : MonoBehaviour
             return;
         }
 
+        // Height slider = vertical scale (short 0.85 to tall 1.25). Build slider = horizontal scale (skinny 0.7 to thick 1.35).
         var heightValue = controller.GetSliderValue(AppearanceCategory.Height);
         var buildValue = controller.GetSliderValue(AppearanceCategory.Build);
 
@@ -634,12 +846,192 @@ public class CharacterCreationBootstrap : MonoBehaviour
             return;
         }
 
-        var baseSize = Mathf.Max(2.6f, previewSize.y / 220f);
+        var baseSize = Mathf.Max(2.9f, previewSize.y / 200f);
         var zoomForWidth = Mathf.Lerp(1f, 1.25f, Mathf.Clamp01((scale.x - 1f) / 0.4f));
         var zoomForHeight = Mathf.Lerp(1f, 1.35f, Mathf.Clamp01((scale.y - 1f) / 0.4f));
         previewCamera.orthographicSize = baseSize * Mathf.Max(zoomForWidth, zoomForHeight);
         var heightOffset = Mathf.Lerp(0.2f, -0.15f, Mathf.Clamp01((scale.y - 1f) / 0.5f));
         previewCamera.transform.position = new Vector3(0f, heightOffset, -10f);
+    }
+
+    /// <summary>
+    /// Applies preset tints (Skin, Hair, Eyes) to the preview rig so skin/hair/eye color selectors update the sprite preview.
+    /// </summary>
+    private void ApplyPreviewTints()
+    {
+        if (previewRigInstance == null)
+        {
+            return;
+        }
+
+        var preset = CharacterPreset.FromSelections(
+            rigId,
+            controller.AppearanceSelections,
+            controller.GetAppearanceDefinitions(),
+            controller.SelectedRace?.id,
+            controller.SelectedGender?.ToString());
+        if (preset?.tints == null || preset.tints.Count == 0)
+        {
+            return;
+        }
+
+        var tintGroups = previewRigInstance.GetComponentsInChildren<SpriteTintGroup>(true);
+        foreach (var group in tintGroups)
+        {
+            if (group == null || string.IsNullOrWhiteSpace(group.tintKey))
+            {
+                continue;
+            }
+
+            if (preset.tints.TryGetValue(group.tintKey, out var hex) && TryParseHexColor(hex, out var color))
+            {
+                group.ApplyColor(color);
+            }
+        }
+
+        // Fallback: apply Skin tint to Head and Body by slot category (SpriteResolver) so skin color shows regardless of hierarchy
+        if (preset.tints.TryGetValue("Skin", out var skinHex) && TryParseHexColor(skinHex, out var skinColor))
+        {
+            var resolvers = previewRigInstance.GetComponentsInChildren<UnityEngine.U2D.Animation.SpriteResolver>(true);
+            foreach (var resolver in resolvers)
+            {
+                if (resolver == null)
+                {
+                    continue;
+                }
+                var category = resolver.GetCategory();
+                if (string.IsNullOrWhiteSpace(category))
+                {
+                    category = resolver.gameObject.name;
+                }
+                if (string.IsNullOrWhiteSpace(category))
+                {
+                    continue;
+                }
+                var cat = category.Trim();
+                // Top and Bottom are the visible body sprites; Head is face; Body is hidden but tint for consistency
+                var isSkinSlot = string.Equals(cat, "Head", System.StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(cat, "Body", System.StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(cat, "Top", System.StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(cat, "Bottom", System.StringComparison.OrdinalIgnoreCase)
+                    || cat.IndexOf("Head", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || cat.IndexOf("Body", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || cat.IndexOf("Top", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || cat.IndexOf("Bottom", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!isSkinSlot)
+                {
+                    continue;
+                }
+                var renderer = resolver.GetComponent<SpriteRenderer>();
+                if (renderer != null)
+                {
+                    renderer.color = skinColor;
+                }
+            }
+            // Also find by hierarchy in case rig has no SpriteResolvers on skin slots (Top/Bottom = visible body)
+            var slotsRoot = FindChildRecursive(previewRigInstance.transform, "Slots");
+            if (slotsRoot != null)
+            {
+                for (var i = 0; i < slotsRoot.childCount; i++)
+                {
+                    var slot = slotsRoot.GetChild(i);
+                    var name = slot.name ?? "";
+                    var isSkin = name.IndexOf("Head", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("Body", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("Top", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || name.IndexOf("Bottom", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (isSkin)
+                    {
+                        foreach (var child in slot.GetComponentsInChildren<SpriteRenderer>(true))
+                        {
+                            if (child != null)
+                            {
+                                child.color = skinColor;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: apply Hair tint to HairFront, HairBack, and Eyebrows slots
+        if (preset.tints.TryGetValue("Hair", out var hairHex) && TryParseHexColor(hairHex, out var hairColor))
+        {
+            var resolvers = previewRigInstance.GetComponentsInChildren<UnityEngine.U2D.Animation.SpriteResolver>(true);
+            foreach (var resolver in resolvers)
+            {
+                if (resolver == null) continue;
+                var category = resolver.GetCategory();
+                if (string.IsNullOrWhiteSpace(category))
+                {
+                    category = resolver.gameObject.name;
+                }
+                if (string.IsNullOrWhiteSpace(category)) continue;
+                var cat = category.Trim();
+                if (!string.Equals(cat, "HairFront", System.StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(cat, "HairBack", System.StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(cat, "HairSide", System.StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(cat, "Eyebrows", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                var renderer = resolver.GetComponent<SpriteRenderer>();
+                if (renderer != null)
+                {
+                    renderer.color = hairColor;
+                }
+            }
+        }
+    }
+
+    private static Transform FindChildRecursive(Transform parent, string name)
+    {
+        if (parent == null || string.IsNullOrEmpty(name))
+        {
+            return null;
+        }
+        var direct = parent.Find(name);
+        if (direct != null)
+        {
+            return direct;
+        }
+        for (var i = 0; i < parent.childCount; i++)
+        {
+            var found = FindChildRecursive(parent.GetChild(i), name);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static bool TryParseHexColor(string hex, out UnityColor color)
+    {
+        color = UnityColor.white;
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return false;
+        }
+        if (!hex.StartsWith("#"))
+        {
+            hex = "#" + hex;
+        }
+        return ColorUtility.TryParseHtmlString(hex, out color);
+    }
+
+    /// <summary>Returns a 1x1 white sprite so UI Image can show tint color (Image with null sprite often doesn't render).</summary>
+    private static Sprite GetWhiteSpriteForTint()
+    {
+        if (whiteSpriteForTint != null)
+        {
+            return whiteSpriteForTint;
+        }
+        var tex = new Texture2D(1, 1);
+        tex.SetPixel(0, 0, UnityColor.white);
+        tex.Apply();
+        whiteSpriteForTint = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
+        return whiteSpriteForTint;
     }
 
     private void LogBodyPreviewStatus()
@@ -652,7 +1044,9 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var preset = CharacterPreset.FromSelections(
             rigId,
             controller.AppearanceSelections,
-            controller.GetAppearanceDefinitions());
+            controller.GetAppearanceDefinitions(),
+            controller.SelectedRace?.id,
+            controller.SelectedGender?.ToString());
 
         preset.slots.TryGetValue("Body", out var bodyLabel);
         var library = previewRigInstance.GetComponent<UnityEngine.U2D.Animation.SpriteLibrary>();
@@ -679,9 +1073,46 @@ public class CharacterCreationBootstrap : MonoBehaviour
             return;
         }
 
+        var slotsRoot = previewRigInstance.transform.Find("Slots");
+        if (slotsRoot != null)
+        {
+            // Hair: one slot per facing. HairFront = front sprite, HairBack = back sprite, HairSide = side sprite. Visibility is set in FacingDirectionResolver.
+            if (slots.TryGetValue("HairFront", out var frontLabel) && !string.IsNullOrWhiteSpace(frontLabel))
+            {
+                var s = TryLoadSpriteFromManifest("HairFront", frontLabel);
+                if (s != null) ApplySpriteToSlot(slotsRoot.Find("HairFront"), s);
+            }
+            if (slots.TryGetValue("HairBack", out var backLabel) && !string.IsNullOrWhiteSpace(backLabel))
+            {
+                var s = TryLoadSpriteFromManifest("HairBack", backLabel);
+                if (s != null) ApplySpriteToSlot(slotsRoot.Find("HairBack"), s);
+            }
+            if (slots.TryGetValue("HairSide", out var sideLabel) && !string.IsNullOrWhiteSpace(sideLabel))
+            {
+                var s = TryLoadSpriteFromManifest("HairSide", sideLabel);
+                if (s != null) ApplySpriteToSlot(slotsRoot.Find("HairSide"), s);
+            }
+        }
+
         foreach (var entry in slots)
         {
             if (string.IsNullOrWhiteSpace(entry.Key) || string.IsNullOrWhiteSpace(entry.Value))
+            {
+                continue;
+            }
+
+            if (string.Equals(entry.Key, "Body", System.StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (string.Equals(entry.Key, "HairFront", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(entry.Key, "HairBack", System.StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (string.Equals(entry.Value, "placeholder", System.StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -693,6 +1124,114 @@ public class CharacterCreationBootstrap : MonoBehaviour
             }
 
             ApplySpriteToCategory(entry.Key, sprite);
+        }
+
+        ApplyPreviewSlotSortOrder();
+    }
+
+    private static int GetSortOrder(Transform slot)
+    {
+        if (slot == null) return 0;
+        var r = slot.GetComponent<SpriteRenderer>();
+        return r != null ? r.sortingOrder : 0;
+    }
+
+    private static void ApplySpriteToSlot(Transform slot, Sprite sprite)
+    {
+        if (slot == null || sprite == null) return;
+        var r = slot.GetComponent<SpriteRenderer>();
+        if (r != null)
+        {
+            r.sprite = sprite;
+            r.enabled = true;
+        }
+        // Disable SpriteResolver so FacingDirectionResolver.SetFacing / library resolution don't overwrite our sprite
+        var resolver = slot.GetComponent<UnityEngine.U2D.Animation.SpriteResolver>();
+        if (resolver != null)
+        {
+            resolver.enabled = false;
+        }
+    }
+
+    /// <summary>
+    /// Ensures Top draws above Bottom so both are visible when stacked, and Top/Bottom renderers are enabled.
+    /// </summary>
+    private void ApplyPreviewSlotSortOrder()
+    {
+        if (previewRigInstance == null)
+        {
+            return;
+        }
+
+        var slotsRoot = previewRigInstance.transform.Find("Slots");
+        if (slotsRoot == null)
+        {
+            return;
+        }
+
+        var body = slotsRoot.Find("Body");
+        var top = slotsRoot.Find("Top");
+        var bottom = slotsRoot.Find("Bottom");
+
+        if (body != null)
+        {
+            var r = body.GetComponent<SpriteRenderer>();
+            if (r != null)
+            {
+                r.sortingOrder = -1;
+            }
+        }
+
+        if (bottom != null)
+        {
+            var r = bottom.GetComponent<SpriteRenderer>();
+            if (r != null)
+            {
+                r.sortingOrder = 0;
+                r.enabled = true;
+            }
+        }
+
+        if (top != null)
+        {
+            var r = top.GetComponent<SpriteRenderer>();
+            if (r != null)
+            {
+                r.sortingOrder = 1;
+                r.enabled = true;
+            }
+        }
+
+        var overlayOrder = 2;
+        // Hair and face visibility are set by FacingDirectionResolver.ApplyHairVisibilityOnly(); only set sorting order here, not enabled.
+        var directionDependentSlots = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
+            { "HairBack", "HairFront", "HairSide", "Eyes", "Eyebrows", "Mouth", "Nose" };
+        foreach (var name in new[] { "HairBack", "HairFront", "HairSide", "Nose", "Mouth", "Eyebrows", "Eyes" })
+        {
+            var slot = slotsRoot.Find(name);
+            if (slot != null)
+            {
+                var r = slot.GetComponent<SpriteRenderer>();
+                if (r != null)
+                {
+                    r.sortingOrder = overlayOrder++;
+                    if (!directionDependentSlots.Contains(name))
+                    {
+                        r.enabled = true;
+                    }
+                }
+            }
+        }
+
+        // Hide any slot with no sprite so we never show checkerboard (e.g. Head with placeholder, or stray slots).
+        for (var i = 0; i < slotsRoot.childCount; i++)
+        {
+            var child = slotsRoot.GetChild(i);
+            var r = child.GetComponent<SpriteRenderer>();
+            if (r != null && r.sprite == null)
+            {
+                r.enabled = false;
+            }
         }
     }
 
@@ -739,17 +1278,72 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var lookupKey = $"{category}|{label}";
         if (!manifestSpriteLookup.TryGetValue(lookupKey, out var assetPath))
         {
-            if (debugPreview)
+            // Fallback for hair: if exact style (e.g. Long, Braided) isn't in manifest, use Short so hair still shows
+            if (string.Equals(category, "HairFront", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(category, "HairBack", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(category, "HairSide", StringComparison.OrdinalIgnoreCase))
             {
-                Debug.Log($"[Preview] Manifest lookup missing key {lookupKey}");
+                var fallbackLabel = category.Trim().ToLowerInvariant() switch
+                {
+                    "hairfront" => "hair_front_short_01",
+                    "hairback" => "hair_back_short_01",
+                    "hairside" => "hair_side_short_01",
+                    _ => null
+                };
+                if (!string.IsNullOrEmpty(fallbackLabel))
+                {
+                    var fallbackKey = $"{category}|{fallbackLabel}";
+                    if (manifestSpriteLookup.TryGetValue(fallbackKey, out assetPath))
+                    {
+                        lookupKey = fallbackKey;
+                    }
+                }
             }
-            return null;
+
+            // Face side variant missing? Use front sprite until side assets are added (e.g. eyes_side_round_01 -> eyes_round_01).
+            if (assetPath == null && label != null && label.Contains("_side_"))
+            {
+                var frontLabel = label.Replace("_side_", "_");
+                var frontKey = $"{category}|{frontLabel}";
+                if (manifestSpriteLookup.TryGetValue(frontKey, out assetPath))
+                {
+                    lookupKey = frontKey;
+                }
+            }
+
+            if (assetPath == null)
+            {
+                if (debugPreview)
+                {
+                    Debug.Log($"[Preview] Manifest lookup missing key {lookupKey}");
+                }
+                return null;
+            }
         }
 
         var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
         if (sprite != null)
         {
             return sprite;
+        }
+
+        // Try alternate hair filename pattern (hair_front_short_01 vs hair_short_front_01)
+        if (assetPath != null && (assetPath.IndexOf("HairFront", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            assetPath.IndexOf("HairBack", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            assetPath.IndexOf("HairSide", StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            var altPath = assetPath
+                .Replace("hair_front_short_01", "hair_short_front_01")
+                .Replace("hair_back_short_01", "hair_short_back_01")
+                .Replace("hair_side_short_01", "hair_short_side_01");
+            if (altPath != assetPath)
+            {
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(altPath);
+                if (sprite != null)
+                {
+                    return sprite;
+                }
+            }
         }
 
         var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
@@ -759,6 +1353,10 @@ public class CharacterCreationBootstrap : MonoBehaviour
             importer.spritePixelsPerUnit = 100f;
             importer.mipmapEnabled = false;
             importer.alphaIsTransparency = true;
+            if (importer.spriteImportMode != SpriteImportMode.Single)
+            {
+                importer.spriteImportMode = SpriteImportMode.Single;
+            }
             importer.SaveAndReimport();
             sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
         }
@@ -774,6 +1372,11 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void CreateCarouselOption(Transform parent, AppearanceCategoryDefinition definition)
     {
+        if (definition.options == null || definition.options.Count == 0)
+        {
+            return;
+        }
+
         CreateText(parent, definition.label, 16, TextAlignmentOptions.MidlineLeft, 22f, FontStyles.Bold);
 
         var row = CreateHorizontalGroup(parent, 44f, TextAnchor.MiddleLeft);
@@ -789,14 +1392,43 @@ public class CharacterCreationBootstrap : MonoBehaviour
         previewObject.transform.SetParent(row, false);
         var previewRect = previewObject.AddComponent<RectTransform>();
         previewRect.sizeDelta = new Vector2(46f, 46f);
+        var previewLayout = previewObject.AddComponent<LayoutElement>();
+        previewLayout.preferredWidth = 46f;
+        previewLayout.preferredHeight = 46f;
+        previewLayout.minWidth = 46f;
+        previewLayout.minHeight = 46f;
         var previewImage = previewObject.AddComponent<Image>();
-        previewImage.color = new UnityColor(0.2f, 0.2f, 0.2f, 1f);
-        var previewSprite = GetPreviewSprite(selectedOption);
-        if (previewSprite != null)
+        previewImage.raycastTarget = false;
+        previewImage.type = Image.Type.Simple;
+
+        var isTintCategory = definition.category == AppearanceCategory.SkinColor
+            || definition.category == AppearanceCategory.HairColor;
+
+        if (isTintCategory)
         {
-            previewImage.sprite = previewSprite;
-            previewImage.preserveAspect = true;
-            previewImage.color = UnityColor.white;
+            previewImage.sprite = GetWhiteSpriteForTint();
+            if (!string.IsNullOrWhiteSpace(selectedOption.tintHex) && TryParseHexColor(selectedOption.tintHex, out var tintColor))
+            {
+                previewImage.color = tintColor;
+            }
+            else
+            {
+                previewImage.color = new UnityColor(0.4f, 0.35f, 0.3f, 1f);
+            }
+        }
+        else
+        {
+            var previewSprite = GetPreviewSprite(selectedOption);
+            if (previewSprite != null)
+            {
+                previewImage.sprite = previewSprite;
+                previewImage.preserveAspect = true;
+                previewImage.color = UnityColor.white;
+            }
+            else
+            {
+                previewImage.color = new UnityColor(0.2f, 0.2f, 0.2f, 1f);
+            }
         }
 
         CreateButton(row, ">", () =>
@@ -832,6 +1464,11 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void SelectOptionByDelta(AppearanceCategoryDefinition definition, int delta)
     {
+        if (definition.options == null || definition.options.Count == 0)
+        {
+            return;
+        }
+
         var currentIndex = GetSelectedOptionIndex(definition);
         var nextIndex = currentIndex + delta;
         if (nextIndex < 0)
@@ -881,6 +1518,7 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var manifestSprite = TryLoadSpriteFromManifest(option.slotCategory, option.slotLabel);
         if (manifestSprite != null)
         {
+            option.runtimeSprite = manifestSprite;
             return manifestSprite;
         }
 #endif
@@ -986,6 +1624,9 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void CreateSpritePreview(Transform parent)
     {
+#if UNITY_EDITOR
+        manifestSpriteLookup = null;
+#endif
         if (debugPreview)
         {
             Debug.Log($"[Preview] prefab={(previewRigPrefab != null ? previewRigPrefab.name : "null")}, layer='{previewLayerName}', size={previewSize}");
@@ -1007,7 +1648,6 @@ public class CharacterCreationBootstrap : MonoBehaviour
         {
             previewRigInstance = Instantiate(previewRigPrefab);
             previewRigInstance.name = "CharacterPreviewRig";
-            previewRigInstance.transform.position = Vector3.zero;
             previewRigInstance.transform.rotation = Quaternion.identity;
             ApplyPreviewLayer(previewRigInstance);
             if (debugPreview)
@@ -1015,6 +1655,8 @@ public class CharacterCreationBootstrap : MonoBehaviour
                 Debug.Log("[Preview] Instantiated preview rig.");
             }
         }
+
+        previewRigInstance.transform.position = Vector3.zero;
 
         var customizer = previewRigInstance.GetComponent<CharacterCustomizer>();
         if (customizer == null)
@@ -1025,14 +1667,23 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var preset = CharacterPreset.FromSelections(
             rigId,
             controller.AppearanceSelections,
-            controller.GetAppearanceDefinitions());
+            controller.GetAppearanceDefinitions(),
+            controller.SelectedRace?.id,
+            controller.SelectedGender?.ToString());
         EnsureResolverCategoriesFromNames(preset.slots);
         customizer.ApplyPreset(preset);
 
+#if UNITY_EDITOR
+        // Apply all slot sprites from manifest (including Eyes, Eyebrows, Mouth, Nose) so face parts show when rig has no pre-made slots
+        ApplyManifestSpriteOverride(preset.slots);
+#endif
         ApplyRuntimeSpritesForSelections();
         EnsurePreviewPlaceholderSprites();
         ApplyFacingToPreview();
+        ApplyPreviewSlotOffsets();
+        HidePreviewBodySlot();
         ApplyPreviewScale();
+        ApplyPreviewTints();
         LogBodyPreviewStatus();
         previewCamera.Render();
 
@@ -1057,13 +1708,28 @@ public class CharacterCreationBootstrap : MonoBehaviour
         foreach (var definition in definitions)
         {
             var selected = controller.GetSelectedAppearanceOption(definition.category);
-            if (selected != null && selected.runtimeSprite != null)
+            if (selected == null)
+            {
+                continue;
+            }
+
+            // Do not overwrite hair from manifest (two different sprites per slot); manifest already applied them.
+            if (string.Equals(selected.slotCategory, "HairFront", System.StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(selected.slotCategorySecondary, "HairBack", System.StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!string.Equals(selected.slotCategory, "Body", System.StringComparison.OrdinalIgnoreCase) && selected.runtimeSprite != null)
             {
                 ApplySpriteToCategory(selected.slotCategory, selected.runtimeSprite);
-                if (!string.IsNullOrWhiteSpace(selected.slotCategorySecondary))
-                {
-                    ApplySpriteToCategory(selected.slotCategorySecondary, selected.runtimeSprite);
-                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(selected.slotCategorySecondary) &&
+                !string.Equals(selected.slotCategorySecondary, "Body", System.StringComparison.OrdinalIgnoreCase) &&
+                selected.runtimeSprite != null)
+            {
+                ApplySpriteToCategory(selected.slotCategorySecondary, selected.runtimeSprite);
             }
         }
     }
@@ -1121,7 +1787,7 @@ public class CharacterCreationBootstrap : MonoBehaviour
         var cameraObject = new GameObject("CharacterPreviewCamera");
         previewCamera = cameraObject.AddComponent<Camera>();
         previewCamera.orthographic = true;
-        previewCamera.orthographicSize = Mathf.Max(2.6f, previewSize.y / 220f);
+        previewCamera.orthographicSize = Mathf.Max(2.9f, previewSize.y / 200f);
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
         previewCamera.backgroundColor = new UnityColor(0f, 0f, 0f, 0f);
         var mask = LayerMask.GetMask(previewLayerName);
@@ -1341,12 +2007,87 @@ public class CharacterCreationBootstrap : MonoBehaviour
 
     private void ApplySpriteToCategory(string category, Sprite sprite)
     {
-        if (string.IsNullOrWhiteSpace(category))
+        if (string.IsNullOrWhiteSpace(category) || sprite == null)
         {
             return;
         }
 
+        var applied = ApplySpriteToMatchingResolvers(category, sprite);
+
+        // Create missing slot on preview rig (face parts + hair) then apply sprite
+        if (!applied && ShouldEnsurePreviewSlotExists(category))
+        {
+            EnsurePreviewSlotExists(category);
+            ApplySpriteToMatchingResolvers(category, sprite);
+        }
+    }
+
+    private static bool IsFacePartCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return false;
+        var c = category.Trim();
+        return string.Equals(c, "Eyes", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c, "Eyebrows", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c, "Mouth", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c, "Nose", System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldEnsurePreviewSlotExists(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return false;
+        var c = category.Trim();
+        return IsFacePartCategory(category)
+            || string.Equals(c, "HairFront", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c, "HairBack", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c, "HairSide", System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsurePreviewSlotExists(string category)
+    {
+        if (previewRigInstance == null || string.IsNullOrWhiteSpace(category))
+        {
+            return;
+        }
+
+        var slotsRoot = FindChildRecursive(previewRigInstance.transform, "Slots");
+        if (slotsRoot == null)
+        {
+            return;
+        }
+
+        if (slotsRoot.Find(category) != null)
+        {
+            return;
+        }
+
+        var slotGo = new GameObject(category);
+        slotGo.transform.SetParent(slotsRoot, false);
+        slotGo.transform.localPosition = Vector3.zero;
+        slotGo.transform.localScale = Vector3.one;
+        slotGo.transform.localRotation = Quaternion.identity;
+
+        var renderer = slotGo.AddComponent<SpriteRenderer>();
+        renderer.sortingOrder = 0;
+        renderer.color = Color.white;
+
+        slotGo.AddComponent<UnityEngine.U2D.Animation.SpriteResolver>().SetCategoryAndLabel(category, "placeholder");
+    }
+
+    private bool ApplySpriteToMatchingResolvers(string category, Sprite sprite)
+    {
+        if (previewRigInstance == null || string.IsNullOrWhiteSpace(category))
+        {
+            return false;
+        }
+
+        // Hair slots: match by GameObject name only. Resolver category on the rig can be swapped (e.g. HairFront
+        // object has category "HairBack"), which would otherwise put the wrong sprite on the wrong slot.
+        var matchByNameOnly = string.Equals(category, "HairFront", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(category, "HairBack", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(category, "HairSide", System.StringComparison.OrdinalIgnoreCase);
+
         var resolvers = previewRigInstance.GetComponentsInChildren<UnityEngine.U2D.Animation.SpriteResolver>(true);
+        var applied = false;
         foreach (var resolver in resolvers)
         {
             if (resolver == null)
@@ -1364,16 +2105,21 @@ public class CharacterCreationBootstrap : MonoBehaviour
                 }
             }
 
-            if (resolverCategory == category)
+            var nameMatches = string.Equals(resolver.gameObject.name, category, System.StringComparison.OrdinalIgnoreCase);
+            var categoryMatches = !matchByNameOnly && string.Equals(resolverCategory, category, System.StringComparison.OrdinalIgnoreCase);
+            if (nameMatches || categoryMatches)
             {
                 var renderer = resolver.GetComponent<SpriteRenderer>();
                 if (renderer != null)
                 {
                     resolver.enabled = false;
                     renderer.sprite = sprite;
+                    renderer.enabled = !string.Equals(category, "Body", System.StringComparison.OrdinalIgnoreCase);
+                    applied = true;
                 }
             }
         }
+        return applied;
     }
 
     private void ClearPanel()

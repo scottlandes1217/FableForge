@@ -1,1 +1,56 @@
-{"rig":"humanoid_v1","categories":{"Accessory":[],"Armor":[],"Body":[{"label":"body_human_male_front_01","path":"Assets/Characters/Parts/Body/Human/body_human_male_front_01.png"}],"Bottom":[],"Eyes":[],"Gloves":[],"HairBack":[],"HairFront":[],"Head":[],"Mouth":[],"Nose":[],"Shield":[],"Shoes":[],"Top":[],"Weapon":[]}}
+{
+  "rig": "humanoid_v1",
+  "categories": {
+    "Accessory": [],
+    "Armor": [],
+    "Body": [
+      { "label": "body_human_female_front_01", "path": "Assets/Characters/Parts/Body/Human/body_human_female_front_01.png" },
+      { "label": "body_human_male_back_01", "path": "Assets/Characters/Parts/Body/Human/body_human_male_back_01.png" },
+      { "label": "body_human_male_front_01", "path": "Assets/Characters/Parts/Body/Human/body_human_male_front_01.png" },
+      { "label": "body_human_male_right_01", "path": "Assets/Characters/Parts/Body/Human/body_human_male_right_01.png" }
+    ],
+    "Bottom": [
+      { "label": "bottom_human_female_front_01", "path": "Assets/Characters/Parts/Bottom/bottom_human_female_front_01.png" },
+      { "label": "bottom_human_male_back_01", "path": "Assets/Characters/Parts/Bottom/bottom_human_male_back_01.png" },
+      { "label": "bottom_human_male_front_01", "path": "Assets/Characters/Parts/Bottom/bottom_human_male_front_01.png" },
+      { "label": "bottom_human_male_right_01", "path": "Assets/Characters/Parts/Bottom/bottom_human_male_right_01.png" }
+    ],
+    "Ears": [],
+    "Eyebrows": [
+      { "label": "eyebrows_straight_01", "path": "Assets/Characters/Parts/Eyebrows/eyebrows_straight_01.png" },
+      { "label": "eyebrows_side_straight_01", "path": "Assets/Characters/Parts/Eyebrows/eyebrows_side_straight_01.png" }
+    ],
+    "Eyes": [
+      { "label": "eyes_round_01", "path": "Assets/Characters/Parts/Eyes/eyes_round_01.png" },
+      { "label": "eyes_side_round_01", "path": "Assets/Characters/Parts/Eyes/eyes_side_round_01.png" }
+    ],
+    "Gloves": [],
+    "HairBack": [
+      { "label": "hair_back_short_01", "path": "Assets/Characters/Parts/HairBack/hair_back_short_01.png" }
+    ],
+    "HairFront": [
+      { "label": "hair_front_short_01", "path": "Assets/Characters/Parts/HairFront/hair_front_short_01.png" }
+    ],
+    "HairSide": [
+      { "label": "hair_side_short_01", "path": "Assets/Characters/Parts/HairSide/hair_side_short_01.png" }
+    ],
+    "Head": [],
+    "Mouth": [
+      { "label": "mouth_neutral_01", "path": "Assets/Characters/Parts/Mouth/mouth_neutral_01.png" },
+      { "label": "mouth_side_neutral_01", "path": "Assets/Characters/Parts/Mouth/mouth_side_neutral_01.png" }
+    ],
+    "Nose": [
+      { "label": "nose_straight_01", "path": "Assets/Characters/Parts/Nose/nose_straight_01.png" },
+      { "label": "nose_side_straight_01", "path": "Assets/Characters/Parts/Nose/nose_side_straight_01.png" }
+    ],
+    "Shield": [],
+    "Shoes": [],
+    "Top": [
+      { "label": "top_human_female_front_01", "path": "Assets/Characters/Parts/Top/top_human_female_front_01.png" },
+      { "label": "top_human_male_back_01", "path": "Assets/Characters/Parts/Top/top_human_male_back_01.png" },
+      { "label": "top_human_male_front_01", "path": "Assets/Characters/Parts/Top/top_human_male_front_01.png" },
+      { "label": "top_human_male_right_01", "path": "Assets/Characters/Parts/Top/top_human_male_right_01.png" }
+    ],
+    "Weapon": []
+  }
+}

@@ -84,12 +84,18 @@ namespace FableForge.Models
         HairStyle,
         HairColor,
         SkinColor,
+        Face,
         Eyes,
-        EyeColor,
+        Eyebrows,
         Mouth,
+        EyeColor,
+        Ears,
+        Horns,
+        Tail,
+        Tusks,
+        // Kept for backward compatibility with saved appearance selections.
         Nose,
-        Chin,
-        Ears
+        Chin
     }
 
     public enum AppearanceValueType

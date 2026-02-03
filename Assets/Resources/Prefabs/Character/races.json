@@ -16,7 +16,32 @@
         "intelligence": 1,
         "wisdom": 1,
         "charisma": 1
-      }
+      },
+      "skinColors": [
+        { "label": "Light", "hex": "#F5E6D3" },
+        { "label": "Tan", "hex": "#C08A5A" },
+        { "label": "Warm", "hex": "#E1B18E" },
+        { "label": "Ruddy", "hex": "#D09A76" }
+      ],
+      "eyeColors": [
+        { "label": "Blue", "hex": "#2A5B9E" },
+        { "label": "Brown", "hex": "#4B3621" },
+        { "label": "Green", "hex": "#3F6B4F" },
+        { "label": "Hazel", "hex": "#6A5B3D" },
+        { "label": "Gray", "hex": "#5C6773" }
+      ],
+      "eyes": ["Round", "Almond"],
+      "eyebrows": ["Straight", "Arched"],
+      "mouths": ["Neutral", "Smile"],
+      "noses": ["Straight", "Button", "Aquiline"],
+      "hairColors": [
+        { "label": "Black", "hex": "#1E1B19" },
+        { "label": "Brown", "hex": "#4A3327" },
+        { "label": "Blonde", "hex": "#E6C57A" },
+        { "label": "Red", "hex": "#8B3A2B" },
+        { "label": "Gray", "hex": "#C9C9C9" }
+      ],
+      "hairStyles": ["Short", "Long", "Braided", "Tied"]
     },
     {
       "id": "elf",
@@ -34,7 +59,30 @@
         "intelligence": 0,
         "wisdom": 0,
         "charisma": 0
-      }
+      },
+      "skinColors": [
+        { "label": "Fair", "hex": "#F2D6C3" },
+        { "label": "Ivory", "hex": "#E7C8A6" }
+      ],
+      "eyeColors": [
+        { "label": "Green", "hex": "#3F6B4F" },
+        { "label": "Amber", "hex": "#9E6B2C" },
+        { "label": "Blue", "hex": "#2A5B9E" },
+        { "label": "Gray", "hex": "#5C6773" }
+      ],
+      "faces": ["Keen", "Soft", "Serene"],
+      "eyes": ["Almond", "Keen"],
+      "eyebrows": ["Arched", "Soft"],
+      "mouths": ["Neutral", "Serene"],
+      "noses": ["Straight", "Delicate"],
+      "hairColors": [
+        { "label": "Silver", "hex": "#C9C9C9" },
+        { "label": "Blonde", "hex": "#E6C57A" },
+        { "label": "Dark", "hex": "#2F2A24" },
+        { "label": "Brown", "hex": "#4A3327" }
+      ],
+      "hairStyles": ["Long", "Braided", "Graceful"],
+      "ears": ["Pointed", "Long", "Longer"]
     },
     {
       "id": "dwarf",
@@ -52,7 +100,28 @@
         "intelligence": 0,
         "wisdom": 0,
         "charisma": 0
-      }
+      },
+      "skinColors": [
+        { "label": "Ruddy", "hex": "#D09A76" },
+        { "label": "Tan", "hex": "#C08A5A" }
+      ],
+      "eyeColors": [
+        { "label": "Brown", "hex": "#4B3621" },
+        { "label": "Gray", "hex": "#5C6773" },
+        { "label": "Blue", "hex": "#2A5B9E" }
+      ],
+      "faces": ["Sturdy", "Square", "Broad"],
+      "eyes": ["Round", "Sturdy"],
+      "eyebrows": ["Bushy", "Straight"],
+      "mouths": ["Neutral", "Firm"],
+      "noses": ["Broad", "Sturdy"],
+      "hairColors": [
+        { "label": "Dark", "hex": "#2F2A24" },
+        { "label": "Red", "hex": "#8B3A2B" },
+        { "label": "Brown", "hex": "#4A3327" },
+        { "label": "Gray", "hex": "#C9C9C9" }
+      ],
+      "hairStyles": ["Short", "Braided", "Long"]
     },
     {
       "id": "halfling",
@@ -70,7 +139,27 @@
         "intelligence": 0,
         "wisdom": 0,
         "charisma": 0
-      }
+      },
+      "skinColors": [
+        { "label": "Warm", "hex": "#E1B18E" },
+        { "label": "Tan", "hex": "#C08A5A" }
+      ],
+      "eyeColors": [
+        { "label": "Hazel", "hex": "#6A5B3D" },
+        { "label": "Brown", "hex": "#4B3621" },
+        { "label": "Green", "hex": "#3F6B4F" }
+      ],
+      "faces": ["Cheerful", "Rounded", "Soft"],
+      "eyes": ["Round", "Bright"],
+      "eyebrows": ["Curved", "Soft"],
+      "mouths": ["Neutral", "Smile"],
+      "noses": ["Button", "Upturned"],
+      "hairColors": [
+        { "label": "Chestnut", "hex": "#6B3E2E" },
+        { "label": "Honey", "hex": "#C79B4A" },
+        { "label": "Brown", "hex": "#4A3327" }
+      ],
+      "hairStyles": ["Short", "Curly", "Tucked"]
     },
     {
       "id": "orc",
@@ -88,7 +177,31 @@
         "intelligence": 0,
         "wisdom": 0,
         "charisma": 0
-      }
+      },
+      "skinColors": [
+        { "label": "Green", "hex": "#6E8F6B" },
+        { "label": "Gray", "hex": "#7A7A7A" }
+      ],
+      "eyeColors": [
+        { "label": "Yellow", "hex": "#B6A83B" },
+        { "label": "Red", "hex": "#7C2A2A" },
+        { "label": "Brown", "hex": "#4B3621" }
+      ],
+      "faces": ["Fierce", "Strong", "Jagged"],
+      "eyes": ["Narrow", "Fierce"],
+      "eyebrows": ["Heavy", "Straight"],
+      "mouths": ["Neutral", "Snarl"],
+      "noses": ["Broad", "Flat"],
+      "hairColors": [
+        { "label": "Black", "hex": "#1E1B19" },
+        { "label": "Dark", "hex": "#2F2A24" },
+        { "label": "Gray", "hex": "#C9C9C9" }
+      ],
+      "hairStyles": ["Shaved", "Topknot", "Short"],
+      "additionalFeatures": ["tusks"],
+      "featureOptions": [
+        { "featureId": "tusks", "options": ["Small", "Large", "Curved"] }
+      ]
     },
     {
       "id": "tiefling",
@@ -106,7 +219,33 @@
         "intelligence": 1,
         "wisdom": 0,
         "charisma": 2
-      }
+      },
+      "skinColors": [
+        { "label": "Ash", "hex": "#9E7B6A" },
+        { "label": "Umber", "hex": "#7C5A4A" }
+      ],
+      "eyeColors": [
+        { "label": "Gold", "hex": "#B68E3B" },
+        { "label": "Violet", "hex": "#5A4A8E" },
+        { "label": "Red", "hex": "#7C2A2A" },
+        { "label": "Amber", "hex": "#9E6B2C" }
+      ],
+      "faces": ["Sharp", "Refined", "Calm"],
+      "eyes": ["Almond", "Sharp"],
+      "eyebrows": ["Arched", "Angled"],
+      "mouths": ["Neutral", "Calm"],
+      "noses": ["Aquiline", "Sharp"],
+      "hairColors": [
+        { "label": "Crimson", "hex": "#7D2430" },
+        { "label": "Black", "hex": "#1E1B19" },
+        { "label": "Dark", "hex": "#2F2A24" }
+      ],
+      "hairStyles": ["Short", "Long", "Sleek"],
+      "additionalFeatures": ["tail", "horns"],
+      "featureOptions": [
+        { "featureId": "horns", "options": ["Short", "Curved", "Long", "Spiral"] },
+        { "featureId": "tail", "options": ["Default", "Long", "Barbed"] }
+      ]
     }
   ]
 }

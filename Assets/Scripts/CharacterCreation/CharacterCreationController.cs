@@ -372,7 +372,12 @@ public class CharacterCreationController : MonoBehaviour
             race = race,
             characterClass = characterClass,
             rigId = RigId,
-            presetJson = CharacterPreset.FromSelections(RigId, AppearanceSelections, GetAppearanceDefinitions()).ToJson(),
+            presetJson = CharacterPreset.FromSelections(
+                RigId,
+                AppearanceSelections,
+                GetAppearanceDefinitions(),
+                SelectedRace?.id,
+                SelectedGender?.ToString()).ToJson(),
             appearanceSelections = new List<AppearanceSelection>(AppearanceSelections),
             equippedAttachments = new List<EquippedAttachment>(EquippedAttachments)
         };
@@ -530,14 +535,16 @@ public class CharacterCreationController : MonoBehaviour
     private List<AppearanceCategoryDefinition> BuildGenericAppearanceDefinitions(string raceId, Gender gender)
     {
         var racePrefix = string.IsNullOrWhiteSpace(raceId) ? "default" : raceId.ToLowerInvariant();
+        var race = Data?.GetRaceById(raceId);
         var hairStyleOptions = gender == Gender.Female
             ? new[] { "Long", "Braided" }
             : new[] { "Short", "Tied" };
 
+        List<AppearanceCategoryDefinition> definitions;
         switch (racePrefix)
         {
             case "elf":
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Elf",
                     raceId,
                     gender,
@@ -547,15 +554,14 @@ public class CharacterCreationController : MonoBehaviour
                     hairStyleOptions,
                     new[] { "Silver", "Blonde" },
                     new[] { "Fair", "Ivory" },
-                    new[] { "Keen", "Soft" },
-                    new[] { "Green", "Amber" },
-                    new[] { "Serene", "Smile" },
-                    new[] { "Fine", "Delicate" },
-                    new[] { "Pointed", "Soft" },
-                    new[] { "Long", "Longer" }
+                    new[] { "Almond", "Keen" },
+                    new[] { "Arched", "Soft" },
+                    new[] { "Neutral", "Serene" },
+                    new[] { "Straight", "Delicate" }
                 );
+                break;
             case "dwarf":
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Dwarf",
                     raceId,
                     gender,
@@ -565,15 +571,14 @@ public class CharacterCreationController : MonoBehaviour
                     hairStyleOptions,
                     new[] { "Dark", "Red" },
                     new[] { "Ruddy", "Tan" },
-                    new[] { "Focused", "Deep" },
-                    new[] { "Brown", "Gray" },
-                    new[] { "Grin", "Grim" },
-                    new[] { "Broad", "Flat" },
-                    new[] { "Square", "Strong" },
-                    new[] { "Small", "Hidden" }
+                    new[] { "Round", "Sturdy" },
+                    new[] { "Bushy", "Straight" },
+                    new[] { "Neutral", "Firm" },
+                    new[] { "Broad", "Sturdy" }
                 );
+                break;
             case "orc":
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Orc",
                     raceId,
                     gender,
@@ -583,15 +588,14 @@ public class CharacterCreationController : MonoBehaviour
                     new[] { "Shaved", "Topknot" },
                     new[] { "Black", "Dark" },
                     new[] { "Green", "Gray" },
-                    new[] { "Fierce", "Focused" },
-                    new[] { "Yellow", "Red" },
-                    new[] { "Snarl", "Grim" },
-                    new[] { "Wide", "Flat" },
-                    new[] { "Jagged", "Strong" },
-                    new[] { "Tapered", "Short" }
+                    new[] { "Narrow", "Fierce" },
+                    new[] { "Heavy", "Straight" },
+                    new[] { "Neutral", "Snarl" },
+                    new[] { "Broad", "Flat" }
                 );
+                break;
             case "halfling":
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Halfling",
                     raceId,
                     gender,
@@ -601,15 +605,14 @@ public class CharacterCreationController : MonoBehaviour
                     hairStyleOptions,
                     new[] { "Chestnut", "Honey" },
                     new[] { "Warm", "Tan" },
-                    new[] { "Bright", "Playful" },
-                    new[] { "Hazel", "Brown" },
-                    new[] { "Cheerful", "Smile" },
-                    new[] { "Button", "Soft" },
-                    new[] { "Rounded", "Soft" },
-                    new[] { "Small", "Tucked" }
+                    new[] { "Round", "Bright" },
+                    new[] { "Curved", "Soft" },
+                    new[] { "Neutral", "Smile" },
+                    new[] { "Button", "Upturned" }
                 );
+                break;
             case "tiefling":
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Tiefling",
                     raceId,
                     gender,
@@ -619,15 +622,14 @@ public class CharacterCreationController : MonoBehaviour
                     hairStyleOptions,
                     new[] { "Crimson", "Black" },
                     new[] { "Ash", "Umber" },
-                    new[] { "Intense", "Cool" },
-                    new[] { "Gold", "Violet" },
-                    new[] { "Calm", "Smirk" },
-                    new[] { "Sharp", "Refined" },
-                    new[] { "Sharp", "Smooth" },
-                    new[] { "Tapered", "Pierced" }
+                    new[] { "Almond", "Sharp" },
+                    new[] { "Arched", "Angled" },
+                    new[] { "Neutral", "Calm" },
+                    new[] { "Aquiline", "Sharp" }
                 );
+                break;
             default:
-                return BuildAppearanceSet(
+                definitions = BuildAppearanceSet(
                     "Human",
                     raceId,
                     gender,
@@ -638,12 +640,153 @@ public class CharacterCreationController : MonoBehaviour
                     new[] { "Black", "Brown" },
                     new[] { "Light", "Tan" },
                     new[] { "Round", "Almond" },
-                    new[] { "Blue", "Brown" },
-                    new[] { "Neutral", "Smirk" },
-                    new[] { "Straight", "Soft" },
-                    new[] { "Square", "Rounded" },
-                    new[] { "Standard", "Small" }
+                    new[] { "Straight", "Arched" },
+                    new[] { "Neutral", "Smile" },
+                    new[] { "Straight", "Button", "Aquiline" }
                 );
+                break;
+        }
+
+        // Replace categories from race data in races.json when present
+        if (race?.skinColors != null && race.skinColors.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.SkinColor);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildSkinColorCategoryFromOptions(race.skinColors);
+            }
+        }
+
+        if (race?.eyes != null && race.eyes.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.Eyes);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildCategory(AppearanceCategory.Eyes, "Eyes", race.eyes, "Eyes", "eyes", null);
+            }
+        }
+
+        if (race?.eyebrows != null && race.eyebrows.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.Eyebrows);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildCategory(AppearanceCategory.Eyebrows, "Eyebrows", race.eyebrows, "Eyebrows", "eyebrows", null);
+            }
+        }
+
+        if (race?.mouths != null && race.mouths.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.Mouth);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildCategory(AppearanceCategory.Mouth, "Mouth", race.mouths, "Mouth", "mouth", null);
+            }
+        }
+
+        if (race?.noses != null && race.noses.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.Nose);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildCategory(AppearanceCategory.Nose, "Nose", race.noses, "Nose", "nose", null);
+            }
+        }
+
+        if (race?.hairColors != null && race.hairColors.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.HairColor);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildTintCategoryFromOptions(race.hairColors, AppearanceCategory.HairColor, "Hair Color", "Hair");
+            }
+        }
+
+        if (race?.hairStyles != null && race.hairStyles.Length > 0)
+        {
+            var idx = definitions.FindIndex(d => d.category == AppearanceCategory.HairStyle);
+            if (idx >= 0)
+            {
+                definitions[idx] = BuildDualSlotCategory(AppearanceCategory.HairStyle, "Hair Style", race.hairStyles, "HairFront", "hair_front", "HairBack", "hair_back");
+            }
+        }
+
+        if (race?.ears != null && race.ears.Length > 0)
+        {
+            definitions.Add(BuildCategory(AppearanceCategory.Ears, "Ears", race.ears, "Head", "head_ears", null));
+        }
+
+        // Add appearance categories for additional features (horns, tail, tusks) when race has them
+        if (race?.additionalFeatures != null && race.additionalFeatures.Length > 0 &&
+            race.featureOptions != null && race.featureOptions.Length > 0)
+        {
+            foreach (var featureId in race.additionalFeatures)
+            {
+                if (string.IsNullOrWhiteSpace(featureId))
+                {
+                    continue;
+                }
+                var featureOpts = GetFeatureOptionsFor(race.featureOptions, featureId);
+                if (featureOpts == null || featureOpts.Length == 0)
+                {
+                    continue;
+                }
+                if (!TryGetFeatureCategoryInfo(featureId, out var category, out var label, out var slotCategory, out var slotPrefix))
+                {
+                    continue;
+                }
+                var featureDef = BuildCategory(category, label, featureOpts, slotCategory, slotPrefix, null);
+                definitions.Add(featureDef);
+            }
+        }
+
+        return definitions;
+    }
+
+    private static string[] GetFeatureOptionsFor(FeatureOptionSet[] featureOptions, string featureId)
+    {
+        if (featureOptions == null || string.IsNullOrWhiteSpace(featureId))
+        {
+            return null;
+        }
+        var id = featureId.Trim();
+        foreach (var set in featureOptions)
+        {
+            if (set != null && string.Equals(set.featureId, id, StringComparison.OrdinalIgnoreCase) && set.options != null && set.options.Length > 0)
+            {
+                return set.options;
+            }
+        }
+        return null;
+    }
+
+    private static bool TryGetFeatureCategoryInfo(string featureId, out AppearanceCategory category, out string label, out string slotCategory, out string slotPrefix)
+    {
+        category = AppearanceCategory.Ears;
+        label = slotCategory = slotPrefix = null;
+        var id = featureId.Trim().ToLowerInvariant();
+        switch (id)
+        {
+            case "horns":
+                category = AppearanceCategory.Horns;
+                label = "Horns";
+                slotCategory = "Horns";
+                slotPrefix = "horns";
+                return true;
+            case "tail":
+                category = AppearanceCategory.Tail;
+                label = "Tail";
+                slotCategory = "Tail";
+                slotPrefix = "tail";
+                return true;
+            case "tusks":
+                category = AppearanceCategory.Tusks;
+                label = "Tusks";
+                slotCategory = "Tusks";
+                slotPrefix = "tusks";
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -658,11 +801,9 @@ public class CharacterCreationController : MonoBehaviour
         string[] hairColor,
         string[] skinColor,
         string[] eyes,
-        string[] eyeColor,
-        string[] mouth,
-        string[] nose,
-        string[] chin,
-        string[] ears)
+        string[] eyebrows,
+        string[] mouths,
+        string[] noses)
     {
         return new List<AppearanceCategoryDefinition>
         {
@@ -674,11 +815,9 @@ public class CharacterCreationController : MonoBehaviour
             BuildTintCategory(AppearanceCategory.HairColor, "Hair Color", hairColor, "Hair"),
             BuildTintCategory(AppearanceCategory.SkinColor, "Skin Color", skinColor, "Skin"),
             BuildCategory(AppearanceCategory.Eyes, "Eyes", eyes, "Eyes", "eyes", null),
-            BuildTintCategory(AppearanceCategory.EyeColor, "Eye Color", eyeColor, "Eyes"),
-            BuildCategory(AppearanceCategory.Mouth, "Mouth", mouth, "Mouth", "mouth", null),
-            BuildCategory(AppearanceCategory.Nose, "Nose", nose, "Nose", "nose", null),
-            BuildCategory(AppearanceCategory.Chin, "Chin", chin, "Head", "head_chin", null),
-            BuildCategory(AppearanceCategory.Ears, "Ears", ears, "Head", "head_ears", null)
+            BuildCategory(AppearanceCategory.Eyebrows, "Eyebrows", eyebrows, "Eyebrows", "eyebrows", null),
+            BuildCategory(AppearanceCategory.Mouth, "Mouth", mouths, "Mouth", "mouth", null),
+            BuildCategory(AppearanceCategory.Nose, "Nose", noses, "Nose", "nose", null)
         };
     }
 
@@ -785,6 +924,49 @@ public class CharacterCreationController : MonoBehaviour
         return BuildCategory(category, label, options, null, null, tintKey);
     }
 
+    /// <summary>Builds Skin Color category from race's skinColors in races.json (label + hex per option).</summary>
+    private AppearanceCategoryDefinition BuildSkinColorCategoryFromOptions(SkinColorOption[] options)
+    {
+        return BuildTintCategoryFromOptions(options, AppearanceCategory.SkinColor, "Skin Color", "Skin");
+    }
+
+    /// <summary>Builds a tint category (skin, eye, hair) from race options in races.json (label + hex per option).</summary>
+    private AppearanceCategoryDefinition BuildTintCategoryFromOptions(SkinColorOption[] options, AppearanceCategory category, string label, string tintKey)
+    {
+        var definition = new AppearanceCategoryDefinition
+        {
+            category = category,
+            label = label
+        };
+
+        if (options == null || options.Length == 0)
+        {
+            return definition;
+        }
+
+        var defaultHex = tintKey == "Skin" ? "#E7B38C" : tintKey == "Eyes" ? "#2A5B9E" : "#3B2A1E";
+        for (var i = 0; i < options.Length; i++)
+        {
+            var opt = options[i];
+            var optionLabel = string.IsNullOrWhiteSpace(opt.label) ? $"{label} {i + 1}" : opt.label;
+            var hex = string.IsNullOrWhiteSpace(opt.hex) ? defaultHex : opt.hex;
+            if (!hex.StartsWith("#"))
+            {
+                hex = "#" + hex;
+            }
+
+            definition.options.Add(new AppearanceOptionDefinition
+            {
+                id = $"{category}_{i}",
+                label = optionLabel,
+                tintKey = tintKey,
+                tintHex = hex
+            });
+        }
+
+        return definition;
+    }
+
     private string LookupTintHex(string tintKey, string optionLabel)
     {
         switch (tintKey)
@@ -794,6 +976,7 @@ public class CharacterCreationController : MonoBehaviour
                 {
                     "Fair" => "#F2D6C3",
                     "Ivory" => "#E7C8A6",
+                    "Light" => "#F5E6D3",
                     "Ruddy" => "#D09A76",
                     "Tan" => "#C08A5A",
                     "Warm" => "#E1B18E",

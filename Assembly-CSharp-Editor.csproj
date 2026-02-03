@@ -51,9 +51,13 @@
     <Compile Include="Assets/Editor/XcodeProjectImporter.cs" />
     <Compile Include="Assets/Editor/PartsManifestBuilder.cs" />
     <Compile Include="Assets/Editor/DefaultRigSetup.cs" />
+    <Compile Include="Assets/Editor/SpriteModeTexturePostprocessor.cs" />
     <Compile Include="Assets/Editor/GeneratedPartImporter.cs" />
     <Compile Include="Assets/Editor/SpriteLibraryAutoPopulator.cs" />
     <Compile Include="Assets/Editor/AIDropIngestor.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Assets/Editor/Photoshop_ExportLayers_README.txt" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">

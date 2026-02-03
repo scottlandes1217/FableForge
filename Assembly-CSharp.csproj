@@ -81,6 +81,7 @@
     <Compile Include="Assets/Scripts/UI/MenuTheme.cs" />
     <Compile Include="Assets/Scripts/GameScene/CompanionInstance.cs" />
     <Compile Include="Assets/TextMesh Pro/Examples &amp; Extras/Scripts/TMP_TextInfoDebugTool.cs" />
+    <Compile Include="Assets/Scripts/CharacterCreation/CharacterWalkAnimator.cs" />
     <Compile Include="Assets/Scripts/CharacterCreation/MiniJson.cs" />
     <Compile Include="Assets/TextMesh Pro/Examples &amp; Extras/Scripts/VertexShakeA.cs" />
     <Compile Include="Assets/TextMesh Pro/Examples &amp; Extras/Scripts/Benchmark01_UGUI.cs" />
@@ -128,6 +129,7 @@
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF SSD.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Surface-Mobile.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/SDFFunctions.hlsl" />
+    <None Include="Assets/Characters/Parts/Eyes/README_SIDE_ASSETS.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Surface.shader" />
     <None Include="Assets/TextMesh Pro/Sprites/EmojiOne Attribution.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_Bitmap-Custom-Atlas.shader" />
@@ -135,13 +137,16 @@
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Mobile SSD.shader" />
     <None Include="Assets/TextMesh Pro/Resources/LineBreaking Leading Characters.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMPro_Properties.cginc" />
+    <None Include="Assets/Characters/Parts/Eyebrows/README_SIDE_ASSETS.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMPro_Surface.cginc" />
+    <None Include="Assets/Characters/Parts/Nose/README_SIDE_ASSETS.txt" />
     <None Include="Assets/TextMesh Pro/Resources/LineBreaking Following Characters.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF Overlay.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_Bitmap-Mobile.shader" />
     <None Include="Assets/TextMesh Pro/Fonts/LiberationSans - OFL.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Mobile.shader" />
+    <None Include="Assets/Characters/Parts/Mouth/README_SIDE_ASSETS.txt" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_Sprite.shader" />
     <None Include="Assets/TextMesh Pro/Examples &amp; Extras/Fonts/Bangers - OFL.txt" />
   </ItemGroup>
