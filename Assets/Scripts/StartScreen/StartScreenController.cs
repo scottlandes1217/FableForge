@@ -748,6 +748,16 @@ public class StartScreenController : MonoBehaviour
         panelRect.offsetMin = Vector2.zero;
         panelRect.offsetMax = Vector2.zero;
 
+        var backdropObject = new GameObject("Backdrop");
+        backdropObject.transform.SetParent(panelObject.transform, false);
+        var backdropRect = backdropObject.AddComponent<RectTransform>();
+        backdropRect.anchorMin = Vector2.zero;
+        backdropRect.anchorMax = Vector2.one;
+        backdropRect.offsetMin = Vector2.zero;
+        backdropRect.offsetMax = Vector2.zero;
+        var backdropImage = backdropObject.AddComponent<Image>();
+        backdropImage.color = new Color(0.06f, 0.05f, 0.04f, 1f);
+
         MenuStyling.CreateBookPage(panelObject.transform, Vector2.zero, "Background");
 
         var contentObject = new GameObject("Content");

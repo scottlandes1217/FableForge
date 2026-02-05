@@ -1,0 +1,50 @@
+{
+  "weapons": [
+    {
+      "id": "iron_sword",
+      "name": "Iron Sword",
+      "description": "A well-crafted iron sword",
+      "type": "weapon",
+      "value": 50,
+      "stackable": false,
+      "frontImage": "iron_sword_front",
+      "sideImage": "iron_sword_side",
+      "equipmentOffsets": {
+        "front": { "x": -0.55, "y": 0.5, "rotation": -13 },
+        "side": { "x": 0.19, "y": 0.1, "rotation": -55 },
+        "back": { "x": 0.45, "y": 0.3, "rotation": 24 }
+      },
+      "weaponData": {
+        "weaponType": "sword",
+        "damageDie": 8,
+        "range": 1,
+        "isMagical": false,
+        "requiredStrength": 12,
+        "requiredDexterity": null
+      }
+    },
+    {
+      "id": "magic_staff",
+      "name": "Magic Staff",
+      "description": "A staff imbued with magical energy",
+      "type": "weapon",
+      "value": 150,
+      "stackable": false,
+      "frontImage": "magic_staff_front",
+      "sideImage": "magic_staff_side",
+      "equipmentOffsets": {
+        "front": { "x": 0.22, "y": 0.08, "rotation": -45 },
+        "side": { "x": 0.28, "y": 0.0, "rotation": -30 },
+        "back": { "x": 0.18, "y": -0.02, "rotation": -50 }
+      },
+      "weaponData": {
+        "weaponType": "staff",
+        "damageDie": 6,
+        "range": 3,
+        "isMagical": true,
+        "requiredStrength": null,
+        "requiredDexterity": null
+      }
+    }
+  ]
+}

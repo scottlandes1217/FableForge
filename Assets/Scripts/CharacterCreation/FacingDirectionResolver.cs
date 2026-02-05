@@ -64,12 +64,26 @@ public class FacingDirectionResolver : MonoBehaviour
                 }
 
                 var targetLabel = baseLabel;
+                // Weapon and Shield: use _front for north/south (Front/Back), _side for east/west (Side)
+                var isWeaponOrShield = string.Equals(category, "Weapon", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(category, "Shield", System.StringComparison.OrdinalIgnoreCase);
+                if (isWeaponOrShield)
+                {
+                    var equipmentSuffix = (facing == FacingDirection.Side) ? "side" : "front";
+                    var candidateLabel = $"{baseLabel}_{equipmentSuffix}";
+                    if (spriteLibrary != null && spriteLibrary.spriteLibraryAsset != null && spriteLibrary.spriteLibraryAsset.GetSprite(category, candidateLabel) != null)
+                        targetLabel = candidateLabel;
+                    else
+                        targetLabel = candidateLabel;
+                }
+                else
                 // Face slots use same naming as body: direction in name (e.g. eyes_side_round_01, not eyes_round_01_right)
-                var isFaceCategory = string.Equals(category, "Eyes", System.StringComparison.OrdinalIgnoreCase) ||
+                if (string.Equals(category, "Eyes", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(category, "Eyebrows", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(category, "Mouth", System.StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(category, "Nose", System.StringComparison.OrdinalIgnoreCase);
-                if (isFaceCategory && facing == FacingDirection.Side)
+                    string.Equals(category, "Nose", System.StringComparison.OrdinalIgnoreCase))
+                {
+                if (facing == FacingDirection.Side)
                 {
                     var idx = baseLabel.IndexOf('_');
                     var sideLabel = idx > 0 ? baseLabel.Substring(0, idx) + "_side_" + baseLabel.Substring(idx + 1) : baseLabel + "_side";
@@ -77,6 +91,7 @@ public class FacingDirectionResolver : MonoBehaviour
                         targetLabel = sideLabel;
                     else
                         targetLabel = sideLabel; // use anyway so manifest path can resolve
+                }
                 }
                 else
                 {

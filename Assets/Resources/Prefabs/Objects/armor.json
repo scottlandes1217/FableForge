@@ -1,0 +1,36 @@
+{
+  "armor": [
+    {
+      "id": "leather_armor",
+      "name": "Leather Armor",
+      "description": "Light armor made from treated leather",
+      "type": "armor",
+      "value": 40,
+      "stackable": false,
+      "frontImage": "leather_armor_front",
+      "sideImage": "leather_armor_side",
+      "armorData": {
+        "armorType": "light",
+        "armorClass": 11,
+        "requiredStrength": 0,
+        "slot": "chest"
+      }
+    },
+    {
+      "id": "steel_armor",
+      "name": "Steel Armor",
+      "description": "Heavy armor made from steel plates",
+      "type": "armor",
+      "value": 200,
+      "stackable": false,
+      "frontImage": "steel_armor_front",
+      "sideImage": "steel_armor_side",
+      "armorData": {
+        "armorType": "heavy",
+        "armorClass": 17,
+        "requiredStrength": 15,
+        "slot": "chest"
+      }
+    }
+  ]
+}

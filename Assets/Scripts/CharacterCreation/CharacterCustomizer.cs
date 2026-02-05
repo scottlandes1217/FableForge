@@ -12,6 +12,21 @@ public struct SlotOffset
 {
     public string slotName;
     public Vector2 offset;
+    /// <summary>Rotation in degrees around Z (0 = no change). E.g. -45 for a sword tilted forward.</summary>
+    [Tooltip("Rotation in degrees around Z. E.g. -30 for sword tilted forward, 0 for straight up.")]
+    public float rotationDegrees;
+}
+
+/// <summary>Per-facing offset and rotation for Weapon/Shield. When character faces left (flipX), offset X and rotation are mirrored so the item stays in the same hand.</summary>
+[Serializable]
+public struct SlotFacingOverride
+{
+    [Tooltip("Weapon or Shield")]
+    public string slotName;
+    public FacingDirection facing;
+    public Vector2 offset;
+    [Tooltip("Rotation in degrees around Z.")]
+    public float rotationDegrees;
 }
 
 public class CharacterCustomizer : MonoBehaviour
@@ -32,11 +47,276 @@ public class CharacterCustomizer : MonoBehaviour
     [SerializeField] private Vector2 characterOffset = Vector2.zero;
     [Tooltip("Override per-slot positions. If empty, Top and Bottom are placed at the same position (characterOffset) so they layer exactly.")]
     [SerializeField] private List<SlotOffset> slotOffsets = new List<SlotOffset>();
+    [Header("Equipment per-facing (Weapon/Shield)")]
+    [Tooltip("If unchecked, weapon/shield slot position and rotation are not overwritten — use this in the Editor to drag the Weapon/Shield transforms and read the values for your JSON equipmentOffsets. Re-check when done.")]
+    [SerializeField] private bool applyEquipmentTransforms = true;
+    [Tooltip("Optional Inspector overrides. Per-item overrides from weapons.json/armor.json (equipmentOffsets) take precedence when set; then these; then built-in defaults.")]
+    [SerializeField] private List<SlotFacingOverride> equipmentFacingOverrides = new List<SlotFacingOverride>();
 
     private CharacterPreset activePreset;
+    private List<SlotFacingOverride> equippedWeaponOverridesFromItem;
+    private List<SlotFacingOverride> equippedShieldOverridesFromItem;
+    private string equippedWeaponId;
+    private string equippedShieldId;
+    private string equippedWeaponFrontLabel;
+    private string equippedWeaponSideLabel;
+    private string equippedShieldFrontLabel;
+    private string equippedShieldSideLabel;
 
     /// <summary>Current preset slots (Body, Top, Bottom, etc.) used for facing and walk frame base labels.</summary>
     public Dictionary<string, string> ActivePresetSlots => activePreset?.slots;
+
+    /// <summary>Preset slots merged with equipped weapon/shield. Use this for SetFacing so the equipped item stays visible.</summary>
+    public Dictionary<string, string> GetSlotsForFacing()
+    {
+        return BuildSlotsWithEquipped(ActivePresetSlots);
+    }
+
+    /// <summary>Set the equipped item id for Weapon (main hand) or Shield (off hand). Called when equipping/unequipping. Pass null to clear.</summary>
+    public void SetEquippedItemId(string slotCategory, string itemId)
+    {
+        if (string.Equals(slotCategory, "Weapon", StringComparison.OrdinalIgnoreCase))
+        {
+            equippedWeaponId = itemId;
+            if (string.IsNullOrEmpty(itemId)) { equippedWeaponFrontLabel = null; equippedWeaponSideLabel = null; equippedWeaponOverridesFromItem = null; }
+        }
+        else if (string.Equals(slotCategory, "Shield", StringComparison.OrdinalIgnoreCase))
+        {
+            equippedShieldId = itemId;
+            if (string.IsNullOrEmpty(itemId)) { equippedShieldFrontLabel = null; equippedShieldSideLabel = null; equippedShieldOverridesFromItem = null; }
+        }
+    }
+
+    /// <summary>Get the equipped item id for Weapon or Shield. Returns null if none equipped.</summary>
+    public string GetEquippedItemId(string slotCategory)
+    {
+        if (string.Equals(slotCategory, "Weapon", StringComparison.OrdinalIgnoreCase))
+            return equippedWeaponId;
+        if (string.Equals(slotCategory, "Shield", StringComparison.OrdinalIgnoreCase))
+            return equippedShieldId;
+        return null;
+    }
+
+    /// <summary>Set per-facing offset/rotation from the equipped item's JSON (weapons.json/armor.json equipmentOffsets). Pass null to clear. Takes precedence over Inspector overrides and defaults.</summary>
+    public void SetEquippedItemEquipmentOverrides(string slotCategory, List<SlotFacingOverride> overrides)
+    {
+        if (string.Equals(slotCategory, "Weapon", StringComparison.OrdinalIgnoreCase))
+            equippedWeaponOverridesFromItem = overrides;
+        else if (string.Equals(slotCategory, "Shield", StringComparison.OrdinalIgnoreCase))
+            equippedShieldOverridesFromItem = overrides;
+    }
+
+    /// <summary>Set sprite labels for equipped weapon/shield so the correct front/side sprite can be shown when facing changes.</summary>
+    public void SetEquippedItemLabels(string slotCategory, string frontLabel, string sideLabel)
+    {
+        if (string.Equals(slotCategory, "Weapon", StringComparison.OrdinalIgnoreCase))
+        {
+            equippedWeaponFrontLabel = frontLabel;
+            equippedWeaponSideLabel = sideLabel;
+        }
+        else if (string.Equals(slotCategory, "Shield", StringComparison.OrdinalIgnoreCase))
+        {
+            equippedShieldFrontLabel = frontLabel;
+            equippedShieldSideLabel = sideLabel;
+        }
+    }
+
+    /// <summary>Apply the correct weapon/shield sprite for current facing. Call after SetFacing when movement or walk animator runs.</summary>
+    public void RefreshEquipmentSprites()
+    {
+        var slotsRoot = transform.Find("Slots");
+        if (slotsRoot == null) return;
+        if (spriteLibrary == null) spriteLibrary = GetComponentInParent<SpriteLibrary>();
+        if (spriteLibrary == null || spriteLibrary.spriteLibraryAsset == null) return;
+        var facingResolver = GetComponent<FacingDirectionResolver>();
+        var isSide = facingResolver != null && facingResolver.CurrentFacing == FacingDirection.Side;
+
+        var weaponSlot = slotsRoot.Find("Weapon");
+        var shieldSlot = slotsRoot.Find("Shield");
+
+        if (!string.IsNullOrEmpty(equippedWeaponFrontLabel) || !string.IsNullOrEmpty(equippedWeaponSideLabel))
+        {
+            var label = isSide ? (equippedWeaponSideLabel ?? equippedWeaponFrontLabel) : (equippedWeaponFrontLabel ?? equippedWeaponSideLabel);
+            if (!string.IsNullOrEmpty(label))
+            {
+                var sprite = spriteLibrary.spriteLibraryAsset.GetSprite("Weapon", label);
+                if (sprite != null && weaponSlot != null)
+                {
+                    var r = weaponSlot.GetComponent<SpriteRenderer>();
+                    if (r != null) { r.sprite = sprite; r.enabled = true; }
+                }
+            }
+        }
+        else if (weaponSlot != null)
+        {
+            var r = weaponSlot.GetComponent<SpriteRenderer>();
+            if (r != null) r.enabled = false;
+        }
+
+        if (!string.IsNullOrEmpty(equippedShieldFrontLabel) || !string.IsNullOrEmpty(equippedShieldSideLabel))
+        {
+            var label = isSide ? (equippedShieldSideLabel ?? equippedShieldFrontLabel) : (equippedShieldFrontLabel ?? equippedShieldSideLabel);
+            if (!string.IsNullOrEmpty(label))
+            {
+                var sprite = spriteLibrary.spriteLibraryAsset.GetSprite("Shield", label);
+                if (sprite != null && shieldSlot != null)
+                {
+                    var r = shieldSlot.GetComponent<SpriteRenderer>();
+                    if (r != null) { r.sprite = sprite; r.enabled = true; }
+                }
+            }
+        }
+        else if (shieldSlot != null)
+        {
+            var r = shieldSlot.GetComponent<SpriteRenderer>();
+            if (r != null) r.enabled = false;
+        }
+
+        HideEmptySlotRenderers(slotsRoot);
+    }
+
+    /// <summary>Disable any slot SpriteRenderer with no sprite so empty slots don't show as white quads.</summary>
+    private void HideEmptySlotRenderers(Transform slotsRoot)
+    {
+        if (slotsRoot == null) return;
+        for (var i = 0; i < slotsRoot.childCount; i++)
+        {
+            var slot = slotsRoot.GetChild(i);
+            var r = slot.GetComponent<SpriteRenderer>();
+            if (r == null)
+            {
+                continue;
+            }
+
+            if (r.sprite == null)
+            {
+                r.enabled = false;
+                continue;
+            }
+
+            if (string.Equals(r.sprite.name, "placeholder", StringComparison.OrdinalIgnoreCase))
+            {
+                r.enabled = false;
+            }
+        }
+    }
+
+    /// <summary>Apply per-facing position, rotation, and sorting order for Weapon and Shield. Call when facing or flipX changes. When flipX (facing left), offset X and rotation are mirrored so the item stays in the same hand. Main hand (Weapon) is behind when facing left; off hand (Shield) is behind when facing right. Skipped when applyEquipmentTransforms is false (e.g. to tune in Editor).</summary>
+    public void ApplyEquipmentSlotTransforms(FacingDirection direction, bool flipX)
+    {
+        if (!applyEquipmentTransforms) return;
+        var slotsRoot = transform.Find("Slots");
+        if (slotsRoot == null) return;
+
+        int baseOrder = GameSceneController.PlayerSortingBaseOrder;
+        if (baseOrder < 0) baseOrder = 0;
+        int orderInFront = baseOrder + 5;
+        int orderBehind = baseOrder - 2;
+
+        ApplyOneEquipmentSlot(slotsRoot, "Weapon", direction, flipX, orderInFront, orderBehind);
+        ApplyOneEquipmentSlot(slotsRoot, "Shield", direction, flipX, orderInFront, orderBehind);
+    }
+
+    private void ApplyOneEquipmentSlot(Transform slotsRoot, string slotName, FacingDirection direction, bool flipX, int orderInFront, int orderBehind)
+    {
+        var slot = slotsRoot.Find(slotName);
+        if (slot == null) return;
+
+        Vector2 offset;
+        float rotationDegrees;
+        if (TryGetEquipmentFacingOverride(slotName, direction, out offset, out rotationDegrees))
+        {
+            // use override
+        }
+        else
+        {
+            GetDefaultEquipmentFacing(slotName, direction, out offset, out rotationDegrees);
+        }
+
+        if (flipX)
+        {
+            offset.x = -offset.x;
+            rotationDegrees = -rotationDegrees;
+        }
+
+        slot.localPosition = new Vector3(offset.x, offset.y, 0f);
+        slot.localEulerAngles = new Vector3(0f, 0f, rotationDegrees);
+
+        bool inFront = GetEquipmentSortInFront(slotName, direction, flipX);
+        var r = slot.GetComponent<SpriteRenderer>();
+        if (r != null)
+            r.sortingOrder = inFront ? orderInFront : orderBehind;
+    }
+
+    /// <summary>Main hand (Weapon): in front when facing front or side-right; behind when back or side-left. Off hand (Shield): opposite for side (in front when side-left, behind when side-right).</summary>
+    private static bool GetEquipmentSortInFront(string slotName, FacingDirection direction, bool flipX)
+    {
+        if (direction == FacingDirection.Front) return true;
+        if (direction == FacingDirection.Back) return false;
+        if (string.Equals(slotName, "Weapon", StringComparison.OrdinalIgnoreCase))
+            return !flipX;
+        if (string.Equals(slotName, "Shield", StringComparison.OrdinalIgnoreCase))
+            return flipX;
+        return true;
+    }
+
+    private bool TryGetEquipmentFacingOverride(string slotName, FacingDirection facing, out Vector2 offset, out float rotationDegrees)
+    {
+        offset = Vector2.zero;
+        rotationDegrees = 0f;
+        var fromItem = string.Equals(slotName, "Weapon", StringComparison.OrdinalIgnoreCase) ? equippedWeaponOverridesFromItem : equippedShieldOverridesFromItem;
+        if (fromItem != null)
+        {
+            foreach (var o in fromItem)
+            {
+                if (o.facing == facing)
+                {
+                    offset = o.offset;
+                    rotationDegrees = o.rotationDegrees;
+                    return true;
+                }
+            }
+        }
+        if (equipmentFacingOverrides != null)
+        {
+            foreach (var o in equipmentFacingOverrides)
+            {
+                if (string.Equals(o.slotName, slotName, StringComparison.OrdinalIgnoreCase) && o.facing == facing)
+                {
+                    offset = o.offset;
+                    rotationDegrees = o.rotationDegrees;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void GetDefaultEquipmentFacing(string slotName, FacingDirection facing, out Vector2 offset, out float rotationDegrees)
+    {
+        if (string.Equals(slotName, "Weapon", StringComparison.OrdinalIgnoreCase))
+        {
+            switch (facing)
+            {
+                case FacingDirection.Front: offset = new Vector2(-0.55f, 0.5f); rotationDegrees = -13f; return;
+                case FacingDirection.Side: offset = new Vector2(0.19f, 0.1f); rotationDegrees = -55f; return;
+                case FacingDirection.Back: offset = new Vector2(0.45f, 0.3f); rotationDegrees = 24f; return;
+                default: offset = new Vector2(0.2f, 0.05f); rotationDegrees = -25f; return;
+            }
+        }
+        if (string.Equals(slotName, "Shield", StringComparison.OrdinalIgnoreCase))
+        {
+            switch (facing)
+            {
+                case FacingDirection.Front: offset = new Vector2(-0.55f, 0.5f); rotationDegrees = -13f; return;
+                case FacingDirection.Side: offset = new Vector2(0.19f, 0.1f); rotationDegrees = -55f; return;
+                case FacingDirection.Back: offset = new Vector2(0.45f, 0.3f); rotationDegrees = 24f; return;
+                default: offset = new Vector2(-0.2f, 0.05f); rotationDegrees = 10f; return;
+            }
+        }
+        offset = Vector2.zero;
+        rotationDegrees = 0f;
+    }
 
     private SpriteLibrary spriteLibrary;
     private static Dictionary<string, string> manifestSpriteLookup;
@@ -45,7 +325,8 @@ public class CharacterCustomizer : MonoBehaviour
     // Same logic as character preview: resolve labels per facing (body_right, eyes_side_round_01, etc.)
     private static readonly HashSet<string> SlotsThatDontUseFacingVariants = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "HairFront", "HairBack", "HairSide", "Head"
+        "HairFront", "HairBack", "HairSide", "Head",
+        "Weapon", "Shield"
     };
     private static readonly HashSet<string> FaceSlotCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -73,6 +354,7 @@ public class CharacterCustomizer : MonoBehaviour
         ApplySlotOffsets();
         ApplyTints(preset.tints);
         HideBodySlot();
+        RefreshEquipmentSprites();
     }
 
     /// <summary>
@@ -140,12 +422,15 @@ public class CharacterCustomizer : MonoBehaviour
             direction = facingResolver.CurrentFacing;
         }
 
-        facingResolver.SetFacing(direction, activePreset.slots);
+        var slotsForFacing = BuildSlotsWithEquipped(activePreset.slots);
+        facingResolver.SetFacing(direction, slotsForFacing);
 
         // Same as preview: apply resolved sprites from manifest so body/top/bottom/face match facing
-        var resolvedSlots = BuildResolvedSlotsForFacing(activePreset.slots, direction);
+        var resolvedSlots = BuildResolvedSlotsForFacing(slotsForFacing, direction);
         ApplyResolvedSlotsFromManifest(resolvedSlots);
         facingResolver.ApplyHairVisibilityOnly();
+        RefreshEquipmentSprites();
+        ApplyEquipmentSlotTransforms(direction, flipForLeft);
 
         var renderers = GetComponentsInChildren<SpriteRenderer>(true);
         foreach (var r in renderers)
@@ -155,6 +440,16 @@ public class CharacterCustomizer : MonoBehaviour
                 r.flipX = (direction == FacingDirection.Side && flipForLeft);
             }
         }
+    }
+
+    private Dictionary<string, string> BuildSlotsWithEquipped(Dictionary<string, string> baseSlots)
+    {
+        var merged = baseSlots != null ? new Dictionary<string, string>(baseSlots) : new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(equippedWeaponId))
+            merged["Weapon"] = equippedWeaponId;
+        if (!string.IsNullOrEmpty(equippedShieldId))
+            merged["Shield"] = equippedShieldId;
+        return merged;
     }
 
     /// <summary>Same logic as character preview: resolve slot labels for current facing (front/back/right, face _side_).</summary>
@@ -480,13 +775,45 @@ public class CharacterCustomizer : MonoBehaviour
                 if (slotTransform != null)
                 {
                     slotTransform.localPosition = new Vector3(entry.offset.x, entry.offset.y, 0f);
+                    slotTransform.localEulerAngles = new Vector3(0f, 0f, entry.rotationDegrees);
                 }
             }
         }
 
+        ApplyDefaultEquipmentSlotPositions(slotsRoot);
+
         // Always stack Top and Bottom at the same position so they overlay correctly.
         StackTopBottomAtPosition(slotsRoot, characterOffset);
         ApplySlotSortOrder(slotsRoot);
+
+        var dir = (facingResolver != null) ? facingResolver.CurrentFacing : defaultFacing;
+        ApplyEquipmentSlotTransforms(dir, false);
+    }
+
+    /// <summary>Apply default positions/rotations for Weapon and Shield when not in slotOffsets. ApplyEquipmentSlotTransforms (per-facing) overwrites these when facing is applied.</summary>
+    private void ApplyDefaultEquipmentSlotPositions(Transform slotsRoot)
+    {
+        if (slotsRoot == null) return;
+        var hasWeaponOffset = slotOffsets != null && slotOffsets.Exists(e => string.Equals(e.slotName, "Weapon", StringComparison.OrdinalIgnoreCase));
+        var hasShieldOffset = slotOffsets != null && slotOffsets.Exists(e => string.Equals(e.slotName, "Shield", StringComparison.OrdinalIgnoreCase));
+        if (!hasWeaponOffset)
+        {
+            var weapon = slotsRoot.Find("Weapon");
+            if (weapon != null)
+            {
+                weapon.localPosition = new Vector3(0.2f, 0.05f, 0f);
+                weapon.localEulerAngles = new Vector3(0f, 0f, -25f);
+            }
+        }
+        if (!hasShieldOffset)
+        {
+            var shield = slotsRoot.Find("Shield");
+            if (shield != null)
+            {
+                shield.localPosition = new Vector3(-0.2f, 0.05f, 0f);
+                shield.localEulerAngles = new Vector3(0f, 0f, 10f);
+            }
+        }
     }
 
     /// <summary>

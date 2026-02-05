@@ -5,7 +5,7 @@ using UnityEngine.U2D.Animation;
 
 public static class SpriteLibraryAutoPopulator
 {
-    private const string DefaultLibraryPath = "Assets/Characters/RigHumanoidV1/SpriteLibrary/rig_humanoid_v1.spriteLibrary";
+    private const string DefaultLibraryPath = "Assets/Characters/RigHumanoidV1/SpriteLibrary/rig_humanoid_v1.asset";
 
     [MenuItem("Tools/Character/Populate Sprite Library")]
     public static void Populate()
@@ -17,12 +17,13 @@ public static class SpriteLibraryAutoPopulator
             return;
         }
 
-        var spriteLibrary = LoadOrCreateLibrary(DefaultLibraryPath, recreate: true);
+        var spriteLibrary = LoadOrCreateLibrary(DefaultLibraryPath, recreate: false);
         if (spriteLibrary == null)
         {
             return;
         }
 
+        var added = 0;
         foreach (var category in manifest.categories)
         {
             foreach (var entry in category.Value)
@@ -45,21 +46,45 @@ public static class SpriteLibraryAutoPopulator
                         importer.SaveAndReimport();
                         sprite = AssetDatabase.LoadAssetAtPath<Sprite>(entry.path);
                     }
-
                     if (sprite == null)
                     {
-                        Debug.LogWarning($"Sprite not found at {entry.path}");
+                        var all = AssetDatabase.LoadAllAssetsAtPath(entry.path);
+                        foreach (var sub in all)
+                        {
+                            if (sub is Sprite s)
+                            {
+                                sprite = s;
+                                break;
+                            }
+                        }
+                    }
+                    if (sprite == null)
+                    {
+                        Debug.LogWarning($"[SpriteLibrary] Sprite not found at {entry.path}");
                         continue;
                     }
                 }
 
                 spriteLibrary.AddCategoryLabel(sprite, category.Key, entry.label);
+                added++;
+                // Dual-wield: allow weapon or shield in either hand by adding the same label to both categories
+                if (category.Key == "Weapon")
+                {
+                    spriteLibrary.AddCategoryLabel(sprite, "Shield", entry.label);
+                    added++;
+                }
+                else if (category.Key == "Shield")
+                {
+                    spriteLibrary.AddCategoryLabel(sprite, "Weapon", entry.label);
+                    added++;
+                }
             }
         }
 
         EditorUtility.SetDirty(spriteLibrary);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+        Debug.Log($"[SpriteLibrary] Populated {DefaultLibraryPath}: {added} label(s) added (Weapon/Shield icons will show after this).");
     }
 
     private static SpriteLibraryAsset LoadOrCreateLibrary(string assetPath, bool recreate)

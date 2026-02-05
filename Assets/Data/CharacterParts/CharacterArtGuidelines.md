@@ -1,5 +1,7 @@
 # Character Part Art Guidelines
 
+For **weapons and armor** (e.g. iron sword, leather armor), see **[WeaponArmorArtGuide.md](WeaponArmorArtGuide.md)** (canvas size, pivot, how equipping attaches sprites to the character).
+
 ## Alignment (Body, Top, Bottom)
 
 If Body, Top, and Bottom appear **misaligned or overlapping** in character creation or in-game:

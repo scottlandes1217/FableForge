@@ -12,6 +12,153 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5bf7c34a0dc4e6348bea04faa70406ee, type: 3}
   m_Name: rig_humanoid_v1
   m_EditorClassIdentifier: Unity.2D.Animation.Runtime::UnityEngine.U2D.Animation.SpriteLibraryAsset
-  m_Labels: []
+  m_Labels:
+  - m_Name: Body
+    m_Hash: 999990412
+    m_CategoryList:
+    - m_Name: body_human_female_front_01
+      m_Hash: 605621461
+      m_Sprite: {fileID: 21300000, guid: 9e899a8f6a5894ef581630e75e48a5cc, type: 3}
+    - m_Name: body_human_male_back_01
+      m_Hash: 756661217
+      m_Sprite: {fileID: 21300000, guid: 7cb4f325e60ae473184812a25434f842, type: 3}
+    - m_Name: body_human_male_front_01
+      m_Hash: 348223011
+      m_Sprite: {fileID: 21300000, guid: 804d95db88dc8447394d413428a8c67f, type: 3}
+    - m_Name: body_human_male_right_01
+      m_Hash: 721090059
+      m_Sprite: {fileID: 21300000, guid: e47c6dafccd6e4820a7c4f1c82b5bdfa, type: 3}
+  - m_Name: Bottom
+    m_Hash: 250836882
+    m_CategoryList:
+    - m_Name: bottom_human_female_front_01
+      m_Hash: 41123949
+      m_Sprite: {fileID: 21300000, guid: f9642a2326c6c48eda77a729d2a43d3f, type: 3}
+    - m_Name: bottom_human_male_back_01
+      m_Hash: 599757706
+      m_Sprite: {fileID: 21300000, guid: 7ab3af5e396fb4e9c8df58caf931343f, type: 3}
+    - m_Name: bottom_human_male_front_01
+      m_Hash: 246376667
+      m_Sprite: {fileID: 21300000, guid: 05877e12829f64505ac842c0a75a6573, type: 3}
+    - m_Name: bottom_human_male_right_01
+      m_Hash: 815065331
+      m_Sprite: {fileID: 21300000, guid: 4e107227a3b44473ab2fe33bcb0b9d61, type: 3}
+  - m_Name: Eyebrows
+    m_Hash: 766187361
+    m_CategoryList:
+    - m_Name: eyebrows_side_straight_01
+      m_Hash: 88445700
+      m_Sprite: {fileID: 21300000, guid: 5dc2b933fd518481ca93458bb89e87df, type: 3}
+    - m_Name: eyebrows_straight_01
+      m_Hash: 888343837
+      m_Sprite: {fileID: 21300000, guid: 8595322b047814cb2b31151da6389f68, type: 3}
+  - m_Name: Eyes
+    m_Hash: 120101800
+    m_CategoryList:
+    - m_Name: eyes_round_01
+      m_Hash: 117956163
+      m_Sprite: {fileID: 21300000, guid: 10c6a2fe0ab8f41dd82896525b88e593, type: 3}
+    - m_Name: eyes_side_round_01
+      m_Hash: 1060737326
+      m_Sprite: {fileID: 21300000, guid: b91a9dfae6eb042c0840c11bd8ed9ac1, type: 3}
+  - m_Name: HairBack
+    m_Hash: 852106568
+    m_CategoryList:
+    - m_Name: hair_back_short_01
+      m_Hash: 623681126
+      m_Sprite: {fileID: 21300000, guid: a4bf76fa8fb48406ea9e66e72f4d80ff, type: 3}
+  - m_Name: HairFront
+    m_Hash: 1054739079
+    m_CategoryList:
+    - m_Name: hair_front_short_01
+      m_Hash: 699484269
+      m_Sprite: {fileID: 21300000, guid: 5856e057ff6cb4051a5e4231f558f6c9, type: 3}
+  - m_Name: HairSide
+    m_Hash: 1015400394
+    m_CategoryList:
+    - m_Name: hair_side_short_01
+      m_Hash: 1027846903
+      m_Sprite: {fileID: 21300000, guid: b5e29ca471c6f443d847edaf92c9d01c, type: 3}
+  - m_Name: Mouth
+    m_Hash: 520385427
+    m_CategoryList:
+    - m_Name: mouth_neutral_01
+      m_Hash: 81954039
+      m_Sprite: {fileID: 21300000, guid: 4ba74a491607848db94e681802a0c34c, type: 3}
+    - m_Name: mouth_side_neutral_01
+      m_Hash: 831473507
+      m_Sprite: {fileID: 21300000, guid: 4b9b107ef5dda40feb83d067cb646688, type: 3}
+  - m_Name: Nose
+    m_Hash: 550421485
+    m_CategoryList:
+    - m_Name: nose_side_straight_01
+      m_Hash: 153854350
+      m_Sprite: {fileID: 21300000, guid: 9b8d419190fc5463381e7868a5a27270, type: 3}
+    - m_Name: nose_straight_01
+      m_Hash: 490583064
+      m_Sprite: {fileID: 21300000, guid: 1556b199307d049ef829bcaf9904eaba, type: 3}
+  - m_Name: Top
+    m_Hash: 647256362
+    m_CategoryList:
+    - m_Name: top_human_female_front_01
+      m_Hash: 743906939
+      m_Sprite: {fileID: 21300000, guid: 75352090f7c444e849b7058f41508768, type: 3}
+    - m_Name: top_human_male_back_01
+      m_Hash: 313872228
+      m_Sprite: {fileID: 21300000, guid: 35f8154e5578d4c16adb8f98840ec1f8, type: 3}
+    - m_Name: top_human_male_front_01
+      m_Hash: 162311544
+      m_Sprite: {fileID: 21300000, guid: 5933852df70064393997763ab8367bfb, type: 3}
+    - m_Name: top_human_male_right_01
+      m_Hash: 932654416
+      m_Sprite: {fileID: 21300000, guid: f211030af74bb4498a3f9bcaefb61d2e, type: 3}
+  - m_Name: Weapon
+    m_Hash: 782213840
+    m_CategoryList:
+    - m_Name: iron_sword_front
+      m_Hash: 585809609
+      m_Sprite: {fileID: 21300000, guid: 8ceaab5fc84dd4f919be1d0d3d1f024c, type: 3}
+    - m_Name: iron_sword_side
+      m_Hash: 995855729
+      m_Sprite: {fileID: 21300000, guid: 18c721c5a62db45a7945b2a6afc27e98, type: 3}
+  - m_Name: Shield
+    m_Hash: 423614430
+    m_CategoryList:
+    - m_Name: iron_sword_front
+      m_Hash: 585809609
+      m_Sprite: {fileID: 21300000, guid: 8ceaab5fc84dd4f919be1d0d3d1f024c, type: 3}
+    - m_Name: iron_sword_side
+      m_Hash: 995855729
+      m_Sprite: {fileID: 21300000, guid: 18c721c5a62db45a7945b2a6afc27e98, type: 3}
+  - m_Name: Armor
+    m_Hash: 1055314424
+    m_CategoryList:
+    - m_Name: placeholder
+      m_Hash: 904306434
+      m_Sprite: {fileID: 21300000, guid: 331bd64e6370a4722bf8dd645638e3a9, type: 3}
+  - m_Name: Head
+    m_Hash: 130111906
+    m_CategoryList:
+    - m_Name: placeholder
+      m_Hash: 904306434
+      m_Sprite: {fileID: 21300000, guid: 331bd64e6370a4722bf8dd645638e3a9, type: 3}
+  - m_Name: Gloves
+    m_Hash: 501370344
+    m_CategoryList:
+    - m_Name: placeholder
+      m_Hash: 904306434
+      m_Sprite: {fileID: 21300000, guid: 331bd64e6370a4722bf8dd645638e3a9, type: 3}
+  - m_Name: Shoes
+    m_Hash: 353283731
+    m_CategoryList:
+    - m_Name: placeholder
+      m_Hash: 904306434
+      m_Sprite: {fileID: 21300000, guid: 331bd64e6370a4722bf8dd645638e3a9, type: 3}
+  - m_Name: Accessory
+    m_Hash: 591439807
+    m_CategoryList:
+    - m_Name: placeholder
+      m_Hash: 904306434
+      m_Sprite: {fileID: 21300000, guid: 331bd64e6370a4722bf8dd645638e3a9, type: 3}
   m_ModificationHash: 0
   m_Version: 1

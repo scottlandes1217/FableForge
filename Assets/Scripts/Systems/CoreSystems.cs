@@ -694,41 +694,48 @@ namespace FableForge.Systems
         public static Dictionary<string, ItemDefinitionData> LoadItemDefinitions()
         {
             var result = new Dictionary<string, ItemDefinitionData>(StringComparer.OrdinalIgnoreCase);
-            var json = LoadJsonFromResources("Prefabs/Objects/items", "items.json", ItemCandidatePaths);
+            MergeItemDefinitionsFromFile(result, "Prefabs/Objects/items", "items.json", "items");
+            MergeItemDefinitionsFromFile(result, "Prefabs/Objects/weapons", "weapons.json", "weapons");
+            MergeItemDefinitionsFromFile(result, "Prefabs/Objects/armor", "armor.json", "armor");
+            return result;
+        }
+
+        private static void MergeItemDefinitionsFromFile(
+            Dictionary<string, ItemDefinitionData> result,
+            string resourcePath,
+            string fileName,
+            string arrayKey)
+        {
+            var json = LoadJsonFromResources(resourcePath, fileName, ItemCandidatePaths);
             if (string.IsNullOrWhiteSpace(json))
             {
-                return result;
+                return;
             }
 
             var root = MiniJson.Deserialize(json) as Dictionary<string, object>;
-            if (root == null || !root.TryGetValue("items", out var itemsObj))
+            if (root == null || !root.TryGetValue(arrayKey, out var arrayObj) || !(arrayObj is List<object> list))
             {
-                return result;
+                return;
             }
 
-            if (itemsObj is List<object> list)
+            foreach (var entry in list)
             {
-                foreach (var entry in list)
+                if (entry is Dictionary<string, object> itemDict)
                 {
-                    if (entry is Dictionary<string, object> itemDict)
+                    var definition = new ItemDefinitionData
                     {
-                        var definition = new ItemDefinitionData
-                        {
-                            id = GetString(itemDict, "id"),
-                            name = GetString(itemDict, "name"),
-                            description = GetString(itemDict, "description"),
-                            type = GetString(itemDict, "type"),
-                            value = GetInt(itemDict, "value", 0)
-                        };
-                        if (!string.IsNullOrWhiteSpace(definition.id))
-                        {
-                            result[definition.id] = definition;
-                        }
+                        id = GetString(itemDict, "id"),
+                        name = GetString(itemDict, "name"),
+                        description = GetString(itemDict, "description"),
+                        type = GetString(itemDict, "type"),
+                        value = GetInt(itemDict, "value", 0)
+                    };
+                    if (!string.IsNullOrWhiteSpace(definition.id))
+                    {
+                        result[definition.id] = definition;
                     }
                 }
             }
-
-            return result;
         }
 
         public static Dictionary<string, CompanionDefinitionData> LoadCompanionDefinitions()
@@ -1113,6 +1120,8 @@ namespace FableForge.Systems
                 {
                     count = GetString(randomDict, "count"),
                     categories = GetStringList(randomDict, "categories"),
+                    types = GetStringList(randomDict, "types"),
+                    excludeItemIds = GetStringList(randomDict, "excludeItemIds"),
                     minValue = GetInt(randomDict, "minValue", 0),
                     maxValue = GetInt(randomDict, "maxValue", 0)
                 };
@@ -1310,6 +1319,10 @@ namespace FableForge.Systems
     {
         public string count;
         public List<string> categories = new List<string>();
+        /// <summary>Filter by item type (e.g. "weapon", "armor"). Works like categories; either can be used.</summary>
+        public List<string> types = new List<string>();
+        /// <summary>Item IDs to exclude from random selection.</summary>
+        public List<string> excludeItemIds = new List<string>();
         public int minValue;
         public int maxValue;
     }

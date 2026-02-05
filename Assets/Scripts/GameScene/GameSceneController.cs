@@ -9,6 +9,7 @@ public class GameSceneController : MonoBehaviour
 {
     public static GameSceneController Instance { get; private set; }
     public bool IsInBattle => isInBattle;
+    public bool IsWorldReady { get; private set; }
 
     private const float TargetTilePixelSize = 32f;
     private const float DefaultTilePixelSize = 16f;
@@ -76,6 +77,12 @@ public class GameSceneController : MonoBehaviour
     {
         Debug.LogWarning("[Collision] GameSceneController.Start");
         EnsureSystems();
+        var ui = FindFirstObjectByType<FableForge.UI.RuntimeGameUIBootstrap>();
+        if (ui != null)
+        {
+            ui.ShowLoadingScreen();
+        }
+        IsWorldReady = false;
         InitializeWorld();
         var renderedTmx = false;
         var saveData = GameState.Instance != null ? GameState.Instance.CurrentSave : null;
@@ -94,6 +101,61 @@ public class GameSceneController : MonoBehaviour
             RenderEntityPreview();
         }
         SpawnPlayerFromSave();
+
+        if (ui != null)
+        {
+            StartCoroutine(HideLoadingWhenReady(ui));
+        }
+    }
+
+    public void RequestSpawnPlayerFromSave()
+    {
+        SpawnPlayerFromSave();
+    }
+
+    private void SetWorldReady(string reason)
+    {
+        if (IsWorldReady)
+        {
+            return;
+        }
+
+        IsWorldReady = true;
+        Debug.Log($"[World] Ready: {reason}");
+    }
+
+    private System.Collections.IEnumerator HideLoadingWhenReady(FableForge.UI.RuntimeGameUIBootstrap ui)
+    {
+        if (ui == null)
+        {
+            yield break;
+        }
+
+        var timeout = 10f;
+        var nextLog = Time.unscaledTime;
+        while (timeout > 0f)
+        {
+            if (IsWorldReady)
+            {
+                break;
+            }
+
+            if (Time.unscaledTime >= nextLog)
+            {
+                Debug.Log($"[Loading] Waiting for world ready... ready={IsWorldReady}");
+                nextLog = Time.unscaledTime + 0.5f;
+            }
+
+            timeout -= Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (!IsWorldReady)
+        {
+            Debug.LogWarning("[Loading] World not ready before timeout; hiding overlay anyway.");
+        }
+
+        ui.HideLoadingScreen();
     }
 
     private void Awake()
@@ -105,6 +167,7 @@ public class GameSceneController : MonoBehaviour
         }
 
         Instance = this;
+        IsWorldReady = false;
     }
 
     private void Update()
@@ -912,6 +975,7 @@ public class GameSceneController : MonoBehaviour
             SetBlockTransformPosition(kvp.Value, kvp.Key, blockWorldSizeX, blockWorldSizeY, "EntitiesBlock");
         }
 
+        SetWorldReady("Procedural world");
         proceduralRefreshRoutine = null;
     }
 
@@ -2597,6 +2661,7 @@ public class GameSceneController : MonoBehaviour
             SetSortingOrder(playerTransform.gameObject, ResolvePlayerSortingOrder());
         }
 
+        SetWorldReady($"TiledMap '{tmxName}'");
         return true;
     }
 
@@ -3387,6 +3452,12 @@ public class GameSceneController : MonoBehaviour
             return;
         }
 
+        var ui = FindFirstObjectByType<FableForge.UI.RuntimeGameUIBootstrap>();
+        if (ui != null)
+        {
+            ui.ShowLoadingScreen();
+        }
+
         var targetPrefab = string.IsNullOrWhiteSpace(prefabsFile) ? "prefabs_grassland" : prefabsFile;
         worldSystem.InitializeFromPrefab(targetPrefab, 64, 64);
         isTiledMapActive = false;
@@ -3416,6 +3487,11 @@ public class GameSceneController : MonoBehaviour
             var tileScale = GetProceduralTileScale();
             playerTransform.position = new Vector3(spawnX * tileScale, spawnY * tileScale, 0f);
             ConfigureGameplayCamera(tileScale, playerTransform.position);
+        }
+
+        if (ui != null)
+        {
+            ui.HideLoadingScreen();
         }
     }
 
@@ -3637,6 +3713,13 @@ public class GameSceneController : MonoBehaviour
                     customizer.ApplyPreset(preset);
                 }
             }
+
+            var ui = FindFirstObjectByType<RuntimeGameUIBootstrap>();
+            if (ui != null)
+            {
+                ui.ApplySavedEquipment();
+                StartCoroutine(ReapplySavedEquipmentNextFrame(ui));
+            }
         }
         else
         {
@@ -3663,6 +3746,15 @@ public class GameSceneController : MonoBehaviour
         {
             gameState.CurrentSave.player.position = new Vector2(spawnPosition.x, spawnPosition.y);
             gameState.CurrentSave.hasPlayerPosition = true;
+        }
+    }
+
+    private System.Collections.IEnumerator ReapplySavedEquipmentNextFrame(FableForge.UI.RuntimeGameUIBootstrap ui)
+    {
+        yield return null;
+        if (ui != null)
+        {
+            ui.ApplySavedEquipment();
         }
     }
 

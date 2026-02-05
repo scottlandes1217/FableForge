@@ -42,7 +42,7 @@ public class CharacterWalkAnimator : MonoBehaviour
             return;
         }
 
-        var slots = customizer.ActivePresetSlots;
+        var slots = customizer.GetSlotsForFacing();
         var currentFacing = facingResolver.CurrentFacing;
         var resolvedSlots = customizer.BuildResolvedSlotsForFacing(slots, currentFacing);
         var isMoving = movement != null && movement.LastMovementInputSqrMagnitude > 0.01f;
@@ -62,6 +62,11 @@ public class CharacterWalkAnimator : MonoBehaviour
         facingResolver.SetFacing(currentFacing, resolvedSlots);
         customizer.ApplyResolvedSlotsFromManifest(resolvedSlots);
         facingResolver.ApplyHairVisibilityOnly();
+        customizer.RefreshEquipmentSprites();
+        var flipX = false;
+        var firstRenderer = customizer.GetComponentInChildren<SpriteRenderer>(true);
+        if (firstRenderer != null) flipX = firstRenderer.flipX;
+        customizer.ApplyEquipmentSlotTransforms(currentFacing, flipX);
     }
 
     private Dictionary<string, string> BuildWalkLabels(Dictionary<string, string> resolvedSlots, string frameLabel)

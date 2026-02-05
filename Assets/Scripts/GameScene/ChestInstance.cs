@@ -197,6 +197,10 @@ public class ChestInstance : MonoBehaviour
         }
 
         var candidates = new List<ItemDefinitionData>();
+        var typesFilter = prefabDefinition.randomItems.types ?? new List<string>();
+        var categoriesFilter = prefabDefinition.randomItems.categories ?? new List<string>();
+        var excludeIds = prefabDefinition.randomItems.excludeItemIds ?? new List<string>();
+
         foreach (var definition in definitions.Values)
         {
             if (definition == null)
@@ -204,18 +208,25 @@ public class ChestInstance : MonoBehaviour
                 continue;
             }
 
-            if (prefabDefinition.randomItems.categories != null && prefabDefinition.randomItems.categories.Count > 0)
+            if (excludeIds.Count > 0 && excludeIds.Exists(id => string.Equals(id, definition.id, StringComparison.OrdinalIgnoreCase)))
             {
-                var matchesCategory = false;
-                for (var i = 0; i < prefabDefinition.randomItems.categories.Count; i++)
+                continue;
+            }
+
+            if (categoriesFilter.Count > 0 || typesFilter.Count > 0)
+            {
+                var matchesType = false;
+                for (var i = 0; i < categoriesFilter.Count && !matchesType; i++)
                 {
-                    if (string.Equals(definition.type, prefabDefinition.randomItems.categories[i], StringComparison.OrdinalIgnoreCase))
-                    {
-                        matchesCategory = true;
-                        break;
-                    }
+                    if (string.Equals(definition.type, categoriesFilter[i], StringComparison.OrdinalIgnoreCase))
+                        matchesType = true;
                 }
-                if (!matchesCategory)
+                for (var i = 0; i < typesFilter.Count && !matchesType; i++)
+                {
+                    if (string.Equals(definition.type, typesFilter[i], StringComparison.OrdinalIgnoreCase))
+                        matchesType = true;
+                }
+                if (!matchesType)
                 {
                     continue;
                 }

@@ -8,7 +8,7 @@ using UnityEngine.U2D.Animation;
 public static class DefaultRigSetup
 {
     private const string RigRoot = "Assets/Characters/RigHumanoidV1";
-    private const string LibraryPath = "Assets/Characters/RigHumanoidV1/SpriteLibrary/rig_humanoid_v1.spriteLibrary";
+    private const string LibraryPath = "Assets/Characters/RigHumanoidV1/SpriteLibrary/rig_humanoid_v1.asset";
     private const string PrefabPath = "Assets/Resources/CharacterRigs/DefaultPreviewRig.prefab";
     private const string PlaceholderPath = "Assets/Characters/RigHumanoidV1/SpriteLibrary/placeholder.png";
 
@@ -155,6 +155,18 @@ public static class DefaultRigSetup
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
         if (prefab != null)
         {
+            var libraryOnPrefab = prefab.GetComponent<SpriteLibrary>();
+            if (libraryOnPrefab != null && library != null && libraryOnPrefab.spriteLibraryAsset != library)
+            {
+                libraryOnPrefab.spriteLibraryAsset = library;
+                EditorUtility.SetDirty(prefab);
+                PrefabUtility.SavePrefabAsset(prefab);
+            }
+            var oldLibPath = Path.ChangeExtension(LibraryPath, "spriteLibrary");
+            if (oldLibPath != LibraryPath && AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(oldLibPath) != null)
+            {
+                AssetDatabase.DeleteAsset(oldLibPath);
+            }
             return;
         }
 

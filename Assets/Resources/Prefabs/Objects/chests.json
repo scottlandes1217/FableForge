@@ -1,4 +1,5 @@
 {
+  "_comment": "lootTable and fixedItems use itemId from items.json, weapons.json, or armor.json. randomItems can use \"categories\" (e.g. consumable) or \"types\" (e.g. weapon, armor) and optional \"excludeItemIds\".",
   "chests": [
     {
       "id": "chest_wooden_01",

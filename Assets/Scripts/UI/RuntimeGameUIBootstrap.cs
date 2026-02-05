@@ -125,6 +125,12 @@ namespace FableForge.UI
         private bool actionBarExpanded;
         private readonly Dictionary<string, List<BattleAction>> actionBarAssignments = new Dictionary<string, List<BattleAction>>(StringComparer.OrdinalIgnoreCase);
 
+        private GameObject loadingOverlay;
+        private const string LoadingOverlayName = "LoadingOverlay";
+        private GameObject settingsButtonObject;
+        private GameObject menuButtonObject;
+        private Coroutine loadFromSlotRoutine;
+
         private enum SettingsView
         {
             Main,
@@ -185,6 +191,75 @@ namespace FableForge.UI
             var texture = Texture2D.whiteTexture;
             cachedSolidSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 1f);
             return cachedSolidSprite;
+        }
+
+        /// <summary>Load item icon sprite: side view for weapons/bows, front view for armor/shields. Returns null if not found.</summary>
+        private static Sprite GetItemIconSprite(ItemDefinition definition)
+        {
+            if (definition == null || string.IsNullOrWhiteSpace(definition.id))
+            {
+                return null;
+            }
+
+            UnityEngine.U2D.Animation.SpriteLibrary library = null;
+            var playerObject = GameObject.Find("PlayerCharacter");
+            if (playerObject != null)
+            {
+                library = playerObject.GetComponentInChildren<UnityEngine.U2D.Animation.SpriteLibrary>();
+            }
+            if (library == null || library.spriteLibraryAsset == null)
+            {
+                var defaultRig = Resources.Load<GameObject>("CharacterRigs/DefaultPreviewRig");
+                if (defaultRig != null)
+                {
+                    library = defaultRig.GetComponent<UnityEngine.U2D.Animation.SpriteLibrary>();
+                }
+            }
+            if (library == null || library.spriteLibraryAsset == null)
+            {
+                return null;
+            }
+
+            string category;
+            string label;
+            if (definition.weaponData != null)
+            {
+                var isShield = string.Equals(definition.weaponData.weaponType, "shield", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(definition.weaponData.weaponType, "offhand", StringComparison.OrdinalIgnoreCase);
+                category = isShield ? "Shield" : "Weapon";
+                label = isShield
+                    ? (!string.IsNullOrEmpty(definition.frontImage) ? definition.frontImage : $"{definition.id}_front")
+                    : (!string.IsNullOrEmpty(definition.sideImage) ? definition.sideImage : $"{definition.id}_side");
+            }
+            else if (definition.armorData != null)
+            {
+                category = "Armor";
+                label = !string.IsNullOrEmpty(definition.frontImage) ? definition.frontImage : $"{definition.id}_front";
+            }
+            else
+            {
+                return null;
+            }
+
+            var sprite = library.spriteLibraryAsset.GetSprite(category, label);
+            if (sprite != null)
+            {
+                return sprite;
+            }
+            if (category == "Weapon" && sprite == null)
+            {
+                var frontLabel = !string.IsNullOrEmpty(definition.frontImage) ? definition.frontImage : definition.id + "_front";
+                sprite = library.spriteLibraryAsset.GetSprite(category, frontLabel);
+            }
+            if (sprite != null)
+            {
+                return sprite;
+            }
+            if (category == "Armor")
+            {
+                sprite = library.spriteLibraryAsset.GetSprite("Chest", label);
+            }
+            return sprite;
         }
 
         private static Sprite LoadStatusBarBackgroundSprite()
@@ -796,7 +871,197 @@ namespace FableForge.UI
             if (GameObject.Find("GameUI") != null)
             {
                 Destroy(gameObject);
+                return;
             }
+            CreateLoadingOverlay();
+        }
+
+        private static List<GameObject> FindAllLoadingOverlays(bool includeInactive)
+        {
+            var results = new List<GameObject>();
+            if (!includeInactive)
+            {
+                var active = GameObject.Find(LoadingOverlayName);
+                if (active != null)
+                {
+                    results.Add(active);
+                }
+                return results;
+            }
+
+            var all = Resources.FindObjectsOfTypeAll<GameObject>();
+            foreach (var obj in all)
+            {
+                if (obj == null || obj.name != LoadingOverlayName)
+                {
+                    continue;
+                }
+
+                if (!obj.scene.IsValid())
+                {
+                    continue;
+                }
+
+                results.Add(obj);
+            }
+
+            return results;
+        }
+
+        private void LogCanvasState(string context, Canvas canvas)
+        {
+            if (canvas == null)
+            {
+                Debug.Log($"[LoadingOverlay] {context}: canvas=null");
+                return;
+            }
+
+            var layerName = SortingLayer.IDToName(canvas.sortingLayerID);
+            Debug.Log($"[LoadingOverlay] {context}: name={canvas.gameObject.name} active={canvas.gameObject.activeInHierarchy} override={canvas.overrideSorting} layer={layerName} order={canvas.sortingOrder} mode={canvas.renderMode}");
+        }
+
+        private void ConfigureLoadingOverlayCanvas(GameObject overlayObject)
+        {
+            if (overlayObject == null)
+            {
+                return;
+            }
+
+            var canvas = overlayObject.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                canvas = overlayObject.AddComponent<Canvas>();
+            }
+
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
+
+            var layers = SortingLayer.layers;
+            if (layers != null && layers.Length > 0)
+            {
+                canvas.sortingLayerID = layers[layers.Length - 1].id;
+            }
+
+            canvas.sortingOrder = 32767;
+
+            if (overlayObject.GetComponent<CanvasScaler>() == null)
+            {
+                overlayObject.AddComponent<CanvasScaler>();
+            }
+
+            if (overlayObject.GetComponent<GraphicRaycaster>() == null)
+            {
+                overlayObject.AddComponent<GraphicRaycaster>();
+            }
+
+            LogCanvasState("ConfigureOverlay", canvas);
+        }
+
+        private void CreateLoadingOverlay()
+        {
+            var existingOverlays = FindAllLoadingOverlays(true);
+            if (existingOverlays.Count > 0)
+            {
+                loadingOverlay = existingOverlays[0];
+                for (var i = 1; i < existingOverlays.Count; i++)
+                {
+                    if (existingOverlays[i] != null)
+                    {
+                        Destroy(existingOverlays[i]);
+                    }
+                }
+
+                ConfigureLoadingOverlayCanvas(loadingOverlay);
+                return;
+            }
+            var overlayObject = new GameObject(LoadingOverlayName);
+            ConfigureLoadingOverlayCanvas(overlayObject);
+
+            var image = overlayObject.AddComponent<Image>();
+            image.color = Color.black;
+            image.raycastTarget = true;
+
+            var rect = overlayObject.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var spinnerObject = new GameObject("Spinner");
+            spinnerObject.transform.SetParent(overlayObject.transform, false);
+            var spinnerRect = spinnerObject.AddComponent<RectTransform>();
+            spinnerRect.anchorMin = new Vector2(0.5f, 0.5f);
+            spinnerRect.anchorMax = new Vector2(0.5f, 0.5f);
+            spinnerRect.pivot = new Vector2(0.5f, 0.5f);
+            spinnerRect.anchoredPosition = Vector2.zero;
+            spinnerRect.sizeDelta = new Vector2(64f, 64f);
+            var spinnerImage = spinnerObject.AddComponent<Image>();
+            spinnerImage.color = new Color(1f, 1f, 1f, 0.9f);
+            spinnerImage.raycastTarget = false;
+            var spinnerSprite = Resources.Load<Sprite>("Main/loading_spinner");
+            if (spinnerSprite != null)
+            {
+                spinnerImage.sprite = spinnerSprite;
+            }
+            spinnerObject.AddComponent<LoadingSpinnerRotate>();
+
+            loadingOverlay = overlayObject;
+            loadingOverlay.SetActive(false);
+        }
+
+        public static void ForceHideLoadingOverlays()
+        {
+            var overlays = FindAllLoadingOverlays(true);
+            if (overlays.Count > 1)
+            {
+                Debug.LogWarning($"[LoadingOverlay] Force hiding {overlays.Count} overlay objects.");
+            }
+            for (var i = 0; i < overlays.Count; i++)
+            {
+                if (overlays[i] != null)
+                {
+                    overlays[i].SetActive(false);
+                }
+            }
+        }
+
+        public void ShowLoadingScreen()
+        {
+            if (loadingOverlay == null)
+            {
+                CreateLoadingOverlay();
+            }
+            if (loadingOverlay != null)
+            {
+                loadingOverlay.SetActive(true);
+                if (loadingOverlay.transform.parent != null)
+                {
+                    loadingOverlay.transform.SetAsLastSibling();
+                }
+
+                LogCanvasState("ShowOverlay", loadingOverlay.GetComponent<Canvas>());
+                LogCanvasState("ShowOverlay.RootUI", rootCanvas);
+            }
+        }
+
+        public void HideLoadingScreen()
+        {
+            if (loadingOverlay == null)
+            {
+                var overlays = FindAllLoadingOverlays(true);
+                if (overlays.Count > 0)
+                {
+                    loadingOverlay = overlays[0];
+                }
+            }
+            if (loadingOverlay != null)
+            {
+                loadingOverlay.SetActive(false);
+                LogCanvasState("HideOverlay", loadingOverlay.GetComponent<Canvas>());
+                LogCanvasState("HideOverlay.RootUI", rootCanvas);
+            }
+
+            ForceHideLoadingOverlays();
         }
 
         private void Start()
@@ -814,8 +1079,6 @@ namespace FableForge.UI
             var canvas = CreateCanvas();
             rootCanvas = canvas;
             CreatePartyHud(canvas.transform);
-            var settingsButton = CreateTopRightButton(canvas.transform, "Settings", () => TogglePanel(settingsPanel));
-            CreateBottomRightButton(canvas.transform, "Menu", () => TogglePanel(combinedPanel));
 
             settingsPanel = CreateSettingsPanel(canvas.transform);
             combinedPanel = CreateCombinedPanel(canvas.transform);
@@ -825,7 +1088,28 @@ namespace FableForge.UI
             itemActionPanel = CreateItemActionPanel(canvas.transform);
             actionBarPanel = CreateActionBar(canvas.transform);
 
+            var settingsButton = CreateTopRightButton(canvas.transform, "Settings", () => TogglePanel(settingsPanel));
+            settingsButtonObject = settingsButton != null ? settingsButton.gameObject : null;
+            var menuButton = CreateBottomRightButton(canvas.transform, "Menu", () => TogglePanel(combinedPanel));
+            menuButtonObject = menuButton != null ? menuButton.gameObject : null;
+
             HideAllPanels();
+
+            canvas.gameObject.SetActive(true);
+            StartCoroutine(RefreshCanvasAfterLoad());
+        }
+
+        private System.Collections.IEnumerator RefreshCanvasAfterLoad()
+        {
+            yield return null;
+            if (rootCanvas != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                if (rootCanvas.transform is RectTransform rect)
+                {
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+                }
+            }
         }
 
         private void Update()
@@ -901,6 +1185,8 @@ namespace FableForge.UI
             var canvasObject = new GameObject("GameUI");
             var canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 0;
 
             var scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -908,10 +1194,11 @@ namespace FableForge.UI
             scaler.matchWidthOrHeight = 0.5f;
 
             canvasObject.AddComponent<GraphicRaycaster>();
+            LogCanvasState("CreateRootUI", canvas);
             return canvas;
         }
 
-        private void CreateBottomRightButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+        private Button CreateBottomRightButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
         {
             var buttonObject = new GameObject($"{label}Button");
             buttonObject.transform.SetParent(parent, false);
@@ -957,6 +1244,8 @@ namespace FableForge.UI
                 text.alignment = TextAnchor.MiddleCenter;
                 text.color = Color.white;
             }
+
+            return button;
         }
 
         private Button CreateTopRightButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
@@ -1732,23 +2021,45 @@ namespace FableForge.UI
                 return;
             }
 
-            var asset = Resources.Load<TextAsset>("Prefabs/Objects/items");
-            if (asset == null)
+            var itemsAsset = Resources.Load<TextAsset>("Prefabs/Objects/items");
+            if (itemsAsset != null)
             {
-                return;
-            }
-
-            var parsed = JsonUtility.FromJson<ItemList>(asset.text);
-            if (parsed?.items == null)
-            {
-                return;
-            }
-
-            foreach (var item in parsed.items)
-            {
-                if (item != null && !string.IsNullOrWhiteSpace(item.id))
+                var parsed = JsonUtility.FromJson<ItemList>(itemsAsset.text);
+                if (parsed?.items != null)
                 {
-                    itemDefinitions[item.id] = item;
+                    foreach (var item in parsed.items)
+                    {
+                        if (item != null && !string.IsNullOrWhiteSpace(item.id))
+                            itemDefinitions[item.id] = item;
+                    }
+                }
+            }
+
+            var weaponsAsset = Resources.Load<TextAsset>("Prefabs/Objects/weapons");
+            if (weaponsAsset != null)
+            {
+                var parsed = JsonUtility.FromJson<WeaponList>(weaponsAsset.text);
+                if (parsed?.weapons != null)
+                {
+                    foreach (var item in parsed.weapons)
+                    {
+                        if (item != null && !string.IsNullOrWhiteSpace(item.id))
+                            itemDefinitions[item.id] = item;
+                    }
+                }
+            }
+
+            var armorAsset = Resources.Load<TextAsset>("Prefabs/Objects/armor");
+            if (armorAsset != null)
+            {
+                var parsed = JsonUtility.FromJson<ArmorList>(armorAsset.text);
+                if (parsed?.armor != null)
+                {
+                    foreach (var item in parsed.armor)
+                    {
+                        if (item != null && !string.IsNullOrWhiteSpace(item.id))
+                            itemDefinitions[item.id] = item;
+                    }
                 }
             }
         }
@@ -1787,9 +2098,18 @@ namespace FableForge.UI
             rect.offsetMax = new Vector2(-4f, -4f);
 
             var image = iconObject.AddComponent<Image>();
-            image.sprite = GetSolidSprite();
+            var iconSprite = GetItemIconSprite(definition);
+            if (iconSprite != null)
+            {
+                image.sprite = iconSprite;
+                image.color = Color.white;
+            }
+            else
+            {
+                image.sprite = GetSolidSprite();
+                image.color = new Color(0.75f, 0.7f, 0.55f, 0.9f);
+            }
             image.type = Image.Type.Simple;
-            image.color = new Color(0.75f, 0.7f, 0.55f, 0.9f);
             image.raycastTarget = true;
 
             var labelObject = new GameObject("Label");
@@ -1901,6 +2221,7 @@ namespace FableForge.UI
             dragHandler.EquippedSlotLabel = slotLabel;
 
             ApplyEquipmentToCharacter(slotLabel, definition);
+            SyncEquippedItemsToSave();
             RefreshInventoryUI();
             return true;
         }
@@ -2092,6 +2413,7 @@ namespace FableForge.UI
 
             if (dragHandler.IsEquipped)
             {
+                ClearEquipmentFromCharacter(dragHandler.EquippedSlotLabel);
                 AddItemToInventory(dragHandler.item);
                 dragHandler.IsEquipped = false;
                 dragHandler.EquippedSlotLabel = null;
@@ -2274,21 +2596,161 @@ namespace FableForge.UI
                 return;
             }
 
+            var customizer = playerObject.GetComponent<CharacterCustomizer>();
+            if (customizer != null)
+            {
+                customizer.SetEquippedItemId(targetCategory, definition.id);
+                var frontLabel = !string.IsNullOrEmpty(definition.frontImage) ? definition.frontImage : $"{definition.id}_front";
+                var sideLabel = !string.IsNullOrEmpty(definition.sideImage) ? definition.sideImage : $"{definition.id}_side";
+                customizer.SetEquippedItemLabels(targetCategory, frontLabel, sideLabel);
+                var overrides = BuildEquipmentOverridesFromDefinition(targetCategory, definition.equipmentOffsets);
+                customizer.SetEquippedItemEquipmentOverrides(targetCategory, overrides);
+            }
+
+            var facingResolver = playerObject.GetComponentInChildren<FacingDirectionResolver>();
+            if (facingResolver != null && customizer != null)
+            {
+                var slotsWithEquipped = customizer.GetSlotsForFacing();
+                var currentFacing = facingResolver.CurrentFacing;
+                var resolvedSlots = customizer.BuildResolvedSlotsForFacing(slotsWithEquipped, currentFacing);
+                facingResolver.SetFacing(currentFacing, resolvedSlots);
+                customizer.ApplyResolvedSlotsFromManifest(resolvedSlots);
+                facingResolver.ApplyHairVisibilityOnly();
+            }
+            else
+            {
+                var label = ResolveEquipmentLabel(targetCategory, definition.id, playerObject, definition);
+                var resolvers = playerObject.GetComponentsInChildren<SpriteResolver>(true);
+                foreach (var resolver in resolvers)
+                {
+                    if (resolver == null) continue;
+                    var category = resolver.GetCategory();
+                    if (string.Equals(category, targetCategory, StringComparison.OrdinalIgnoreCase))
+                    {
+                        resolver.SetCategoryAndLabel(category, label);
+                        resolver.enabled = true;
+                        break;
+                    }
+                }
+            }
+
+            ApplyEquipmentSpriteToSlot(playerObject, targetCategory, definition, facingResolver);
+        }
+
+        /// <summary>Force the equipment sprite onto the slot's SpriteRenderer from the SpriteLibrary so it shows even if SpriteResolver doesn't update immediately.</summary>
+        private static void ApplyEquipmentSpriteToSlot(GameObject playerObject, string targetCategory, ItemDefinition definition, FacingDirectionResolver facingResolver)
+        {
+            var library = playerObject.GetComponentInChildren<UnityEngine.U2D.Animation.SpriteLibrary>();
+            if (library == null || library.spriteLibraryAsset == null)
+            {
+                return;
+            }
+
+            var isSide = facingResolver != null && facingResolver.CurrentFacing == FacingDirection.Side;
+            string label = targetCategory.Equals("Shield", StringComparison.OrdinalIgnoreCase)
+                ? (definition?.frontImage ?? $"{definition?.id}_front")
+                : (isSide ? (definition?.sideImage ?? $"{definition?.id}_side") : (definition?.frontImage ?? $"{definition?.id}_front"));
+            if (string.IsNullOrEmpty(definition?.id))
+            {
+                return;
+            }
+
+            var sprite = library.spriteLibraryAsset.GetSprite(targetCategory, label);
+            if (sprite == null && targetCategory.Equals("Weapon", StringComparison.OrdinalIgnoreCase))
+            {
+                label = definition?.frontImage ?? $"{definition.id}_front";
+                sprite = library.spriteLibraryAsset.GetSprite(targetCategory, label);
+            }
+            if (sprite == null)
+            {
+                return;
+            }
+
+            var slotsRoot = playerObject.transform.Find("Slots");
+            if (slotsRoot == null)
+            {
+                return;
+            }
+            var slot = slotsRoot.Find(targetCategory);
+            if (slot == null)
+            {
+                return;
+            }
+            var renderer = slot.GetComponent<SpriteRenderer>();
+            if (renderer != null)
+            {
+                renderer.sprite = sprite;
+                renderer.enabled = true;
+            }
+        }
+
+        /// <summary>Build SlotFacingOverride list from weapons.json/armor.json equipmentOffsets. Returns null if no overrides.</summary>
+        private static List<SlotFacingOverride> BuildEquipmentOverridesFromDefinition(string slotCategory, EquipmentOffsetsData data)
+        {
+            if (data == null) return null;
+            var list = new List<SlotFacingOverride>();
+            if (data.front != null)
+                list.Add(new SlotFacingOverride { slotName = slotCategory, facing = FacingDirection.Front, offset = new Vector2(data.front.x, data.front.y), rotationDegrees = data.front.rotation });
+            if (data.side != null)
+                list.Add(new SlotFacingOverride { slotName = slotCategory, facing = FacingDirection.Side, offset = new Vector2(data.side.x, data.side.y), rotationDegrees = data.side.rotation });
+            if (data.back != null)
+                list.Add(new SlotFacingOverride { slotName = slotCategory, facing = FacingDirection.Back, offset = new Vector2(data.back.x, data.back.y), rotationDegrees = data.back.rotation });
+            return list.Count > 0 ? list : null;
+        }
+
+        /// <summary>Resolve equipment sprite label by facing: front for north/south, side for east/west. Uses frontImage/sideImage if set, else id_front / id_side.</summary>
+        private static string ResolveEquipmentLabel(string category, string itemId, GameObject playerObject, ItemDefinition definition)
+        {
+            if (string.IsNullOrEmpty(itemId)) return itemId;
+            var customizer = playerObject.GetComponent<CharacterCustomizer>();
+            var facing = FacingDirection.Front;
+            if (customizer != null)
+            {
+                var resolver = playerObject.GetComponentInChildren<FacingDirectionResolver>();
+                if (resolver != null)
+                    facing = resolver.CurrentFacing;
+            }
+            if (facing == FacingDirection.Side)
+                return !string.IsNullOrEmpty(definition?.sideImage) ? definition.sideImage : $"{itemId}_side";
+            return !string.IsNullOrEmpty(definition?.frontImage) ? definition.frontImage : $"{itemId}_front";
+        }
+
+        private void ClearEquipmentFromCharacter(string slotLabel)
+        {
+            var playerObject = GameObject.Find("PlayerCharacter");
+            if (playerObject == null || string.IsNullOrWhiteSpace(slotLabel))
+            {
+                return;
+            }
+
+            var normalizedSlot = NormalizeSlotLabel(slotLabel);
+            string targetCategory = null;
+            if (normalizedSlot == "mainhand" || normalizedSlot == "bow") targetCategory = "Weapon";
+            else if (normalizedSlot == "offhand") targetCategory = "Shield";
+            if (string.IsNullOrWhiteSpace(targetCategory))
+            {
+                return;
+            }
+
             var resolvers = playerObject.GetComponentsInChildren<SpriteResolver>(true);
             foreach (var resolver in resolvers)
             {
-                if (resolver == null)
-                {
-                    continue;
-                }
-
+                if (resolver == null) continue;
                 var category = resolver.GetCategory();
                 if (string.Equals(category, targetCategory, StringComparison.OrdinalIgnoreCase))
                 {
-                    resolver.SetCategoryAndLabel(category, definition.id);
+                    resolver.SetCategoryAndLabel(category, "placeholder");
                     break;
                 }
             }
+
+            var customizer = playerObject.GetComponent<CharacterCustomizer>();
+            if (customizer != null)
+            {
+                customizer.SetEquippedItemId(targetCategory, null);
+            }
+
+            SyncEquippedItemsToSave();
         }
 
         private string GetSpriteCategoryForSlot(string slotLabel, ItemDefinition definition)
@@ -2305,11 +2767,10 @@ namespace FableForge.UI
                 case "hands":
                     return "Hands";
                 case "mainhand":
-                    return "WeaponMainHand";
-                case "offhand":
-                    return "WeaponOffHand";
                 case "bow":
-                    return "WeaponMainHand";
+                    return "Weapon";
+                case "offhand":
+                    return "Shield";
                 case "neck":
                 case "ring1":
                 case "ring2":
@@ -3213,10 +3674,101 @@ namespace FableForge.UI
             {
                 var slotIndex = i;
                 var label = GetSaveSlotLabel(characterIndex, slotIndex, true);
-                CreateSettingsActionButton(stack, label, () => SaveToSlot(slotIndex), new Vector2(4500f, 44f), true);
+                var hasExisting = SaveSlotHasData(characterIndex, slotIndex);
+                if (hasExisting)
+                {
+                    CreateSettingsActionButton(stack, label, () => ShowOverwriteConfirmDialog(slotIndex, label), new Vector2(360f, 44f), true);
+                }
+                else
+                {
+                    CreateSettingsActionButton(stack, label, () => { SaveToSlot(slotIndex); CloseSettingsPanel(); }, new Vector2(360f, 44f), true);
+                }
             }
 
             CreateSettingsActionButton(stack, "Back", () => ShowSettingsView(SettingsView.Main), new Vector2(160f, 44f), true);
+        }
+
+        private void ShowOverwriteConfirmDialog(int slotIndex, string slotLabel)
+        {
+            if (settingsContentRoot == null)
+            {
+                return;
+            }
+            var modalObject = new GameObject("OverwriteConfirmModal");
+            modalObject.transform.SetParent(settingsContentRoot, false);
+            var modalRect = modalObject.AddComponent<RectTransform>();
+            modalRect.anchorMin = Vector2.zero;
+            modalRect.anchorMax = Vector2.one;
+            modalRect.offsetMin = Vector2.zero;
+            modalRect.offsetMax = Vector2.zero;
+
+            var blocker = modalObject.AddComponent<Image>();
+            blocker.color = new Color(0f, 0f, 0f, 0.6f);
+            blocker.raycastTarget = true;
+
+            var boxObject = new GameObject("Box");
+            boxObject.transform.SetParent(modalObject.transform, false);
+            var boxRect = boxObject.AddComponent<RectTransform>();
+            boxRect.anchorMin = new Vector2(0.5f, 0.5f);
+            boxRect.anchorMax = new Vector2(0.5f, 0.5f);
+            boxRect.pivot = new Vector2(0.5f, 0.5f);
+            boxRect.anchoredPosition = Vector2.zero;
+            boxRect.sizeDelta = new Vector2(360f, 160f);
+            var boxImage = boxObject.AddComponent<Image>();
+            boxImage.color = MenuStyling.Theme != null ? MenuStyling.Theme.parchmentDark : new Color(0.85f, 0.8f, 0.7f, 1f);
+
+            var textObject = new GameObject("Message");
+            textObject.transform.SetParent(boxObject.transform, false);
+            var textRect = textObject.AddComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.5f, 1f);
+            textRect.anchorMax = new Vector2(0.5f, 1f);
+            textRect.pivot = new Vector2(0.5f, 1f);
+            textRect.anchoredPosition = new Vector2(0f, -24f);
+            textRect.sizeDelta = new Vector2(320f, 60f);
+            var tmp = textObject.AddComponent<TextMeshProUGUI>();
+            tmp.text = $"Overwrite save in {slotLabel}?";
+            tmp.fontSize = 22f;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = MenuStyling.Theme != null ? MenuStyling.Theme.inkColor : new Color(0.15f, 0.1f, 0.05f, 1f);
+
+            var buttonRow = new GameObject("ButtonRow");
+            buttonRow.transform.SetParent(boxObject.transform, false);
+            var rowRect = buttonRow.AddComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0.5f, 0f);
+            rowRect.anchorMax = new Vector2(0.5f, 0f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.anchoredPosition = new Vector2(0f, 24f);
+            rowRect.sizeDelta = new Vector2(280f, 44f);
+
+            var yesButton = MenuStyling.CreateBookButton(rowRect, "Yes", new Vector2(120f, 40f), "OverwriteYes");
+            yesButton.transform.SetParent(rowRect, false);
+            (yesButton.transform as RectTransform).anchoredPosition = new Vector2(-70f, 0f);
+            yesButton.onClick.RemoveAllListeners();
+            yesButton.onClick.AddListener(() =>
+            {
+                SaveToSlot(slotIndex);
+                CloseSettingsPanel();
+                if (modalObject != null) Destroy(modalObject);
+            });
+
+            var noButton = MenuStyling.CreateBookButton(rowRect, "No", new Vector2(120f, 40f), "OverwriteNo");
+            noButton.transform.SetParent(rowRect, false);
+            (noButton.transform as RectTransform).anchoredPosition = new Vector2(70f, 0f);
+            noButton.onClick.RemoveAllListeners();
+            noButton.onClick.AddListener(() => { if (modalObject != null) Destroy(modalObject); });
+        }
+
+        private void CloseSettingsPanel()
+        {
+            if (settingsPanel != null && settingsPanel.activeSelf)
+            {
+                settingsPanel.SetActive(false);
+                HideAllPanels();
+                if (actionBarPanel != null)
+                {
+                    actionBarPanel.SetActive(true);
+                }
+            }
         }
 
         private void BuildLoadSlotSelection()
@@ -3284,6 +3836,10 @@ namespace FableForge.UI
             var show = !panel.activeSelf;
             HideAllPanels();
             panel.SetActive(show);
+            if (actionBarPanel != null)
+            {
+                actionBarPanel.SetActive(!show);
+            }
             if (show && panel == settingsPanel)
             {
                 ShowSettingsView(SettingsView.Main);
@@ -3297,6 +3853,8 @@ namespace FableForge.UI
                     RefreshInventoryUI();
                 }
             }
+
+            UpdateMenuButtonsVisibility();
         }
 
         private void HideAllPanels()
@@ -3307,6 +3865,23 @@ namespace FableForge.UI
             if (companionPanel != null) companionPanel.SetActive(false);
             if (battlePanel != null) battlePanel.SetActive(false);
             if (itemActionPanel != null) itemActionPanel.SetActive(false);
+            UpdateMenuButtonsVisibility();
+        }
+
+        private void UpdateMenuButtonsVisibility()
+        {
+            var menuOpen = (combinedPanel != null && combinedPanel.activeSelf) ||
+                           (settingsPanel != null && settingsPanel.activeSelf);
+
+            if (settingsButtonObject != null)
+            {
+                settingsButtonObject.SetActive(!menuOpen);
+            }
+
+            if (menuButtonObject != null)
+            {
+                menuButtonObject.SetActive(!menuOpen);
+            }
         }
 
         public void OpenChest(ChestInstance chest)
@@ -4030,11 +4605,8 @@ namespace FableForge.UI
                 }
             }
 
-            if (actor.kind == BattleActorKind.Player)
-            {
-                var consumables = GetBattleConsumables();
-                result.AddRange(consumables);
-            }
+            // Do not auto-fill action bar with consumables; only Attack + skills are used as defaults.
+            // Consumables can be assigned manually by the player.
 
             return result;
         }
@@ -5254,6 +5826,7 @@ namespace FableForge.UI
             }
 
             ApplyEquipmentToCharacter(slotLabel, definition);
+            SyncEquippedItemsToSave();
             return true;
         }
 
@@ -5322,6 +5895,8 @@ namespace FableForge.UI
                 gameState.CurrentSave.hasPlayerPosition = true;
             }
 
+            SyncEquippedItemsToSave();
+
             var characterIndex = GetCurrentCharacterIndex();
             var globalSlotIndex = GetGlobalSlotIndex(characterIndex, saveSlotIndex);
             SaveManager.SaveSlot(globalSlotIndex, gameState.CurrentSave);
@@ -5329,17 +5904,288 @@ namespace FableForge.UI
             PlayerPrefs.SetInt("FableForge_SelectedSaveSlot", saveSlotIndex);
             PlayerPrefs.Save();
             Debug.Log($"[UI] Saved game to slot {globalSlotIndex}.");
+            CloseSettingsPanel();
+        }
+
+        private void SyncEquippedItemsToSave()
+        {
+            var character = GameState.Instance?.CurrentSave?.character;
+            if (character == null)
+            {
+                return;
+            }
+
+            var playerObject = GameObject.Find("PlayerCharacter");
+            var customizer = playerObject?.GetComponent<CharacterCustomizer>();
+            if (customizer == null)
+            {
+                return;
+            }
+
+            var list = new List<EquippedAttachment>();
+            var weaponId = customizer.GetEquippedItemId("Weapon");
+            if (!string.IsNullOrWhiteSpace(weaponId))
+            {
+                list.Add(new EquippedAttachment { slot = AttachmentSlot.WeaponMainHand, itemId = weaponId });
+            }
+
+            var shieldId = customizer.GetEquippedItemId("Shield");
+            if (!string.IsNullOrWhiteSpace(shieldId))
+            {
+                list.Add(new EquippedAttachment { slot = AttachmentSlot.WeaponOffHand, itemId = shieldId });
+            }
+
+            character.equippedAttachments = list;
+        }
+
+        /// <summary>Apply saved character.equippedAttachments to the player's CharacterCustomizer. Call after the player is spawned and preset is applied.</summary>
+        public void ApplySavedEquipment()
+        {
+            var character = GameState.Instance?.CurrentSave?.character;
+            if (character == null)
+            {
+                return;
+            }
+
+            if (character.equippedAttachments == null || character.equippedAttachments.Count == 0)
+            {
+                if (!SyncEquippedSlotIconsFromSave())
+                {
+                    StartCoroutine(SyncEquippedSlotIconsNextFrame());
+                }
+                return;
+            }
+
+            var playerObject = GameObject.Find("PlayerCharacter");
+            var customizer = playerObject?.GetComponent<CharacterCustomizer>();
+            if (customizer == null)
+            {
+                return;
+            }
+
+            EnsureItemDefinitionsLoaded();
+            foreach (var att in character.equippedAttachments)
+            {
+                if (string.IsNullOrWhiteSpace(att.itemId))
+                {
+                    continue;
+                }
+
+                string slotLabel = null;
+                if (att.slot == AttachmentSlot.WeaponMainHand)
+                {
+                    slotLabel = "Main Hand";
+                }
+                else if (att.slot == AttachmentSlot.WeaponOffHand)
+                {
+                    slotLabel = "Off-Hand";
+                }
+
+                if (string.IsNullOrEmpty(slotLabel))
+                {
+                    continue;
+                }
+
+                if (!itemDefinitions.TryGetValue(att.itemId, out var definition))
+                {
+                    definition = GetItemDefinition(new Item { id = att.itemId });
+                }
+
+                if (definition != null)
+                {
+                    ApplyEquipmentToCharacter(slotLabel, definition);
+                }
+            }
+
+            if (!SyncEquippedSlotIconsFromSave())
+            {
+                StartCoroutine(SyncEquippedSlotIconsNextFrame());
+            }
+        }
+
+        private System.Collections.IEnumerator SyncEquippedSlotIconsNextFrame()
+        {
+            yield return null;
+            SyncEquippedSlotIconsFromSave();
+        }
+
+        private void ClearEquipmentSlotIcons()
+        {
+            if (equipmentSlotRoots == null || equipmentSlotRoots.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var entry in equipmentSlotRoots)
+            {
+                var slot = entry.Value;
+                if (slot == null)
+                {
+                    continue;
+                }
+
+                var handlers = slot.GetComponentsInChildren<InventoryItemDragHandler>(true);
+                for (var i = 0; i < handlers.Length; i++)
+                {
+                    if (handlers[i] != null)
+                    {
+                        Destroy(handlers[i].gameObject);
+                    }
+                }
+            }
+        }
+
+        private bool SyncEquippedSlotIconsFromSave()
+        {
+            if (equipmentSlotRoots == null || equipmentSlotRoots.Count == 0)
+            {
+                return false;
+            }
+
+            ClearEquipmentSlotIcons();
+
+            var character = GameState.Instance?.CurrentSave?.character;
+            if (character?.equippedAttachments == null || character.equippedAttachments.Count == 0)
+            {
+                return true;
+            }
+
+            EnsureItemDefinitionsLoaded();
+            foreach (var att in character.equippedAttachments)
+            {
+                if (string.IsNullOrWhiteSpace(att.itemId))
+                {
+                    continue;
+                }
+
+                string slotLabel = null;
+                if (att.slot == AttachmentSlot.WeaponMainHand)
+                {
+                    slotLabel = "Main Hand";
+                }
+                else if (att.slot == AttachmentSlot.WeaponOffHand)
+                {
+                    slotLabel = "Off-Hand";
+                }
+
+                if (string.IsNullOrEmpty(slotLabel))
+                {
+                    continue;
+                }
+
+                var normalized = NormalizeSlotLabel(slotLabel);
+                if (!equipmentSlotRoots.TryGetValue(normalized, out var slotTransform) || slotTransform == null)
+                {
+                    continue;
+                }
+
+                if (!itemDefinitions.TryGetValue(att.itemId, out var definition))
+                {
+                    definition = GetItemDefinition(new Item { id = att.itemId });
+                }
+
+                var item = new Item
+                {
+                    id = att.itemId,
+                    name = definition?.name,
+                    description = definition?.description,
+                    quantity = 1
+                };
+
+                CreateInventoryItemIcon(slotTransform, item, definition, 1);
+                var dragHandler = slotTransform.GetComponentInChildren<InventoryItemDragHandler>();
+                if (dragHandler != null)
+                {
+                    dragHandler.IsEquipped = true;
+                    dragHandler.EquippedSlotLabel = slotLabel;
+                    var rect = dragHandler.rectTransform;
+                    rect.anchorMin = Vector2.zero;
+                    rect.anchorMax = Vector2.one;
+                    rect.offsetMin = new Vector2(6f, 6f);
+                    rect.offsetMax = new Vector2(-6f, -6f);
+                    rect.sizeDelta = Vector2.zero;
+                }
+            }
+
+            return true;
         }
 
         private void LoadFromSlot(int saveSlotIndex)
+        {
+            if (loadFromSlotRoutine != null)
+            {
+                StopCoroutine(loadFromSlotRoutine);
+            }
+            loadFromSlotRoutine = StartCoroutine(LoadFromSlotRoutine(saveSlotIndex));
+        }
+
+        private System.Collections.IEnumerator LoadFromSlotRoutine(int saveSlotIndex)
         {
             var characterIndex = GetCurrentCharacterIndex();
             var globalSlotIndex = GetGlobalSlotIndex(characterIndex, saveSlotIndex);
             PlayerPrefs.SetInt("FableForge_SelectedCharacter", characterIndex);
             PlayerPrefs.SetInt("FableForge_SelectedSaveSlot", saveSlotIndex);
             PlayerPrefs.Save();
+
+            ShowLoadingScreen();
             CleanupGameplayObjects();
+            yield return null; // allow pending Destroy calls to complete
+
             GameFlow.ContinueGame(globalSlotIndex);
+
+            var waitForScene = 2f;
+            GameSceneController gameScene = null;
+            while (waitForScene > 0f)
+            {
+                gameScene = UnityEngine.Object.FindFirstObjectByType<GameSceneController>();
+                if (gameScene != null)
+                {
+                    break;
+                }
+                waitForScene -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            yield return null; // allow GameSceneController.Start to run
+            if (gameScene != null && GameObject.Find("PlayerCharacter") == null)
+            {
+                gameScene.RequestSpawnPlayerFromSave();
+            }
+
+            yield return StartCoroutine(LoadFromSlotComplete());
+            loadFromSlotRoutine = null;
+        }
+
+        private System.Collections.IEnumerator LoadFromSlotComplete()
+        {
+            var timeout = 10f;
+            var nextLog = Time.unscaledTime;
+            while (timeout > 0f)
+            {
+                var gameScene = UnityEngine.Object.FindFirstObjectByType<GameSceneController>();
+                var worldReady = gameScene != null && gameScene.IsWorldReady;
+
+                if (worldReady)
+                {
+                    break;
+                }
+
+                if (Time.unscaledTime >= nextLog)
+                {
+                    Debug.Log($"[Loading] Waiting for world ready... scene={(gameScene != null)} ready={worldReady}");
+                    nextLog = Time.unscaledTime + 0.5f;
+                }
+
+                timeout -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (timeout <= 0f)
+            {
+                Debug.LogWarning("[Loading] World not ready before timeout; hiding overlay anyway.");
+            }
+            HideLoadingScreen();
+            CloseSettingsPanel();
         }
 
         private void ReturnToMainMenu()
@@ -5705,6 +6551,18 @@ namespace FableForge.UI
         }
 
         [Serializable]
+        private class WeaponList
+        {
+            public List<ItemDefinition> weapons;
+        }
+
+        [Serializable]
+        private class ArmorList
+        {
+            public List<ItemDefinition> armor;
+        }
+
+        [Serializable]
         private class ItemDefinition
         {
             public string id;
@@ -5715,6 +6573,28 @@ namespace FableForge.UI
             public WeaponData weaponData;
             public ArmorData armorData;
             public ConsumableData consumableData;
+            /// <summary>Sprite label for front view (north/south). If unset, falls back to id + "_front".</summary>
+            public string frontImage;
+            /// <summary>Sprite label for side view (east/west). If unset, falls back to id + "_side".</summary>
+            public string sideImage;
+            /// <summary>Per-facing offset and rotation from weapons.json/armor.json. E.g. { "front": { "x": 0.2, "y": 0.05, "rotation": -25 }, "side": { ... }, "back": { ... } }.</summary>
+            public EquipmentOffsetsData equipmentOffsets;
+        }
+
+        [Serializable]
+        private class EquipmentFacingOffsetData
+        {
+            public float x;
+            public float y;
+            public float rotation;
+        }
+
+        [Serializable]
+        private class EquipmentOffsetsData
+        {
+            public EquipmentFacingOffsetData front;
+            public EquipmentFacingOffsetData side;
+            public EquipmentFacingOffsetData back;
         }
 
         [Serializable]
@@ -5862,6 +6742,14 @@ namespace FableForge.UI
                 {
                     canvasGroup.blocksRaycasts = true;
                 }
+            }
+        }
+
+        private class LoadingSpinnerRotate : MonoBehaviour
+        {
+            private void Update()
+            {
+                transform.Rotate(0f, 0f, -180f * Time.deltaTime);
             }
         }
     }

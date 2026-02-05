@@ -8,10 +8,6 @@
       "type": "consumable",
       "value": 25,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -55,10 +51,6 @@
       "type": "consumable",
       "value": 30,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -95,215 +87,6 @@
       "materialData": null
     },
     {
-      "id": "iron_sword",
-      "name": "Iron Sword",
-      "description": "A well-crafted iron sword",
-      "tileMap": "3",
-      "type": "weapon",
-      "value": 50,
-      "stackable": false,
-      "inventorySize": {
-        "width": 3,
-        "height": 1
-      },
-      "parts": [
-        {
-          "layer": "low",
-          "tileGrid": [
-            [
-              "exterior-2100",
-              "exterior-2101",
-              "exterior-2102"
-            ]
-          ],
-          "offset": {
-            "x": -32,
-            "y": 0
-          },
-          "size": {
-            "width": 96,
-            "height": 32
-          },
-          "zOffset": 0,
-          "tileSize": 32
-        }
-      ],
-      "size": {
-        "width": 96,
-        "height": 32
-      },
-      "zPosition": 10,
-      "gid": "exterior-2100",
-      "weaponData": {
-        "weaponType": "sword",
-        "damageDie": 8,
-        "range": 1,
-        "isMagical": false,
-        "requiredStrength": 12,
-        "requiredDexterity": null
-      },
-      "armorData": null,
-      "consumableData": null,
-      "materialData": null
-    },
-    {
-      "id": "magic_staff",
-      "name": "Magic Staff",
-      "description": "A staff imbued with magical energy",
-      "tileMap": "2",
-      "type": "weapon",
-      "value": 150,
-      "stackable": false,
-      "inventorySize": {
-        "width": 2,
-        "height": 1
-      },
-      "parts": [
-        {
-          "layer": "low",
-          "tileGrid": [
-            [
-              "exterior-2101",
-              "exterior-2102"
-            ]
-          ],
-          "offset": {
-            "x": -16,
-            "y": 0
-          },
-          "size": {
-            "width": 64,
-            "height": 32
-          },
-          "zOffset": 0,
-          "tileSize": 32
-        }
-      ],
-      "size": {
-        "width": 64,
-        "height": 32
-      },
-      "zPosition": 10,
-      "gid": "exterior-2101",
-      "weaponData": {
-        "weaponType": "staff",
-        "damageDie": 6,
-        "range": 3,
-        "isMagical": true,
-        "requiredStrength": null,
-        "requiredDexterity": null
-      },
-      "armorData": null,
-      "consumableData": null,
-      "materialData": null
-    },
-    {
-      "id": "leather_armor",
-      "name": "Leather Armor",
-      "description": "Light armor made from treated leather",
-      "tileMap": "2,2",
-      "type": "armor",
-      "value": 40,
-      "stackable": false,
-      "inventorySize": {
-        "width": 2,
-        "height": 2
-      },
-      "parts": [
-        {
-          "layer": "low",
-          "tileGrid": [
-            [
-              "exterior-2200",
-              "exterior-2201"
-            ],
-            [
-              "exterior-2202",
-              "exterior-2203"
-            ]
-          ],
-          "offset": {
-            "x": -16,
-            "y": -16
-          },
-          "size": {
-            "width": 64,
-            "height": 64
-          },
-          "zOffset": 0,
-          "tileSize": 32
-        }
-      ],
-      "size": {
-        "width": 64,
-        "height": 64
-      },
-      "zPosition": 10,
-      "gid": "exterior-2200",
-      "weaponData": null,
-      "armorData": {
-        "armorType": "light",
-        "armorClass": 11,
-        "requiredStrength": 0,
-        "slot": "chest"
-      },
-      "consumableData": null,
-      "materialData": null
-    },
-    {
-      "id": "steel_armor",
-      "name": "Steel Armor",
-      "description": "Heavy armor made from steel plates",
-      "tileMap": "2,2",
-      "type": "armor",
-      "value": 200,
-      "stackable": false,
-      "inventorySize": {
-        "width": 2,
-        "height": 2
-      },
-      "parts": [
-        {
-          "layer": "low",
-          "tileGrid": [
-            [
-              "exterior-2201",
-              "exterior-2204"
-            ],
-            [
-              "exterior-2205",
-              "exterior-2206"
-            ]
-          ],
-          "offset": {
-            "x": -16,
-            "y": -16
-          },
-          "size": {
-            "width": 64,
-            "height": 64
-          },
-          "zOffset": 0,
-          "tileSize": 32
-        }
-      ],
-      "size": {
-        "width": 64,
-        "height": 64
-      },
-      "zPosition": 10,
-      "gid": "exterior-2201",
-      "weaponData": null,
-      "armorData": {
-        "armorType": "heavy",
-        "armorClass": 17,
-        "requiredStrength": 15,
-        "slot": "chest"
-      },
-      "consumableData": null,
-      "materialData": null
-    },
-    {
       "id": "wood",
       "name": "Wood",
       "description": "Basic building material",
@@ -311,10 +94,6 @@
       "type": "material",
       "value": 1,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -357,10 +136,6 @@
       "type": "material",
       "value": 2,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -403,10 +178,6 @@
       "type": "material",
       "value": 5,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -449,10 +220,6 @@
       "type": "befriending",
       "value": 3,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -496,10 +263,6 @@
       "type": "befriending",
       "value": 5,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
@@ -543,10 +306,6 @@
       "type": "befriending",
       "value": 2,
       "stackable": true,
-      "inventorySize": {
-        "width": 1,
-        "height": 1
-      },
       "parts": [
         {
           "layer": "low",
