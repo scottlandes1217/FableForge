@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# IDE/editor
+.idea/
+.vscode/
+
+# Unreal generated folders
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Generated project files (Mac/Xcode)
+*.xcworkspace/
+*.xcodeproj
+
+# Visual Studio generated files
+.vs/
+*.VC.db
+*.VC.opendb
+
+# Unreal build/cached artifacts
+*.tmp
+*.log
+
+# Large generated lighting/build data (often exceeds GitHub file limits)
+*_BuiltData.uasset
