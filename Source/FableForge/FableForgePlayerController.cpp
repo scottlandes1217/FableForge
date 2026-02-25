@@ -12,6 +12,7 @@
 #include "Components/InputComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "FableForgeCharacter.h"
 #include "FableForge.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PawnMovementComponent.h"
@@ -26,7 +27,8 @@
 
 namespace
 {
-	const TCHAR* BaseCharacterMeshPath = TEXT("/Game/Characters/Mannequins/Meshes/basecharacter.basecharacter");
+	const TCHAR* BaseCharacterMeshPath = TEXT("/Game/Characters/PlayableCharacter/Meshes/basecharacter.basecharacter");
+	const TCHAR* LegacyBaseCharacterMeshPath = TEXT("/Game/Characters/Mannequins/Meshes/basecharacter.basecharacter");
 }
 
 void AFableForgePlayerController::BeginPlay()
@@ -116,7 +118,8 @@ void AFableForgePlayerController::SetupInputComponent()
 	if (InputComponent != nullptr)
 	{
 		InputComponent->BindKey(EKeys::I, IE_Pressed, this, &AFableForgePlayerController::ToggleCharacterMenu);
-		InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AFableForgePlayerController::HandlePrimaryInteractClick);
+		FInputKeyBinding& InteractClickBinding = InputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, this, &AFableForgePlayerController::HandlePrimaryInteractClick);
+		InteractClickBinding.bConsumeInput = false;
 	}
 }
 
@@ -191,6 +194,7 @@ void AFableForgePlayerController::EnterGameFromCharacterSlot(const FGuid& Charac
 	FInputModeGameAndUI InputMode;
 	InputMode.SetHideCursorDuringCapture(false);
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetWidgetToFocus(ChestWidget->TakeWidget());
 	SetInputMode(InputMode);
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
@@ -237,6 +241,11 @@ void AFableForgePlayerController::ShowMainMenu()
 
 void AFableForgePlayerController::NotifyManualMoveInput()
 {
+	if (ChestWidget != nullptr && ChestWidget->IsChestOpen())
+	{
+		CloseChest();
+	}
+
 	if (!IsValid(PendingInteractionActor))
 	{
 		return;
@@ -261,6 +270,31 @@ void AFableForgePlayerController::ToggleCharacterMenu()
 	if (CharacterMenuWidget != nullptr)
 	{
 		CharacterMenuWidget->Toggle();
+
+		if (CharacterMenuWidget->IsOpen())
+		{
+			FInputModeGameAndUI InputMode;
+			InputMode.SetHideCursorDuringCapture(false);
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			SetInputMode(InputMode);
+			bShowMouseCursor = true;
+			bEnableClickEvents = true;
+			bEnableMouseOverEvents = true;
+			SetIgnoreLookInput(true);
+			SetIgnoreMoveInput(true);
+		}
+		else
+		{
+			FInputModeGameAndUI InputMode;
+			InputMode.SetHideCursorDuringCapture(false);
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			SetInputMode(InputMode);
+			bShowMouseCursor = true;
+			bEnableClickEvents = true;
+			bEnableMouseOverEvents = true;
+			ResetIgnoreLookInput();
+			ResetIgnoreMoveInput();
+		}
 	}
 }
 
@@ -282,6 +316,7 @@ void AFableForgePlayerController::OpenChest(AFFChestInteractable* Chest)
 	FInputModeGameAndUI InputMode;
 	InputMode.SetHideCursorDuringCapture(false);
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetWidgetToFocus(ChestWidget->TakeWidget());
 	SetInputMode(InputMode);
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
@@ -320,7 +355,12 @@ void AFableForgePlayerController::ApplyActiveCharacterMesh()
 	USkeletalMesh* CharacterMesh = LoadObject<USkeletalMesh>(nullptr, BaseCharacterMeshPath);
 	if (CharacterMesh == nullptr)
 	{
-		UE_LOG(LogFableForge, Warning, TEXT("Failed to load base character mesh: %s"), BaseCharacterMeshPath);
+		CharacterMesh = LoadObject<USkeletalMesh>(nullptr, LegacyBaseCharacterMeshPath);
+	}
+	if (CharacterMesh == nullptr)
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("Failed to load base character mesh. Tried '%s' and '%s'."),
+			BaseCharacterMeshPath, LegacyBaseCharacterMeshPath);
 		return;
 	}
 
@@ -330,6 +370,11 @@ void AFableForgePlayerController::ApplyActiveCharacterMesh()
 	if (ExistingAnimClass != nullptr)
 	{
 		MeshComponent->SetAnimInstanceClass(ExistingAnimClass);
+	}
+
+	if (AFableForgeCharacter* ForgeCharacter = Cast<AFableForgeCharacter>(ControlledCharacter))
+	{
+		ForgeCharacter->RefreshEquipmentVisualsFromSave();
 	}
 
 	UE_LOG(LogFableForge, Log, TEXT("Applied base character mesh to pawn '%s'."),

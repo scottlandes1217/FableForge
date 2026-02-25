@@ -30,6 +30,7 @@ public:
 	virtual void Interact_Implementation(AActor* Interactor) override;
 
 	const TArray<FFChestItemEntry>& GetChestItems() const;
+	FString GetChestDisplayName() const;
 	bool TakeOneAtIndex(int32 ItemIndex, APlayerController* LootingController);
 	int32 TakeAll(APlayerController* LootingController);
 
@@ -39,6 +40,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chest")
 	TArray<FFChestItemEntry> ChestItems;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest")
+	FString ChestDisplayName = TEXT("Chest");
 
 private:
 	bool TryAddItemToInventory(APlayerController* LootingController, const FString& ItemId) const;

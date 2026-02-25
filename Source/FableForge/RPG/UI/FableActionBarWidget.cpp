@@ -15,7 +15,9 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameViewportClient.h"
+#include "FableForge.h"
 #include "RPG/UI/FableActionButton.h"
+#include "RPG/UI/FableInventoryDragDropOperation.h"
 #include "RPG/UI/FableInventorySlotWidget.h"
 
 namespace
@@ -110,6 +112,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			SlotWidget->InitializeSlot(SlotId, TEXT(""), false);
 			SlotWidget->SetItemData(SlotData.EntryId, SlotData.EntryLabel.IsEmpty() ? ShortToken(SlotData.EntryId) : SlotData.EntryLabel);
 			SlotWidget->OnItemDrop.AddDynamic(this, &UFableActionBarWidget::HandleSlotDrop);
+			SlotWidget->OnSlotClicked.AddDynamic(this, &UFableActionBarWidget::HandleSlotClicked);
 
 			USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			SlotSizeBox->SetWidthOverride(60.0f);
@@ -277,6 +280,50 @@ void UFableActionBarWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 	}
 }
 
+bool UFableActionBarWidget::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	const UFableInventoryDragDropOperation* DragOperation = Cast<UFableInventoryDragDropOperation>(InOperation);
+	if (DragOperation == nullptr || DragOperation->SourceSlotId == NAME_None)
+	{
+		return Super::NativeOnDragOver(InGeometry, InDragDropEvent, InOperation);
+	}
+
+	int32 SlotIndex = INDEX_NONE;
+	if (ResolveSlotIndexFromDropPosition(InGeometry, InDragDropEvent, SlotIndex))
+	{
+		UE_LOG(LogFableForge, Verbose, TEXT("ActionBar drag over bar=%s slotIndex=%d payload=%s"),
+			*BarData.BarId.ToString(EGuidFormats::Digits), SlotIndex, *DragOperation->PayloadId);
+		return true;
+	}
+
+	return Super::NativeOnDragOver(InGeometry, InDragDropEvent, InOperation);
+}
+
+bool UFableActionBarWidget::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	const UFableInventoryDragDropOperation* DragOperation = Cast<UFableInventoryDragDropOperation>(InOperation);
+	if (DragOperation == nullptr || DragOperation->SourceSlotId == NAME_None)
+	{
+		return Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
+	}
+
+	int32 SlotIndex = INDEX_NONE;
+	if (!ResolveSlotIndexFromDropPosition(InGeometry, InDragDropEvent, SlotIndex))
+	{
+		return Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
+	}
+
+	UE_LOG(LogFableForge, Log, TEXT("ActionBar root drop bar=%s slotIndex=%d from=%s payload=%s label=%s"),
+		*BarData.BarId.ToString(EGuidFormats::Digits),
+		SlotIndex,
+		*DragOperation->SourceSlotId.ToString(),
+		*DragOperation->PayloadId,
+		*DragOperation->PayloadLabel);
+
+	OnActionSlotDropped.Broadcast(BarData.BarId, SlotIndex, DragOperation->SourceSlotId, DragOperation->PayloadId, DragOperation->PayloadLabel);
+	return true;
+}
+
 void UFableActionBarWidget::InitializeBar(const FFableActionBarData& InBarData, const TArray<FFableActionSlotData>& InVisibleSlots, bool bInCanExpand, bool bInShowExpanded)
 {
 	BarData = InBarData;
@@ -289,6 +336,53 @@ void UFableActionBarWidget::InitializeBar(const FFableActionBarData& InBarData, 
 FGuid UFableActionBarWidget::GetBarId() const
 {
 	return BarData.BarId;
+}
+
+bool UFableActionBarWidget::TryResolveSlotIndexFromScreenPosition(const FVector2D& ScreenPosition, int32& OutSlotIndex) const
+{
+	OutSlotIndex = INDEX_NONE;
+	if (!IsVisible())
+	{
+		return false;
+	}
+
+	const FGeometry& Geometry = GetCachedGeometry();
+	if (!Geometry.IsUnderLocation(ScreenPosition))
+	{
+		return false;
+	}
+
+	const int32 Columns = FMath::Max(1, BarData.Columns);
+	if (VisibleSlots.Num() == 0)
+	{
+		return false;
+	}
+
+	const int32 Rows = FMath::Max(1, FMath::CeilToInt(static_cast<float>(VisibleSlots.Num()) / static_cast<float>(Columns)));
+	const FVector2D Local = Geometry.AbsoluteToLocal(ScreenPosition);
+
+	constexpr float RootPadding = 8.0f;
+	constexpr float CellSize = 60.0f;
+	const float GridWidth = Columns * CellSize;
+	const float GridHeight = Rows * CellSize;
+	const float GridX = RootPadding;
+	const float GridY = RootPadding;
+	if (Local.X < GridX || Local.Y < GridY || Local.X >= GridX + GridWidth || Local.Y >= GridY + GridHeight)
+	{
+		return false;
+	}
+
+	const int32 VisualColumn = FMath::Clamp(FMath::FloorToInt((Local.X - GridX) / CellSize), 0, Columns - 1);
+	const int32 VisualRow = FMath::Clamp(FMath::FloorToInt((Local.Y - GridY) / CellSize), 0, Rows - 1);
+	const int32 SourceRow = Rows - 1 - VisualRow;
+	const int32 CandidateIndex = SourceRow * Columns + VisualColumn;
+	if (!VisibleSlots.IsValidIndex(CandidateIndex))
+	{
+		return false;
+	}
+
+	OutSlotIndex = CandidateIndex;
+	return true;
 }
 
 void UFableActionBarWidget::HandleMovePressed()
@@ -336,6 +430,74 @@ void UFableActionBarWidget::HandleSlotDrop(FName FromSlotId, FName ToSlotId, con
 {
 	if (const int32* SlotIndex = SlotAddressMap.Find(ToSlotId))
 	{
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar slot drop bar=%s toSlot=%s resolvedIndex=%d from=%s payload=%s label=%s"),
+			*BarData.BarId.ToString(EGuidFormats::Digits),
+			*ToSlotId.ToString(),
+			*SlotIndex,
+			*FromSlotId.ToString(),
+			*PayloadId,
+			*PayloadLabel);
 		OnActionSlotDropped.Broadcast(BarData.BarId, *SlotIndex, FromSlotId, PayloadId, PayloadLabel);
+		return;
 	}
+
+	UE_LOG(LogFableForge, Warning, TEXT("ActionBar slot drop target not found bar=%s toSlot=%s from=%s payload=%s"),
+		*BarData.BarId.ToString(EGuidFormats::Digits),
+		*ToSlotId.ToString(),
+		*FromSlotId.ToString(),
+		*PayloadId);
+}
+
+void UFableActionBarWidget::HandleSlotClicked(FName SlotId, const FString& PayloadId)
+{
+	if (PayloadId.IsEmpty())
+	{
+		return;
+	}
+
+	if (const int32* SlotIndex = SlotAddressMap.Find(SlotId))
+	{
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar slot click bar=%s slot=%d payload=%s"),
+			*BarData.BarId.ToString(EGuidFormats::Digits), *SlotIndex, *PayloadId);
+		OnActionSlotClicked.Broadcast(BarData.BarId, *SlotIndex, PayloadId);
+	}
+}
+
+bool UFableActionBarWidget::ResolveSlotIndexFromDropPosition(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, int32& OutSlotIndex) const
+{
+	OutSlotIndex = INDEX_NONE;
+
+	const int32 Columns = FMath::Max(1, BarData.Columns);
+	if (VisibleSlots.Num() == 0)
+	{
+		return false;
+	}
+
+	const int32 Rows = FMath::Max(1, FMath::CeilToInt(static_cast<float>(VisibleSlots.Num()) / static_cast<float>(Columns)));
+	const FVector2D Local = InGeometry.AbsoluteToLocal(InDragDropEvent.GetScreenSpacePosition());
+
+	constexpr float RootPadding = 8.0f;
+	constexpr float SlotSize = 60.0f;
+	constexpr float CellSize = 60.0f;
+	const float GridWidth = Columns * CellSize;
+	const float GridHeight = Rows * CellSize;
+
+	const float GridX = RootPadding;
+	const float GridY = RootPadding;
+	if (Local.X < GridX || Local.Y < GridY || Local.X >= GridX + GridWidth || Local.Y >= GridY + GridHeight)
+	{
+		return false;
+	}
+
+	const int32 VisualColumn = FMath::Clamp(FMath::FloorToInt((Local.X - GridX) / CellSize), 0, Columns - 1);
+	const int32 VisualRow = FMath::Clamp(FMath::FloorToInt((Local.Y - GridY) / CellSize), 0, Rows - 1);
+	const int32 SourceRow = Rows - 1 - VisualRow;
+	const int32 CandidateIndex = SourceRow * Columns + VisualColumn;
+	if (!VisibleSlots.IsValidIndex(CandidateIndex))
+	{
+		return false;
+	}
+
+	OutSlotIndex = CandidateIndex;
+	return true;
 }

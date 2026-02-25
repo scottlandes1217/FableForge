@@ -7,6 +7,9 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
@@ -14,14 +17,23 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/SceneCapture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "FableForgePlayerController.h"
 #include "Misc/FileHelper.h"
 #include "RPG/Save/FableSaveSubsystem.h"
 #include "RPG/UI/FableActionButton.h"
 #include "RPG/UI/FableActionBarWidget.h"
 #include "RPG/UI/FableCharacterMenuWidget.h"
+#include "FableForgePlayerController.h"
+#include "FableForge.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "GameFramework/Character.h"
+#include "Kismet/KismetMathLibrary.h"
 
 namespace
 {
@@ -65,9 +77,88 @@ void UFablePartyHudWidget::NativeConstruct()
 	RefreshFromSaveData();
 }
 
+void UFablePartyHudWidget::NativeDestruct()
+{
+	if (PlayerPortraitCaptureActor != nullptr)
+	{
+		PlayerPortraitCaptureActor->Destroy();
+		PlayerPortraitCaptureActor = nullptr;
+	}
+
+	PlayerPortraitRenderTarget = nullptr;
+	Super::NativeDestruct();
+}
+
+void UFablePartyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+}
+
 void UFablePartyHudWidget::SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget)
 {
 	CharacterMenuWidget = InCharacterMenuWidget;
+}
+
+bool UFablePartyHudWidget::TryAssignActionAtScreenPosition(const FVector2D& ScreenPosition, FName FromSlotId, const FString& PayloadId, const FString& PayloadLabel)
+{
+	if (ActionBarsCanvas == nullptr)
+	{
+		return false;
+	}
+
+	const int32 ChildCount = ActionBarsCanvas->GetChildrenCount();
+	for (int32 ChildIndex = ChildCount - 1; ChildIndex >= 0; --ChildIndex)
+	{
+		UWidget* ChildWidget = ActionBarsCanvas->GetChildAt(ChildIndex);
+		UFableActionBarWidget* ActionBarWidget = Cast<UFableActionBarWidget>(ChildWidget);
+		if (ActionBarWidget == nullptr)
+		{
+			continue;
+		}
+
+		int32 ToSlotIndex = INDEX_NONE;
+		if (!ActionBarWidget->TryResolveSlotIndexFromScreenPosition(ScreenPosition, ToSlotIndex))
+		{
+			continue;
+		}
+
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar manual drop bar=%s slotIndex=%d from=%s payload=%s label=%s"),
+			*ActionBarWidget->GetBarId().ToString(EGuidFormats::Digits),
+			ToSlotIndex,
+			*FromSlotId.ToString(),
+			*PayloadId,
+			*PayloadLabel);
+		HandleActionBarSlotDrop(ActionBarWidget->GetBarId(), ToSlotIndex, FromSlotId, PayloadId, PayloadLabel);
+		return true;
+	}
+
+	return false;
+}
+
+bool UFablePartyHudWidget::ClearActionAtSlotId(FName SlotId)
+{
+	FGuid BarId;
+	int32 SlotIndex = INDEX_NONE;
+	if (!ResolveActionSlotAddress(SlotId, BarId, SlotIndex))
+	{
+		return false;
+	}
+
+	FFableActionBarData* Bar = ActionBars.FindByPredicate([&BarId](const FFableActionBarData& Candidate)
+	{
+		return Candidate.BarId == BarId;
+	});
+	if (Bar == nullptr || !Bar->Slots.IsValidIndex(SlotIndex))
+	{
+		return false;
+	}
+
+	Bar->Slots[SlotIndex] = FFableActionSlotData();
+	UE_LOG(LogFableForge, Log, TEXT("ActionBar clear slot bar=%s slotIndex=%d"),
+		*BarId.ToString(EGuidFormats::Digits), SlotIndex);
+	SaveActionBars();
+	RebuildActionBars();
+	return true;
 }
 
 void UFablePartyHudWidget::RefreshFromSaveData()
@@ -146,6 +237,7 @@ void UFablePartyHudWidget::RefreshFromSaveData()
 	ActionBars = ActiveProfile.ActionBars;
 	RebuildPartyMembers(ActiveProfile);
 	RebuildActionBars();
+	UpdatePlayerPortraitCapture();
 }
 
 void UFablePartyHudWidget::Rebuild()
@@ -160,6 +252,7 @@ void UFablePartyHudWidget::Rebuild()
 	SlotActionMap.Reset();
 
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("PartyHUDRoot"));
+	Root->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	WidgetTree->RootWidget = Root;
 
 	ActionBarsCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ActionBarsCanvas"));
@@ -278,6 +371,8 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 	PlayerHealthBar = nullptr;
 	PlayerManaBar = nullptr;
 	PlayerExperienceBar = nullptr;
+	PlayerPortraitImage = nullptr;
+	PlayerPortraitFallbackText = nullptr;
 
 	auto AddPartyCard = [&](const FString& Name, float HealthPct, float ManaPct, float ExperiencePct, bool bPlayerCard, const FString& PortraitLabel)
 	{
@@ -293,8 +388,8 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		Card->SetContent(CardRow);
 
 		USizeBox* PortraitSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		PortraitSizeBox->SetWidthOverride(58.0f);
-		PortraitSizeBox->SetHeightOverride(58.0f);
+		PortraitSizeBox->SetWidthOverride(64.0f);
+		PortraitSizeBox->SetHeightOverride(74.0f);
 		if (UHorizontalBoxSlot* PortraitSlot = CardRow->AddChildToHorizontalBox(PortraitSizeBox))
 		{
 			PortraitSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
@@ -305,11 +400,31 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		PortraitBorder->SetBrushColor(UiButtonColor);
 		PortraitSizeBox->SetContent(PortraitBorder);
 
+		UOverlay* PortraitOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+		PortraitBorder->SetContent(PortraitOverlay);
+
+		UImage* PortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		if (UOverlaySlot* PortraitImageSlot = PortraitOverlay->AddChildToOverlay(PortraitImage))
+		{
+			PortraitImageSlot->SetHorizontalAlignment(HAlign_Fill);
+			PortraitImageSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+
 		UTextBlock* PortraitText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		PortraitText->SetText(FText::FromString(PortraitLabel));
 		PortraitText->SetJustification(ETextJustify::Center);
 		PortraitText->SetColorAndOpacity(FSlateColor(UiTextColor));
-		PortraitBorder->SetContent(PortraitText);
+		if (UOverlaySlot* PortraitTextSlot = PortraitOverlay->AddChildToOverlay(PortraitText))
+		{
+			PortraitTextSlot->SetHorizontalAlignment(HAlign_Center);
+			PortraitTextSlot->SetVerticalAlignment(VAlign_Center);
+		}
+
+		if (bPlayerCard)
+		{
+			PlayerPortraitImage = PortraitImage;
+			PlayerPortraitFallbackText = PortraitText;
+		}
 
 		UVerticalBox* InfoColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		if (UHorizontalBoxSlot* InfoSlot = CardRow->AddChildToHorizontalBox(InfoColumn))
@@ -371,6 +486,167 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		const FString CompanionPortrait = CompanionName.IsEmpty() ? TEXT("C") : CompanionName.Left(1).ToUpper();
 		AddPartyCard(CompanionName, 1.0f, 0.0f, 0.0f, false, CompanionPortrait);
 	}
+
+	UpdatePlayerPortraitCapture();
+}
+
+void UFablePartyHudWidget::EnsurePlayerPortraitCapture()
+{
+	if (PlayerPortraitRenderTarget == nullptr)
+	{
+		PlayerPortraitRenderTarget = NewObject<UTextureRenderTarget2D>(this, TEXT("PlayerPortraitRT"));
+		if (PlayerPortraitRenderTarget != nullptr)
+		{
+			PlayerPortraitRenderTarget->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA8;
+			PlayerPortraitRenderTarget->ClearColor = FLinearColor(0.03f, 0.03f, 0.03f, 1.0f);
+			PlayerPortraitRenderTarget->InitAutoFormat(256, 256);
+			PlayerPortraitRenderTarget->UpdateResourceImmediate(true);
+		}
+	}
+
+	if (PlayerPortraitCaptureActor == nullptr)
+	{
+		UWorld* World = GetWorld();
+		if (World == nullptr)
+		{
+			return;
+		}
+
+		PlayerPortraitCaptureActor = World->SpawnActor<ASceneCapture2D>(ASceneCapture2D::StaticClass(), FTransform::Identity);
+		if (PlayerPortraitCaptureActor != nullptr)
+		{
+			PlayerPortraitCaptureActor->SetActorHiddenInGame(false);
+			PlayerPortraitCaptureActor->SetActorEnableCollision(false);
+			if (USceneCaptureComponent2D* Capture = PlayerPortraitCaptureActor->GetCaptureComponent2D())
+			{
+				Capture->bCaptureEveryFrame = false;
+				Capture->bCaptureOnMovement = false;
+				Capture->TextureTarget = PlayerPortraitRenderTarget;
+				Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+				Capture->FOVAngle = 22.0f;
+				Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+				Capture->ShowOnlyActors.Empty();
+				Capture->ShowOnlyComponents.Empty();
+				Capture->PostProcessBlendWeight = 1.0f;
+				Capture->PostProcessSettings.bOverride_AutoExposureBias = true;
+				Capture->PostProcessSettings.AutoExposureBias = 6.0f;
+			}
+		}
+	}
+
+	if (PlayerPortraitImage != nullptr && PlayerPortraitRenderTarget != nullptr)
+	{
+		FSlateBrush Brush = PlayerPortraitImage->GetBrush();
+		Brush.SetResourceObject(PlayerPortraitRenderTarget);
+		Brush.ImageSize = FVector2D(64.0f, 74.0f);
+		PlayerPortraitImage->SetBrush(Brush);
+		PlayerPortraitImage->SetColorAndOpacity(FLinearColor::White);
+	}
+}
+
+void UFablePartyHudWidget::UpdatePlayerPortraitCapture()
+{
+	if (PlayerPortraitImage == nullptr)
+	{
+		return;
+	}
+
+	EnsurePlayerPortraitCapture();
+	if (PlayerPortraitCaptureActor == nullptr || PlayerPortraitRenderTarget == nullptr)
+	{
+		if (PlayerPortraitFallbackText != nullptr)
+		{
+			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
+		}
+		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	APawn* PlayerPawn = GetOwningPlayerPawn();
+	if (PlayerPawn == nullptr)
+	{
+		if (PlayerPortraitFallbackText != nullptr)
+		{
+			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
+		}
+		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	USceneCaptureComponent2D* Capture = PlayerPortraitCaptureActor->GetCaptureComponent2D();
+	if (Capture == nullptr)
+	{
+		return;
+	}
+
+	Capture->TextureTarget = PlayerPortraitRenderTarget;
+	Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+	Capture->ShowOnlyActors.Empty();
+	Capture->ClearShowOnlyComponents();
+	Capture->ShowOnlyActorComponents(PlayerPawn, true);
+
+	int32 RemovedCapsules = 0;
+	TArray<UPrimitiveComponent*> PortraitComponents;
+	PlayerPawn->GetComponents<UPrimitiveComponent>(PortraitComponents);
+	for (UPrimitiveComponent* Primitive : PortraitComponents)
+	{
+		if (Primitive != nullptr && Primitive->IsA<UCapsuleComponent>())
+		{
+			Capture->RemoveShowOnlyComponent(Primitive);
+			++RemovedCapsules;
+		}
+	}
+
+	const int32 AddedPortraitComponents = Capture->ShowOnlyComponents.Num();
+	if (AddedPortraitComponents <= 0)
+	{
+		if (PlayerPortraitFallbackText != nullptr)
+		{
+			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
+		}
+		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogFableForge, Warning, TEXT("Portrait capture: no visible primitive components found on pawn %s"), *GetNameSafe(PlayerPawn));
+		return;
+	}
+	UE_LOG(LogFableForge, Log, TEXT("Portrait capture components=%d (capsules removed=%d) pawn=%s"),
+		AddedPortraitComponents, RemovedCapsules, *GetNameSafe(PlayerPawn));
+
+	FVector BoundsOrigin = PlayerPawn->GetActorLocation();
+	FVector BoundsExtent(30.0f, 30.0f, 88.0f);
+	FVector PortraitForward = PlayerPawn->GetActorForwardVector();
+	FVector PortraitRight = PlayerPawn->GetActorRightVector();
+	if (ACharacter* CharacterPawn = Cast<ACharacter>(PlayerPawn))
+	{
+		if (USkeletalMeshComponent* MeshComp = CharacterPawn->GetMesh())
+		{
+			BoundsOrigin = MeshComp->Bounds.Origin;
+			BoundsExtent = MeshComp->Bounds.BoxExtent;
+			PortraitForward = MeshComp->GetForwardVector();
+			PortraitRight = MeshComp->GetRightVector();
+		}
+		else
+		{
+			PlayerPawn->GetActorBounds(true, BoundsOrigin, BoundsExtent);
+		}
+	}
+	else
+	{
+		PlayerPawn->GetActorBounds(true, BoundsOrigin, BoundsExtent);
+	}
+
+	const FVector FocusPoint = BoundsOrigin + FVector(0.0f, 0.0f, BoundsExtent.Z * 0.82f);
+	const float CameraDistance = FMath::Clamp(BoundsExtent.Z * 1.55f, 110.0f, 240.0f);
+	const FVector PortraitDirection = (PortraitRight).GetSafeNormal();
+	const FVector CaptureLocation = FocusPoint + (PortraitDirection * CameraDistance) + FVector(0.0f, 0.0f, BoundsExtent.Z * 0.02f);
+	PlayerPortraitCaptureActor->SetActorLocation(CaptureLocation);
+	PlayerPortraitCaptureActor->SetActorRotation(UKismetMathLibrary::FindLookAtRotation(CaptureLocation, FocusPoint));
+	Capture->CaptureScene();
+
+	PlayerPortraitImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+	if (PlayerPortraitFallbackText != nullptr)
+	{
+		PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Collapsed);
+	}
 }
 
 void UFablePartyHudWidget::RebuildActionBars()
@@ -408,6 +684,7 @@ void UFablePartyHudWidget::RebuildActionBars()
 		BarWidget->OnBarMoved.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarMoved);
 		BarWidget->OnExpandToggled.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarExpandToggled);
 		BarWidget->OnActionSlotDropped.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarSlotDrop);
+		BarWidget->OnActionSlotClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarSlotClicked);
 		BarWidget->OnRemoveRequested.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarRemoveRequested);
 
 		if (UCanvasPanelSlot* BarSlot = ActionBarsCanvas->AddChildToCanvas(BarWidget))
@@ -793,7 +1070,11 @@ void UFablePartyHudWidget::HandleActionClicked(FName ActionId)
 
 	if (ActionId == OpenCharacterMenuAction)
 	{
-		if (CharacterMenuWidget != nullptr)
+		if (AFableForgePlayerController* Controller = Cast<AFableForgePlayerController>(GetOwningPlayer()))
+		{
+			Controller->ToggleCharacterMenu();
+		}
+		else if (CharacterMenuWidget != nullptr)
 		{
 			CharacterMenuWidget->Toggle();
 		}
@@ -999,6 +1280,15 @@ void UFablePartyHudWidget::HandleActionBarSlotDrop(FGuid BarId, int32 ToSlotInde
 	TargetBar->Slots[ToSlotIndex].EntryLabel = PayloadLabel.IsEmpty() ? BuildActionToken(PayloadId) : PayloadLabel;
 	SaveActionBars();
 	RebuildActionBars();
+}
+
+void UFablePartyHudWidget::HandleActionBarSlotClicked(FGuid BarId, int32 SlotIndex, const FString& PayloadId)
+{
+	UE_LOG(LogFableForge, Log, TEXT("ActionBar use requested bar=%s slot=%d payload=%s"),
+		*BarId.ToString(EGuidFormats::Digits), SlotIndex, *PayloadId);
+
+	// Placeholder hook until gameplay skill/item execution is wired.
+	// Clicking now emits a concrete event and can be connected to cast/use systems.
 }
 
 void UFablePartyHudWidget::HandleActionBarRemoveRequested(FGuid BarId)

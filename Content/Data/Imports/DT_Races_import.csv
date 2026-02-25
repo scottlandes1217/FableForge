@@ -1,0 +1,7 @@
+Name,Id,DisplayName,Description,Image,BaseHitPoints,BaseMana,BaseEnergy,BaseRage,Strength,Dexterity,Constitution,Intelligence,Wisdom,Charisma
+human,human,Human,"Versatile and ambitious, humans are the most adaptable of races",race_human,10,0,0,0,1,1,1,1,1,1
+elf,elf,Elf,"Graceful and long-lived, elves are masters of magic and archery",race_elf,10,0,0,0,0,2,0,0,0,0
+dwarf,dwarf,Dwarf,"Hardy and resilient, dwarves are known for their craftsmanship",race_dwarf,10,0,0,0,0,0,2,0,0,0
+halfling,halfling,Halfling,"Small but brave, halflings are known for their luck and courage",race_halfling,10,0,0,0,0,2,0,0,0,0
+orc,orc,Orc,"Strong and fierce, orcs are powerful warriors",race_orc,10,0,0,0,2,0,1,0,0,0
+tiefling,tiefling,Tiefling,"Descendants of fiends, tieflings have an otherworldly presence",race_tiefling,10,0,0,0,0,0,0,1,0,2

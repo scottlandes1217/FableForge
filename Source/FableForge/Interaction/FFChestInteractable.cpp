@@ -42,6 +42,11 @@ const TArray<FFChestItemEntry>& AFFChestInteractable::GetChestItems() const
 	return ChestItems;
 }
 
+FString AFFChestInteractable::GetChestDisplayName() const
+{
+	return ChestDisplayName.IsEmpty() ? FString(TEXT("Chest")) : ChestDisplayName;
+}
+
 bool AFFChestInteractable::TakeOneAtIndex(int32 ItemIndex, APlayerController* LootingController)
 {
 	if (!ChestItems.IsValidIndex(ItemIndex))

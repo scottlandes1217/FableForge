@@ -10,6 +10,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class USceneComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -142,6 +143,7 @@ protected:
 
 	/** Runtime initialization */
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Character tick */
 	virtual void Tick(float DeltaSeconds) override;
@@ -187,6 +189,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
 
+	/** Rebuilds visible equipped item meshes from the active save profile equipment slots */
+	UFUNCTION(BlueprintCallable, Category="Equipment")
+	void RefreshEquipmentVisualsFromSave();
+
 public:
 
 	/** Returns CameraBoom subobject **/
@@ -194,4 +200,16 @@ public:
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+private:
+	void HandleActiveInventoryChanged(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots);
+	void ApplyEquipmentVisuals(const TArray<FString>& InEquippedSlots);
+	void ClearEquipmentVisual(int32 SlotIndex);
+	void CreateEquipmentVisualForSlot(int32 SlotIndex, const FString& ItemId);
+	FName GetEquipmentAttachSocket(int32 SlotIndex) const;
+	FTransform GetEquipmentSlotRelativeTransform(int32 SlotIndex, const FString& ItemId) const;
+	bool ResolveEquipmentMeshPath(const FString& ItemId, int32 SlotIndex, FString& OutAssetPath) const;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USceneComponent>> EquipmentVisualComponents;
 };

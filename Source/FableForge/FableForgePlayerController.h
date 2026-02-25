@@ -36,6 +36,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void CloseChest();
 
+	UFUNCTION(BlueprintPure, Category = "UI")
+	UFablePartyHudWidget* GetPartyHudWidget() const { return PartyHudWidget; }
+
 protected:
 	/** Input Mapping Contexts */
 	UPROPERTY(EditAnywhere, Category = "Input|Input Mappings")

@@ -1,0 +1,5 @@
+Name,ItemId,DisplayName,Type,bStackable,bEquipable,IconTexture,WorldStaticMesh,WorldSkeletalMesh
+peasant_chest,peasant_chest,Peasant Chest,armor,false,true,,,
+peasant_legs,peasant_legs,Peasant Legs,armor,false,true,,,
+peasant_feet,peasant_feet,Peasant Feet,armor,false,true,,,
+peasant_arms,peasant_arms,Peasant Arms,armor,false,true,,,

@@ -1,0 +1,3 @@
+Name,ItemId,DisplayName,Type,bStackable,bEquipable,IconTexture,WorldStaticMesh,WorldSkeletalMesh
+iron_sword,iron_sword,Iron Sword,weapon,false,true,,,
+magic_staff,magic_staff,Magic Staff,weapon,false,true,,,

@@ -44,14 +44,14 @@ namespace
 	const FName BackdropWidgetName(TEXT("Backdrop"));
 	const FName PanelWidgetName(TEXT("Panel"));
 
-	const TCHAR* BaseCharacterMeshPath = TEXT("/Game/Characters/Mannequins/Meshes/basecharacter.basecharacter");
+	const TCHAR* MainMenuBaseCharacterMeshPath = TEXT("/Game/Characters/Mannequins/Meshes/basecharacter.basecharacter");
 
 	const FLinearColor UiBackdropColor(0.0f, 0.0f, 0.0f, 0.94f);
 	const FLinearColor UiPanelColor(0.01f, 0.01f, 0.01f, 0.97f);
 	const FLinearColor UiPreviewColor(0.0f, 0.0f, 0.0f, 0.97f);
-	const FLinearColor UiTextColor(0.95f, 0.95f, 0.95f, 1.0f);
+	const FLinearColor MainMenuUiTextColor(0.95f, 0.95f, 0.95f, 1.0f);
 	const FLinearColor UiMutedTextColor(0.72f, 0.72f, 0.72f, 1.0f);
-	const FLinearColor UiButtonColor(0.05f, 0.05f, 0.05f, 1.0f);
+	const FLinearColor MainMenuUiButtonColor(0.05f, 0.05f, 0.05f, 1.0f);
 	const FLinearColor UiButtonSelectedColor(0.0f, 0.0f, 0.0f, 1.0f);
 	const FLinearColor UiButtonDisabledColor(0.03f, 0.03f, 0.03f, 0.75f);
 
@@ -420,7 +420,7 @@ void UFableMainMenuWidget::BuildRaceSelectState()
 		UFableActionButton* RaceButton = CreateActionButton(LeftColumn, Race.Name, RegisterRaceAction(Race.Id), true, 44.0f);
 		if (RaceButton != nullptr)
 		{
-			RaceButton->SetBackgroundColor(bSelectedRace ? UiButtonSelectedColor : UiButtonColor);
+			RaceButton->SetBackgroundColor(bSelectedRace ? UiButtonSelectedColor : MainMenuUiButtonColor);
 		}
 		AddSpacer(LeftColumn, 6.0f);
 	}
@@ -445,7 +445,7 @@ void UFableMainMenuWidget::BuildRaceSelectState()
 	AddSpacer(RightColumn, 8.0f);
 
 	UBorder* DescriptionPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("RaceDescriptionPanel"));
-	DescriptionPanel->SetBrushColor(UiButtonColor);
+	DescriptionPanel->SetBrushColor(MainMenuUiButtonColor);
 	DescriptionPanel->SetPadding(FMargin(18.0f, 16.0f, 18.0f, 16.0f));
 	if (UVerticalBoxSlot* DescriptionSlot = RightColumn->AddChildToVerticalBox(DescriptionPanel))
 	{
@@ -461,7 +461,7 @@ void UFableMainMenuWidget::BuildRaceSelectState()
 	UTextBlock* DescriptionText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("RaceDescriptionText"));
 	DescriptionText->SetAutoWrapText(true);
 	DescriptionText->SetJustification(ETextJustify::Left);
-	DescriptionText->SetColorAndOpacity(FSlateColor(UiTextColor));
+	DescriptionText->SetColorAndOpacity(FSlateColor(MainMenuUiTextColor));
 	DescriptionText->SetText(FText::FromString(
 		(SelectedRace != nullptr && !SelectedRace->Description.IsEmpty())
 			? SelectedRace->Description
@@ -510,11 +510,11 @@ void UFableMainMenuWidget::BuildCustomizationState()
 	CharacterNameTextBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("CharacterNameTextBox"));
 	CharacterNameTextBox->SetHintText(FText::FromString(TEXT("Enter character name")));
 	CharacterNameTextBox->SetText(FText::FromString(TEXT("Adventurer")));
-	CharacterNameTextBox->SetForegroundColor(UiTextColor);
+	CharacterNameTextBox->SetForegroundColor(MainMenuUiTextColor);
 	FEditableTextBoxStyle NameTextBoxStyle = CharacterNameTextBox->GetWidgetStyle();
-	NameTextBoxStyle.SetBackgroundColor(FSlateColor(UiButtonColor));
-	NameTextBoxStyle.SetForegroundColor(FSlateColor(UiTextColor));
-	NameTextBoxStyle.SetFocusedForegroundColor(FSlateColor(UiTextColor));
+	NameTextBoxStyle.SetBackgroundColor(FSlateColor(MainMenuUiButtonColor));
+	NameTextBoxStyle.SetForegroundColor(FSlateColor(MainMenuUiTextColor));
+	NameTextBoxStyle.SetFocusedForegroundColor(FSlateColor(MainMenuUiTextColor));
 	NameTextBoxStyle.SetReadOnlyForegroundColor(FSlateColor(UiMutedTextColor));
 	CharacterNameTextBox->SetWidgetStyle(NameTextBoxStyle);
 	CharacterNameTextBox->SetJustification(ETextJustify::Center);
@@ -527,13 +527,13 @@ void UFableMainMenuWidget::BuildCustomizationState()
 	UFableActionButton* MaleButton = CreateActionButton(LeftColumn, TEXT("Male"), GenderMaleAction, true, 40.0f);
 	if (MaleButton != nullptr)
 	{
-		MaleButton->SetBackgroundColor(PendingGender == EFableGender::Male ? UiButtonSelectedColor : UiButtonColor);
+		MaleButton->SetBackgroundColor(PendingGender == EFableGender::Male ? UiButtonSelectedColor : MainMenuUiButtonColor);
 	}
 	AddSpacer(LeftColumn, 4.0f);
 	UFableActionButton* FemaleButton = CreateActionButton(LeftColumn, TEXT("Female"), GenderFemaleAction, true, 40.0f);
 	if (FemaleButton != nullptr)
 	{
-		FemaleButton->SetBackgroundColor(PendingGender == EFableGender::Female ? UiButtonSelectedColor : UiButtonColor);
+		FemaleButton->SetBackgroundColor(PendingGender == EFableGender::Female ? UiButtonSelectedColor : MainMenuUiButtonColor);
 	}
 	AddSpacer(LeftColumn, 30.0f);
 
@@ -585,11 +585,11 @@ void UFableMainMenuWidget::BuildCustomizationState()
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
 		Button->InitializeAction(Action);
 		Button->OnActionClicked.AddDynamic(this, &UFableMainMenuWidget::HandleActionClicked);
-		Button->SetBackgroundColor(UiButtonColor);
+		Button->SetBackgroundColor(MainMenuUiButtonColor);
 
 		UTextBlock* LabelWidget = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		LabelWidget->SetText(FText::FromString(Label));
-		LabelWidget->SetColorAndOpacity(FSlateColor(UiTextColor));
+		LabelWidget->SetColorAndOpacity(FSlateColor(MainMenuUiTextColor));
 		LabelWidget->SetJustification(ETextJustify::Center);
 		FSlateFontInfo FontInfo = LabelWidget->GetFont();
 		FontInfo.Size = 30;
@@ -646,7 +646,7 @@ void UFableMainMenuWidget::CreateHeader(UVerticalBox* Parent, const FString& Tex
 
 	UTextBlock* Header = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Header->SetText(FText::FromString(Text));
-	Header->SetColorAndOpacity(FSlateColor(UiTextColor));
+	Header->SetColorAndOpacity(FSlateColor(MainMenuUiTextColor));
 	Header->SetJustification(ETextJustify::Center);
 	FSlateFontInfo FontInfo = Header->GetFont();
 	FontInfo.Size = FontSize;
@@ -702,7 +702,7 @@ UFableActionButton* UFableMainMenuWidget::CreateActionButton(UVerticalBox* Paren
 	Button->InitializeAction(ActionId);
 	Button->SetIsEnabled(bEnabled);
 	Button->OnActionClicked.AddDynamic(this, &UFableMainMenuWidget::HandleActionClicked);
-	Button->SetBackgroundColor(bEnabled ? UiButtonColor : UiButtonDisabledColor);
+	Button->SetBackgroundColor(bEnabled ? MainMenuUiButtonColor : UiButtonDisabledColor);
 
 	UTextBlock* LabelWidget = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	LabelWidget->SetText(FText::FromString(Label));
@@ -776,10 +776,10 @@ void UFableMainMenuWidget::UpdatePreviewMesh()
 		return;
 	}
 
-	USkeletalMesh* PreviewMesh = LoadObject<USkeletalMesh>(nullptr, BaseCharacterMeshPath);
+	USkeletalMesh* PreviewMesh = LoadObject<USkeletalMesh>(nullptr, MainMenuBaseCharacterMeshPath);
 	if (PreviewMesh == nullptr)
 	{
-		UE_LOG(LogFableForge, Warning, TEXT("Preview mesh could not be loaded: %s"), BaseCharacterMeshPath);
+		UE_LOG(LogFableForge, Warning, TEXT("Preview mesh could not be loaded: %s"), MainMenuBaseCharacterMeshPath);
 		return;
 	}
 

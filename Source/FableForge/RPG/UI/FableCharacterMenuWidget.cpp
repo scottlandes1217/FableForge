@@ -16,12 +16,15 @@
 #include "Components/UniformGridSlot.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
-#include "Misc/FileHelper.h"
+#include "Engine/DataTable.h"
+#include "Engine/Texture2D.h"
+#include "FableForgePlayerController.h"
+#include "FableForge.h"
+#include "RPG/Data/FableItemDefinitionTableRow.h"
+#include "RPG/Data/FableSkillSystemTableRows.h"
 #include "RPG/Save/FableSaveSubsystem.h"
 #include "RPG/UI/FableActionButton.h"
 #include "RPG/UI/FableInventorySlotWidget.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
 #include "TimerManager.h"
 
 namespace
@@ -37,6 +40,10 @@ namespace
 	const FName CategoryConsumablesAction = TEXT("cat_consumables");
 	const FName CategoryMiscAction = TEXT("cat_misc");
 	const FName CategoryKeyItemsAction = TEXT("cat_key_items");
+	const FName CategoryAllAction = TEXT("cat_all");
+	const FName SkillCategoryAllAction = TEXT("skillcat_all");
+	const TCHAR* SkillSelectActionPrefix = TEXT("skillselect_");
+	const TCHAR* SkillCategoryActionPrefix = TEXT("skillcat_");
 
 	const FLinearColor UiPanelColor(0.01f, 0.01f, 0.01f, 0.96f);
 	const FLinearColor UiSectionColor(0.03f, 0.03f, 0.03f, 0.94f);
@@ -45,17 +52,46 @@ namespace
 	const FLinearColor UiTextColor(0.95f, 0.95f, 0.95f, 1.0f);
 	const FLinearColor UiMutedTextColor(0.72f, 0.72f, 0.72f, 1.0f);
 	const TArray<FString> EquipmentSlotNames = {
-		TEXT("Weapon"),
+		TEXT("Main Hand"),
+		TEXT("Off Hand"),
 		TEXT("Head"),
 		TEXT("Chest"),
 		TEXT("Hands"),
 		TEXT("Legs"),
-		TEXT("Feet")
+		TEXT("Feet"),
+		TEXT("Back"),
+		TEXT("Neck"),
+		TEXT("Ring 1"),
+		TEXT("Ring 2"),
+		TEXT("Bow")
 	};
 
-	const FString UnityItemsPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/items.json");
-	const FString UnityWeaponsPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/weapons.json");
-	const FString UnityArmorPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/armor.json");
+	struct FEquipmentLayoutCell
+	{
+		int32 LogicalIndex;
+		int32 Row;
+		int32 Col;
+	};
+
+	const TArray<FEquipmentLayoutCell> EquipmentLayout = {
+		{8, 0, 0},   // Neck
+		{2, 0, 1},   // Head
+		{7, 0, 2},   // Back
+		{9, 1, 0},   // Ring 1
+		{3, 1, 1},   // Chest
+		{4, 1, 2},   // Hands
+		{10, 2, 0},  // Ring 2
+		{5, 2, 1},   // Legs
+		{6, 2, 2},   // Feet
+		{0, 3, 0},   // Main Hand
+		{1, 3, 1},   // Off Hand
+		{11, 3, 2}   // Bow
+	};
+
+	const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
+	const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
+	const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
+	const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
 
 	FName CategoryFromType(const FString& InType)
 	{
@@ -116,29 +152,54 @@ namespace
 	int32 ArmorSlotIndexFromString(const FString& InSlotName)
 	{
 		const FString Slot = InSlotName.ToLower();
-		if (Slot == TEXT("head"))
+		if (Slot == TEXT("offhand") || Slot == TEXT("off_hand") || Slot == TEXT("shield"))
 		{
 			return 1;
 		}
 
-		if (Slot == TEXT("chest"))
+		if (Slot == TEXT("head"))
 		{
 			return 2;
 		}
 
-		if (Slot == TEXT("hands") || Slot == TEXT("arms"))
+		if (Slot == TEXT("chest"))
 		{
 			return 3;
 		}
 
-		if (Slot == TEXT("legs"))
+		if (Slot == TEXT("hands") || Slot == TEXT("arms"))
 		{
 			return 4;
 		}
 
-		if (Slot == TEXT("feet"))
+		if (Slot == TEXT("legs"))
 		{
 			return 5;
+		}
+
+		if (Slot == TEXT("feet"))
+		{
+			return 6;
+		}
+
+		if (Slot == TEXT("back"))
+		{
+			return 7;
+		}
+
+		if (Slot == TEXT("neck") || Slot == TEXT("amulet"))
+		{
+			return 8;
+		}
+
+		if (Slot == TEXT("ring"))
+		{
+			return 9;
+		}
+
+		if (Slot == TEXT("bow"))
+		{
+			return 11;
 		}
 
 		return INDEX_NONE;
@@ -146,6 +207,11 @@ namespace
 
 	FString CategoryDisplayName(FName Category)
 	{
+		if (Category == CategoryAllAction)
+		{
+			return TEXT("All");
+		}
+
 		if (Category == CategoryWeaponsAction)
 		{
 			return TEXT("Weapons");
@@ -168,6 +234,142 @@ namespace
 
 		return TEXT("Misc");
 	}
+
+	bool IsRingEquipmentSlotIndex(const int32 SlotIndex)
+	{
+		return SlotIndex == 9 || SlotIndex == 10;
+	}
+
+	TArray<FString> ParseDelimitedList(const FString& Source)
+	{
+		TArray<FString> Result;
+		if (Source.IsEmpty())
+		{
+			return Result;
+		}
+
+		FString Normalized = Source;
+		Normalized.ReplaceInline(TEXT(";"), TEXT("|"));
+		if (!Normalized.Contains(TEXT("|")) && Normalized.Contains(TEXT(",")))
+		{
+			Normalized.ParseIntoArray(Result, TEXT(","), true);
+		}
+		else
+		{
+			Normalized.ParseIntoArray(Result, TEXT("|"), true);
+		}
+
+		for (FString& Entry : Result)
+		{
+			Entry = Entry.TrimStartAndEnd();
+		}
+		Result.RemoveAll([](const FString& Value) { return Value.IsEmpty(); });
+		return Result;
+	}
+
+	FString HumanizeToken(const FString& Source)
+	{
+		if (Source.IsEmpty())
+		{
+			return FString();
+		}
+
+		FString Out = Source;
+		Out.ReplaceInline(TEXT("_"), TEXT(" "));
+		Out.ReplaceInline(TEXT("."), TEXT(" "));
+		Out.ReplaceInline(TEXT(":"), TEXT(" "));
+		if (!Out.IsEmpty())
+		{
+			Out[0] = FChar::ToUpper(Out[0]);
+		}
+		return Out;
+	}
+
+	FString JoinHumanizedList(const FString& Source)
+	{
+		const TArray<FString> Parts = ParseDelimitedList(Source);
+		TArray<FString> Humanized;
+		Humanized.Reserve(Parts.Num());
+		for (const FString& Part : Parts)
+		{
+			Humanized.Add(HumanizeToken(Part));
+		}
+		return FString::Join(Humanized, TEXT(", "));
+	}
+
+	FString EnumToString(EFableSkillType Value)
+	{
+		switch (Value)
+		{
+		case EFableSkillType::Active: return TEXT("Active");
+		case EFableSkillType::Passive: return TEXT("Passive");
+		case EFableSkillType::Triggered: return TEXT("Triggered");
+		default: return TEXT("Unknown");
+		}
+	}
+
+	FString EnumToString(EFableSkillResourceType Value)
+	{
+		switch (Value)
+		{
+		case EFableSkillResourceType::Mana: return TEXT("Mana");
+		case EFableSkillResourceType::Stamina: return TEXT("Stamina");
+		case EFableSkillResourceType::Energy: return TEXT("Energy");
+		case EFableSkillResourceType::Rage: return TEXT("Rage");
+		case EFableSkillResourceType::None:
+		default:
+			return TEXT("None");
+		}
+	}
+
+	FString EnumToString(EFableSkillTargetingMode Value)
+	{
+		switch (Value)
+		{
+		case EFableSkillTargetingMode::Self: return TEXT("Self");
+		case EFableSkillTargetingMode::TargetUnit: return TEXT("Target Unit");
+		case EFableSkillTargetingMode::Ground: return TEXT("Ground");
+		case EFableSkillTargetingMode::Object: return TEXT("Object");
+		case EFableSkillTargetingMode::Weapon: return TEXT("Weapon");
+		case EFableSkillTargetingMode::Equipment: return TEXT("Equipment");
+		case EFableSkillTargetingMode::Area: return TEXT("Area");
+		default: return TEXT("Unknown");
+		}
+	}
+
+	FString EnumToString(EFableSkillCategory Value)
+	{
+		switch (Value)
+		{
+		case EFableSkillCategory::Basic: return TEXT("Basic");
+		case EFableSkillCategory::Light: return TEXT("Light");
+		case EFableSkillCategory::Elemental: return TEXT("Elemental");
+		case EFableSkillCategory::Arcane: return TEXT("Arcane");
+		case EFableSkillCategory::Sword: return TEXT("Sword");
+		case EFableSkillCategory::Shield: return TEXT("Shield");
+		case EFableSkillCategory::Support: return TEXT("Support");
+		case EFableSkillCategory::Movement: return TEXT("Movement");
+		case EFableSkillCategory::Utility: return TEXT("Utility");
+		default: return TEXT("Unknown");
+		}
+	}
+
+	FName SkillCategoryActionFromEnum(EFableSkillCategory Category)
+	{
+		return *FString::Printf(TEXT("%s%s"), SkillCategoryActionPrefix, *EnumToString(Category).ToLower());
+	}
+
+	bool TryParseSkillCategoryAction(FName ActionId, FName& OutCategoryAction)
+	{
+		const FString ActionString = ActionId.ToString();
+		if (!ActionString.StartsWith(SkillCategoryActionPrefix))
+		{
+			return false;
+		}
+
+		OutCategoryAction = ActionId;
+		return true;
+	}
 }
 
 TSharedRef<SWidget> UFableCharacterMenuWidget::RebuildWidget()
@@ -179,12 +381,13 @@ TSharedRef<SWidget> UFableCharacterMenuWidget::RebuildWidget()
 void UFableCharacterMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	SetIsFocusable(true);
 	Close();
 }
 
 void UFableCharacterMenuWidget::Open()
 {
-	SetVisibility(ESlateVisibility::Visible);
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	bInventoryLoaded = false;
 
 	if (WidgetTree == nullptr || WidgetTree->RootWidget == nullptr || ContentRoot == nullptr)
@@ -217,7 +420,8 @@ void UFableCharacterMenuWidget::Toggle()
 
 bool UFableCharacterMenuWidget::IsOpen() const
 {
-	return GetVisibility() == ESlateVisibility::Visible;
+	const ESlateVisibility CurrentVisibility = GetVisibility();
+	return CurrentVisibility != ESlateVisibility::Collapsed && CurrentVisibility != ESlateVisibility::Hidden;
 }
 
 void UFableCharacterMenuWidget::Rebuild()
@@ -228,74 +432,32 @@ void UFableCharacterMenuWidget::Rebuild()
 	}
 
 	SlotWidgets.Reset();
+	MainTabButtons.Reset();
+	SkillRowActions.Reset();
 
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("CharacterMenuRoot"));
+	Root->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	WidgetTree->RootWidget = Root;
 
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Frame"));
 	Frame->SetBrushColor(UiPanelColor);
+	Frame->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	if (UCanvasPanelSlot* FrameSlot = Root->AddChildToCanvas(Frame))
 	{
 		FrameSlot->SetAnchors(FAnchors(0.5f, 0.5f));
 		FrameSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-		FrameSlot->SetSize(FVector2D(1260.0f, 780.0f));
+		FrameSlot->SetPosition(FVector2D(0.0f, -60.0f));
+		FrameSlot->SetSize(FVector2D(1040.0f, 570.0f));
 	}
 
 	UVerticalBox* VBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("FrameVBox"));
+	VBox->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	Frame->SetContent(VBox);
-
-	UHorizontalBox* HeaderRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("HeaderRow"));
-	if (UVerticalBoxSlot* HeaderSlot = VBox->AddChildToVerticalBox(HeaderRow))
-	{
-		HeaderSlot->SetPadding(FMargin(20.0f, 14.0f, 20.0f, 8.0f));
-	}
-
-	USpacer* LeftSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
-	if (UHorizontalBoxSlot* SpacerSlot = HeaderRow->AddChildToHorizontalBox(LeftSpacer))
-	{
-		FSlateChildSize FillSize;
-		FillSize.SizeRule = ESlateSizeRule::Fill;
-		FillSize.Value = 1.0f;
-		SpacerSlot->SetSize(FillSize);
-	}
-
-	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetText(FText::FromString(TEXT("Character Menu")));
-	Title->SetJustification(ETextJustify::Center);
-	Title->SetColorAndOpacity(FSlateColor(UiTextColor));
-	if (UHorizontalBoxSlot* TitleSlot = HeaderRow->AddChildToHorizontalBox(Title))
-	{
-		TitleSlot->SetHorizontalAlignment(HAlign_Center);
-		TitleSlot->SetVerticalAlignment(VAlign_Center);
-		TitleSlot->SetPadding(FMargin(10.0f, 0.0f, 10.0f, 0.0f));
-	}
-
-	UFableActionButton* CloseButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("CloseButton"));
-	CloseButton->InitializeAction(CloseMenuAction);
-	CloseButton->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
-	CloseButton->SetBackgroundColor(UiButtonColor);
-	UTextBlock* CloseText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	CloseText->SetText(FText::FromString(TEXT("X")));
-	CloseText->SetColorAndOpacity(FSlateColor(UiTextColor));
-	CloseText->SetJustification(ETextJustify::Center);
-	CloseButton->AddChild(CloseText);
-	if (UButtonSlot* CloseTextSlot = Cast<UButtonSlot>(CloseText->Slot))
-	{
-		CloseTextSlot->SetHorizontalAlignment(HAlign_Center);
-		CloseTextSlot->SetVerticalAlignment(VAlign_Center);
-		CloseTextSlot->SetPadding(FMargin(10.0f, 4.0f));
-	}
-	if (UHorizontalBoxSlot* CloseSlot = HeaderRow->AddChildToHorizontalBox(CloseButton))
-	{
-		CloseSlot->SetHorizontalAlignment(HAlign_Right);
-		CloseSlot->SetVerticalAlignment(VAlign_Center);
-		CloseSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
-	}
 
 	UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("TabRow"));
 	if (UVerticalBoxSlot* TabRowSlot = VBox->AddChildToVerticalBox(TabRow))
 	{
-		TabRowSlot->SetPadding(FMargin(20.0f, 0.0f, 20.0f, 12.0f));
+		TabRowSlot->SetPadding(FMargin(20.0f, 14.0f, 20.0f, 12.0f));
 	}
 
 	auto AddTabButton = [&](const FString& Label, FName ActionId, bool bSelected)
@@ -321,6 +483,8 @@ void UFableCharacterMenuWidget::Rebuild()
 		{
 			HorizontalSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
 		}
+
+		MainTabButtons.Add(ActionId, Button);
 	};
 
 	AddTabButton(TEXT("Inventory"), InventoryAction, ActiveTab == TEXT("inventory"));
@@ -328,18 +492,90 @@ void UFableCharacterMenuWidget::Rebuild()
 	AddTabButton(TEXT("Companions"), CompanionsAction, ActiveTab == TEXT("companions"));
 	AddTabButton(TEXT("Build"), BuildAction, ActiveTab == TEXT("build"));
 
-	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("TabContentScroll"));
-	if (UVerticalBoxSlot* ScrollSlot = VBox->AddChildToVerticalBox(Scroll))
+	USpacer* TabRightSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass(), TEXT("TabRightSpacer"));
+	if (UHorizontalBoxSlot* TabSpacerSlot = TabRow->AddChildToHorizontalBox(TabRightSpacer))
 	{
 		FSlateChildSize FillSize;
 		FillSize.SizeRule = ESlateSizeRule::Fill;
 		FillSize.Value = 1.0f;
-		ScrollSlot->SetSize(FillSize);
-		ScrollSlot->SetPadding(FMargin(20.0f, 0.0f, 20.0f, 20.0f));
+		TabSpacerSlot->SetSize(FillSize);
+	}
+
+	UFableActionButton* CloseButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("CloseButton"));
+	CloseButton->InitializeAction(CloseMenuAction);
+	CloseButton->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
+	CloseButton->SetBackgroundColor(UiButtonColor);
+	UTextBlock* CloseText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	CloseText->SetText(FText::FromString(TEXT("X")));
+	CloseText->SetColorAndOpacity(FSlateColor(UiTextColor));
+	CloseText->SetJustification(ETextJustify::Center);
+	CloseButton->AddChild(CloseText);
+	if (UButtonSlot* CloseTextSlot = Cast<UButtonSlot>(CloseText->Slot))
+	{
+		CloseTextSlot->SetHorizontalAlignment(HAlign_Center);
+		CloseTextSlot->SetVerticalAlignment(VAlign_Center);
+		CloseTextSlot->SetPadding(FMargin(10.0f, 4.0f));
+	}
+	if (UHorizontalBoxSlot* CloseSlot = TabRow->AddChildToHorizontalBox(CloseButton))
+	{
+		CloseSlot->SetHorizontalAlignment(HAlign_Right);
+		CloseSlot->SetVerticalAlignment(VAlign_Center);
 	}
 
 	ContentRoot = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("TabContent"));
-	Scroll->AddChild(ContentRoot);
+	ContentRoot->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (UVerticalBoxSlot* ContentSlot = VBox->AddChildToVerticalBox(ContentRoot))
+	{
+		FSlateChildSize FillSize;
+		FillSize.SizeRule = ESlateSizeRule::Fill;
+		FillSize.Value = 1.0f;
+		ContentSlot->SetSize(FillSize);
+		ContentSlot->SetPadding(FMargin(20.0f, 0.0f, 20.0f, 14.0f));
+	}
+	RebuildTabContent();
+}
+
+void UFableCharacterMenuWidget::RefreshMainTabButtonStyles()
+{
+	auto UpdateButton = [&](FName ActionId, bool bSelected)
+	{
+		if (TObjectPtr<UFableActionButton>* ButtonPtr = MainTabButtons.Find(ActionId))
+		{
+			if (UFableActionButton* Button = ButtonPtr->Get())
+			{
+				Button->SetBackgroundColor(bSelected ? UiButtonSelectedColor : UiButtonColor);
+			}
+		}
+	};
+
+	UpdateButton(InventoryAction, ActiveTab == TEXT("inventory"));
+	UpdateButton(SkillsAction, ActiveTab == TEXT("skills"));
+	UpdateButton(CompanionsAction, ActiveTab == TEXT("companions"));
+	UpdateButton(BuildAction, ActiveTab == TEXT("build"));
+}
+
+void UFableCharacterMenuWidget::QueueTabContentRebuild()
+{
+	if (bTabContentRebuildQueued)
+	{
+		return;
+	}
+
+	bTabContentRebuildQueued = true;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UFableCharacterMenuWidget::PerformQueuedTabContentRebuild));
+	}
+	else
+	{
+		PerformQueuedTabContentRebuild();
+	}
+}
+
+void UFableCharacterMenuWidget::PerformQueuedTabContentRebuild()
+{
+	bTabContentRebuildQueued = false;
+	RefreshMainTabButtonStyles();
 	RebuildTabContent();
 }
 
@@ -417,6 +653,7 @@ void UFableCharacterMenuWidget::BuildInventoryTab()
 		}
 	};
 
+	AddCategoryButton(TEXT("All"), CategoryAllAction);
 	AddCategoryButton(TEXT("Armor"), CategoryArmorAction);
 	AddCategoryButton(TEXT("Weapons"), CategoryWeaponsAction);
 	AddCategoryButton(TEXT("Consumables"), CategoryConsumablesAction);
@@ -426,52 +663,113 @@ void UFableCharacterMenuWidget::BuildInventoryTab()
 	UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("InventoryMainRow"));
 	if (UVerticalBoxSlot* MainRowSlot = ContentRoot->AddChildToVerticalBox(MainRow))
 	{
-		MainRowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
+		MainRowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 0.0f));
+		FSlateChildSize FillSize;
+		FillSize.SizeRule = ESlateSizeRule::Fill;
+		FillSize.Value = 1.0f;
+		MainRowSlot->SetSize(FillSize);
+		MainRowSlot->SetHorizontalAlignment(HAlign_Left);
 	}
 
 	UVerticalBox* LeftColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("InventoryLeftColumn"));
 	if (UHorizontalBoxSlot* LeftSlot = MainRow->AddChildToHorizontalBox(LeftColumn))
 	{
-		FSlateChildSize LeftSize;
-		LeftSize.SizeRule = ESlateSizeRule::Fill;
-		LeftSize.Value = 0.66f;
-		LeftSlot->SetSize(LeftSize);
+		LeftSlot->SetHorizontalAlignment(HAlign_Left);
 		LeftSlot->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
+	}
+
+	USizeBox* InventorySectionSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("InventorySectionSize"));
+	InventorySectionSize->SetWidthOverride(682.0f);
+	InventorySectionSize->SetHeightOverride(420.0f);
+	if (UVerticalBoxSlot* InventorySectionSizeSlot = LeftColumn->AddChildToVerticalBox(InventorySectionSize))
+	{
+		InventorySectionSizeSlot->SetHorizontalAlignment(HAlign_Left);
 	}
 
 	UBorder* InventorySection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("InventorySection"));
 	InventorySection->SetBrushColor(UiSectionColor);
 	InventorySection->SetPadding(FMargin(12.0f));
-	LeftColumn->AddChildToVerticalBox(InventorySection);
+	InventorySectionSize->SetContent(InventorySection);
 
 	UVerticalBox* LeftSectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("InventorySectionVBox"));
 	InventorySection->SetContent(LeftSectionBox);
 
-	UTextBlock* CategoryHeading = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	CategoryHeading->SetText(FText::FromString(CategoryDisplayName(ActiveInventoryCategory)));
-	CategoryHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
-	if (UVerticalBoxSlot* CategoryHeadingSlot = LeftSectionBox->AddChildToVerticalBox(CategoryHeading))
-	{
-		CategoryHeadingSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
-	}
-
-	UUniformGridPanel* InventoryGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("InventoryGrid"));
-	if (UVerticalBoxSlot* InventoryGridSlot = LeftSectionBox->AddChildToVerticalBox(InventoryGrid))
+	USizeBox* InventoryGridScrollSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("InventoryGridScrollSize"));
+	InventoryGridScrollSize->SetHeightOverride(396.0f);
+	if (UVerticalBoxSlot* InventoryGridSlot = LeftSectionBox->AddChildToVerticalBox(InventoryGridScrollSize))
 	{
 		InventoryGridSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 	}
 
+	UScrollBox* InventoryGridScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("InventoryGridScroll"));
+	InventoryGridScrollSize->SetContent(InventoryGridScroll);
+
+	UUniformGridPanel* InventoryGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("InventoryGrid"));
+	InventoryGrid->SetMinDesiredSlotWidth(94.0f);
+	InventoryGrid->SetMinDesiredSlotHeight(94.0f);
+	InventoryGrid->SetSlotPadding(FMargin(0.0f));
+	InventoryGridScroll->AddChild(InventoryGrid);
+
+	TArray<int32> MatchingItemIndices;
+	TArray<int32> EmptyIndices;
+	MatchingItemIndices.Reserve(UFableSaveSubsystem::InventorySlotsPerCharacter);
+	EmptyIndices.Reserve(UFableSaveSubsystem::InventorySlotsPerCharacter);
+
 	for (int32 SlotIndex = 0; SlotIndex < UFableSaveSubsystem::InventorySlotsPerCharacter; ++SlotIndex)
 	{
+		const FString ItemId = InventorySlots.IsValidIndex(SlotIndex) ? InventorySlots[SlotIndex] : TEXT("");
+		if (ItemId.IsEmpty())
+		{
+			EmptyIndices.Add(SlotIndex);
+			continue;
+		}
+
+		if (ActiveInventoryCategory == CategoryAllAction || ResolveItemCategory(ItemId) == ActiveInventoryCategory)
+		{
+			MatchingItemIndices.Add(SlotIndex);
+		}
+	}
+
+	constexpr int32 InventoryColumns = 7;
+	constexpr int32 MinVisibleRows = 4;
+	constexpr int32 MinVisibleSlots = InventoryColumns * MinVisibleRows;
+
+	int32 DesiredVisibleSlots = FMath::Max(MinVisibleSlots, MatchingItemIndices.Num() + InventoryColumns); // one extra row of empties
+	DesiredVisibleSlots = FMath::Min(DesiredVisibleSlots, UFableSaveSubsystem::InventorySlotsPerCharacter);
+	if (DesiredVisibleSlots % InventoryColumns != 0)
+	{
+		const int32 RoundedUp = DesiredVisibleSlots + (InventoryColumns - (DesiredVisibleSlots % InventoryColumns));
+		if (RoundedUp <= UFableSaveSubsystem::InventorySlotsPerCharacter)
+		{
+			DesiredVisibleSlots = RoundedUp;
+		}
+		else
+		{
+			DesiredVisibleSlots = FMath::Max(MinVisibleSlots, DesiredVisibleSlots - (DesiredVisibleSlots % InventoryColumns));
+		}
+	}
+
+	TArray<int32> VisibleInventoryIndices;
+	VisibleInventoryIndices.Reserve(DesiredVisibleSlots);
+	VisibleInventoryIndices.Append(MatchingItemIndices);
+	for (int32 Index : EmptyIndices)
+	{
+		if (VisibleInventoryIndices.Num() >= DesiredVisibleSlots)
+		{
+			break;
+		}
+		VisibleInventoryIndices.Add(Index);
+	}
+
+	for (int32 DisplayIndex = 0; DisplayIndex < VisibleInventoryIndices.Num(); ++DisplayIndex)
+	{
+		const int32 SlotIndex = VisibleInventoryIndices[DisplayIndex];
 		const FName SlotId(*FString::Printf(TEXT("inv_%d"), SlotIndex));
 		const FString ItemId = InventorySlots.IsValidIndex(SlotIndex) ? InventorySlots[SlotIndex] : TEXT("");
-		const bool bMatchesCategory = ItemId.IsEmpty() || ResolveItemCategory(ItemId) == ActiveInventoryCategory;
 
 		UFableInventorySlotWidget* SlotWidget = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
 		SlotWidget->InitializeSlot(SlotId, TEXT(""), false);
-		SlotWidget->SetItemData(
-			bMatchesCategory ? ItemId : TEXT(""),
-			bMatchesCategory ? GetItemLabelForSlot(ItemId, false) : TEXT(""));
+		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, false), GetItemIconForSlot(ItemId));
 		SlotWidget->OnItemDrop.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotDropped);
 
 		USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -479,10 +777,10 @@ void UFableCharacterMenuWidget::BuildInventoryTab()
 		SlotSizeBox->SetHeightOverride(94.0f);
 		SlotSizeBox->SetContent(SlotWidget);
 
-		if (UUniformGridSlot* GridSlot = InventoryGrid->AddChildToUniformGrid(SlotSizeBox, SlotIndex / 5, SlotIndex % 5))
+		if (UUniformGridSlot* GridSlot = InventoryGrid->AddChildToUniformGrid(SlotSizeBox, DisplayIndex / InventoryColumns, DisplayIndex % InventoryColumns))
 		{
-			GridSlot->SetHorizontalAlignment(HAlign_Fill);
-			GridSlot->SetVerticalAlignment(VAlign_Fill);
+			GridSlot->SetHorizontalAlignment(HAlign_Left);
+			GridSlot->SetVerticalAlignment(VAlign_Top);
 		}
 
 		SlotWidgets.Add(SlotId, SlotWidget);
@@ -491,62 +789,63 @@ void UFableCharacterMenuWidget::BuildInventoryTab()
 	UVerticalBox* RightColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("InventoryRightColumn"));
 	if (UHorizontalBoxSlot* RightSlot = MainRow->AddChildToHorizontalBox(RightColumn))
 	{
-		FSlateChildSize RightSize;
-		RightSize.SizeRule = ESlateSizeRule::Fill;
-		RightSize.Value = 0.34f;
-		RightSlot->SetSize(RightSize);
+		RightSlot->SetHorizontalAlignment(HAlign_Left);
+	}
+
+	USizeBox* EquipmentSectionSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("EquipmentSectionSize"));
+	EquipmentSectionSize->SetWidthOverride(308.0f);
+	EquipmentSectionSize->SetHeightOverride(420.0f);
+	if (UVerticalBoxSlot* EquipmentSectionSizeSlot = RightColumn->AddChildToVerticalBox(EquipmentSectionSize))
+	{
+		EquipmentSectionSizeSlot->SetHorizontalAlignment(HAlign_Left);
 	}
 
 	UBorder* EquipmentSection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("EquipmentSection"));
 	EquipmentSection->SetBrushColor(UiSectionColor);
 	EquipmentSection->SetPadding(FMargin(12.0f));
-	RightColumn->AddChildToVerticalBox(EquipmentSection);
+	EquipmentSectionSize->SetContent(EquipmentSection);
 
 	UVerticalBox* RightSectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("EquipmentSectionVBox"));
 	EquipmentSection->SetContent(RightSectionBox);
 
-	UTextBlock* EquipmentHeading = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	EquipmentHeading->SetText(FText::FromString(TEXT("Equipment")));
-	EquipmentHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
-	if (UVerticalBoxSlot* EquipmentHeadingSlot = RightSectionBox->AddChildToVerticalBox(EquipmentHeading))
+	USizeBox* EquipmentGridSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("EquipmentGridSize"));
+	EquipmentGridSize->SetWidthOverride(282.0f);
+	EquipmentGridSize->SetHeightOverride(376.0f);
+	if (UVerticalBoxSlot* EquipmentGridSizeSlot = RightSectionBox->AddChildToVerticalBox(EquipmentGridSize))
 	{
-		EquipmentHeadingSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
+		EquipmentGridSizeSlot->SetHorizontalAlignment(HAlign_Left);
 	}
 
 	UUniformGridPanel* EquipmentGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("EquipmentGrid"));
-	RightSectionBox->AddChildToVerticalBox(EquipmentGrid);
-	for (int32 SlotIndex = 0; SlotIndex < EquipmentSlotNames.Num(); ++SlotIndex)
+	EquipmentGrid->SetMinDesiredSlotWidth(94.0f);
+	EquipmentGrid->SetMinDesiredSlotHeight(94.0f);
+	EquipmentGrid->SetSlotPadding(FMargin(0.0f));
+	EquipmentGridSize->SetContent(EquipmentGrid);
+	for (const FEquipmentLayoutCell& LayoutCell : EquipmentLayout)
 	{
+		const int32 SlotIndex = LayoutCell.LogicalIndex;
 		const FName SlotId(*FString::Printf(TEXT("equip_%d"), SlotIndex));
 		const FString ItemId = EquippedSlots.IsValidIndex(SlotIndex) ? EquippedSlots[SlotIndex] : TEXT("");
 
 		UFableInventorySlotWidget* SlotWidget = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
-		SlotWidget->InitializeSlot(SlotId, EquipmentSlotNames[SlotIndex], true);
-		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, true));
+		SlotWidget->InitializeSlot(SlotId, EquipmentSlotNames.IsValidIndex(SlotIndex) ? EquipmentSlotNames[SlotIndex] : TEXT("Equip"), true);
+		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, true), GetItemIconForSlot(ItemId));
 		SlotWidget->OnItemDrop.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotDropped);
 
 		USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		SlotSizeBox->SetWidthOverride(104.0f);
-		SlotSizeBox->SetHeightOverride(104.0f);
+		SlotSizeBox->SetWidthOverride(94.0f);
+		SlotSizeBox->SetHeightOverride(94.0f);
 		SlotSizeBox->SetContent(SlotWidget);
 
-		if (UUniformGridSlot* GridSlot = EquipmentGrid->AddChildToUniformGrid(SlotSizeBox, SlotIndex / 2, SlotIndex % 2))
+		if (UUniformGridSlot* GridSlot = EquipmentGrid->AddChildToUniformGrid(SlotSizeBox, LayoutCell.Row, LayoutCell.Col))
 		{
-			GridSlot->SetHorizontalAlignment(HAlign_Fill);
-			GridSlot->SetVerticalAlignment(VAlign_Fill);
+			GridSlot->SetHorizontalAlignment(HAlign_Left);
+			GridSlot->SetVerticalAlignment(VAlign_Top);
 		}
 
 		SlotWidgets.Add(SlotId, SlotWidget);
 	}
 
-	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Hint->SetText(FText::FromString(TEXT("Drag between slots to rearrange/equip items.")));
-	Hint->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
-	Hint->SetAutoWrapText(true);
-	if (UVerticalBoxSlot* HintSlot = ContentRoot->AddChildToVerticalBox(Hint))
-	{
-		HintSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
-	}
 }
 
 void UFableCharacterMenuWidget::BuildSimpleInfoTab(const FString& Header, const FString& Body)
@@ -569,18 +868,12 @@ void UFableCharacterMenuWidget::BuildSimpleInfoTab(const FString& Header, const 
 
 void UFableCharacterMenuWidget::BuildSkillsTab()
 {
+	LoadSkillDefinitionsFromDataTable();
+
 	TArray<FString> LearnedSkills;
 	if (UFableSaveSubsystem* SaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr)
 	{
 		SaveSubsystem->TryGetActiveLearnedSkills(LearnedSkills);
-	}
-
-	UTextBlock* Heading = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Heading->SetText(FText::FromString(TEXT("Skills (Drag to action bars)")));
-	Heading->SetColorAndOpacity(FSlateColor(UiTextColor));
-	if (UVerticalBoxSlot* HeadingSlot = ContentRoot->AddChildToVerticalBox(Heading))
-	{
-		HeadingSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
 	}
 
 	if (LearnedSkills.Num() == 0)
@@ -589,33 +882,319 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		return;
 	}
 
-	UUniformGridPanel* SkillsGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("SkillsGrid"));
-	if (UVerticalBoxSlot* GridSlot = ContentRoot->AddChildToVerticalBox(SkillsGrid))
+	if (ActiveSkillDetailsId.IsEmpty() || !LearnedSkills.Contains(ActiveSkillDetailsId))
 	{
-		GridSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
+		ActiveSkillDetailsId = LearnedSkills[0];
 	}
 
-	for (int32 SkillIndex = 0; SkillIndex < LearnedSkills.Num(); ++SkillIndex)
+	TArray<EFableSkillCategory> AvailableCategories;
+	for (const FString& SkillId : LearnedSkills)
 	{
-		const FString& SkillId = LearnedSkills[SkillIndex];
-		const FString DisplayLabel = BuildIconToken(SkillId);
-		const FName SlotId(*FString::Printf(TEXT("skill_%d"), SkillIndex));
+		const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId);
+		if (SkillRow == nullptr)
+		{
+			continue;
+		}
 
+		AvailableCategories.AddUnique(SkillRow->Category);
+	}
+
+	UHorizontalBox* SkillCategoryRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("SkillCategoryRow"));
+	if (UVerticalBoxSlot* SkillCategoryRowSlot = ContentRoot->AddChildToVerticalBox(SkillCategoryRow))
+	{
+		SkillCategoryRowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
+	}
+
+	auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
+	{
+		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
+		Button->InitializeAction(CategoryAction);
+		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
+		Button->SetBackgroundColor(ActiveSkillCategory == CategoryAction ? UiButtonSelectedColor : UiButtonColor);
+
+		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Text->SetText(FText::FromString(Label));
+		Text->SetColorAndOpacity(FSlateColor(UiTextColor));
+		Text->SetJustification(ETextJustify::Center);
+		FSlateFontInfo FontInfo = Text->GetFont();
+		FontInfo.Size = 13;
+		Text->SetFont(FontInfo);
+		Button->AddChild(Text);
+		if (UButtonSlot* TextSlot = Cast<UButtonSlot>(Text->Slot))
+		{
+			TextSlot->SetHorizontalAlignment(HAlign_Center);
+			TextSlot->SetVerticalAlignment(VAlign_Center);
+			TextSlot->SetPadding(FMargin(8.0f, 6.0f));
+		}
+
+		if (UHorizontalBoxSlot* HorizontalSlot = SkillCategoryRow->AddChildToHorizontalBox(Button))
+		{
+			HorizontalSlot->SetPadding(FMargin(0.0f, 0.0f, 6.0f, 0.0f));
+		}
+	};
+
+	AddSkillCategoryButton(TEXT("All"), SkillCategoryAllAction);
+	for (EFableSkillCategory Category : AvailableCategories)
+	{
+		AddSkillCategoryButton(EnumToString(Category), SkillCategoryActionFromEnum(Category));
+	}
+
+	TArray<FString> VisibleSkills;
+	VisibleSkills.Reserve(LearnedSkills.Num());
+	for (const FString& SkillId : LearnedSkills)
+	{
+		const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId);
+		if (ActiveSkillCategory != SkillCategoryAllAction && SkillRow != nullptr && SkillCategoryActionFromEnum(SkillRow->Category) != ActiveSkillCategory)
+		{
+			continue;
+		}
+
+		if (ActiveSkillCategory != SkillCategoryAllAction && SkillRow == nullptr)
+		{
+			continue;
+		}
+
+		VisibleSkills.Add(SkillId);
+	}
+
+	if (VisibleSkills.Num() == 0)
+	{
+		ActiveSkillCategory = SkillCategoryAllAction;
+		VisibleSkills = LearnedSkills;
+	}
+
+	if (ActiveSkillDetailsId.IsEmpty() || !VisibleSkills.Contains(ActiveSkillDetailsId))
+	{
+		ActiveSkillDetailsId = VisibleSkills.Num() > 0 ? VisibleSkills[0] : FString();
+	}
+
+	UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("SkillsMainRow"));
+	if (UVerticalBoxSlot* MainRowSlot = ContentRoot->AddChildToVerticalBox(MainRow))
+	{
+		FSlateChildSize FillSize;
+		FillSize.SizeRule = ESlateSizeRule::Fill;
+		FillSize.Value = 1.0f;
+		MainRowSlot->SetSize(FillSize);
+	}
+
+	UBorder* SkillListSection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SkillsListSection"));
+	SkillListSection->SetBrushColor(UiSectionColor);
+	SkillListSection->SetPadding(FMargin(8.0f));
+	if (UHorizontalBoxSlot* ListSlot = MainRow->AddChildToHorizontalBox(SkillListSection))
+	{
+		FSlateChildSize ListSize;
+		ListSize.SizeRule = ESlateSizeRule::Fill;
+		ListSize.Value = 0.28f;
+		ListSlot->SetSize(ListSize);
+		ListSlot->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
+	}
+
+	UScrollBox* SkillsListScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("SkillsListScroll"));
+	SkillListSection->SetContent(SkillsListScroll);
+
+	UVerticalBox* SkillsListVBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SkillsListVBox"));
+	SkillsListScroll->AddChild(SkillsListVBox);
+
+	for (int32 SkillIndex = 0; SkillIndex < VisibleSkills.Num(); ++SkillIndex)
+	{
+		const FString& SkillId = VisibleSkills[SkillIndex];
+		const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId);
+		const bool bSelected = SkillId == ActiveSkillDetailsId;
+		const FString Token = (SkillRow != nullptr && !SkillRow->IconToken.IsEmpty())
+			? SkillRow->IconToken
+			: BuildIconToken(SkillRow != nullptr && !SkillRow->DisplayName.IsEmpty() ? SkillRow->DisplayName : SkillId);
+
+		UBorder* RowBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		RowBorder->SetBrushColor(bSelected ? UiButtonSelectedColor : UiButtonColor);
+		RowBorder->SetPadding(FMargin(6.0f));
+		if (UVerticalBoxSlot* RowSlot = SkillsListVBox->AddChildToVerticalBox(RowBorder))
+		{
+			RowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
+		}
+
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+		RowBorder->SetContent(Row);
+
+		const FName SlotId(*FString::Printf(TEXT("skill_%d"), SkillIndex));
 		UFableInventorySlotWidget* SkillSlot = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
 		SkillSlot->InitializeSlot(SlotId, TEXT(""), false);
-		SkillSlot->SetItemData(FString::Printf(TEXT("skill:%s"), *SkillId), DisplayLabel);
+		UTexture2D* SkillIcon = (SkillRow != nullptr && !SkillRow->SkillIconTexture.IsNull())
+			? SkillRow->SkillIconTexture.LoadSynchronous()
+			: nullptr;
+		SkillSlot->SetItemData(FString::Printf(TEXT("skill:%s"), *SkillId), Token, SkillIcon);
 
 		USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		SlotSizeBox->SetWidthOverride(96.0f);
-		SlotSizeBox->SetHeightOverride(96.0f);
+		SlotSizeBox->SetWidthOverride(60.0f);
+		SlotSizeBox->SetHeightOverride(60.0f);
 		SlotSizeBox->SetContent(SkillSlot);
-
-		if (UUniformGridSlot* UniformSlot = SkillsGrid->AddChildToUniformGrid(SlotSizeBox, SkillIndex / 8, SkillIndex % 8))
+		if (UHorizontalBoxSlot* SlotHBox = Row->AddChildToHorizontalBox(SlotSizeBox))
 		{
-			UniformSlot->SetHorizontalAlignment(HAlign_Fill);
-			UniformSlot->SetVerticalAlignment(VAlign_Fill);
+			SlotHBox->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+		}
+
+		const FName SkillSelectAction(*FString::Printf(TEXT("%s%d"), SkillSelectActionPrefix, SkillIndex));
+		SkillRowActions.Add(SkillSelectAction, SkillId);
+		UFableActionButton* RowTextButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
+		RowTextButton->InitializeAction(SkillSelectAction);
+		RowTextButton->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
+		RowTextButton->SetBackgroundColor(FLinearColor::Transparent);
+		if (UHorizontalBoxSlot* TextButtonSlot = Row->AddChildToHorizontalBox(RowTextButton))
+		{
+			FSlateChildSize FillSize;
+			FillSize.SizeRule = ESlateSizeRule::Fill;
+			FillSize.Value = 1.0f;
+			TextButtonSlot->SetSize(FillSize);
+			TextButtonSlot->SetVerticalAlignment(VAlign_Fill);
+		}
+
+		UVerticalBox* RowText = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		RowText->SetVisibility(ESlateVisibility::HitTestInvisible);
+		RowTextButton->AddChild(RowText);
+
+		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		NameText->SetText(FText::FromString(SkillRow != nullptr && !SkillRow->DisplayName.IsEmpty() ? SkillRow->DisplayName : HumanizeToken(SkillId)));
+		NameText->SetColorAndOpacity(FSlateColor(UiTextColor));
+		RowText->AddChildToVerticalBox(NameText);
+
+		UTextBlock* Subtitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Subtitle->SetText(FText::FromString(SkillRow != nullptr ? SkillRow->Summary : TEXT("No DataTable definition yet")));
+		Subtitle->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
+		Subtitle->SetAutoWrapText(true);
+		FSlateFontInfo SubtitleFont = Subtitle->GetFont();
+		SubtitleFont.Size = 11;
+		Subtitle->SetFont(SubtitleFont);
+		RowText->AddChildToVerticalBox(Subtitle);
+	}
+
+	UBorder* DetailsSection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SkillDetailsSection"));
+	DetailsSection->SetBrushColor(UiSectionColor);
+	DetailsSection->SetPadding(FMargin(12.0f));
+	if (UHorizontalBoxSlot* DetailsSlot = MainRow->AddChildToHorizontalBox(DetailsSection))
+	{
+		FSlateChildSize DetailsSize;
+		DetailsSize.SizeRule = ESlateSizeRule::Fill;
+		DetailsSize.Value = 0.72f;
+		DetailsSlot->SetSize(DetailsSize);
+	}
+
+	UScrollBox* DetailsScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("SkillDetailsScroll"));
+	DetailsSection->SetContent(DetailsScroll);
+
+	UVerticalBox* DetailsVBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SkillDetailsVBox"));
+	DetailsScroll->AddChild(DetailsVBox);
+
+	const FFableSkillDefinitionTableRow* SelectedSkill = FindSkillDefinition(ActiveSkillDetailsId);
+	const FString SelectedSkillName = SelectedSkill != nullptr && !SelectedSkill->DisplayName.IsEmpty()
+		? SelectedSkill->DisplayName
+		: HumanizeToken(ActiveSkillDetailsId);
+
+	auto AddDetailLine = [&](const FString& Label, const FString& Value, bool bMuted = false, int32 FontSize = 13)
+	{
+		if (Value.IsEmpty())
+		{
+			return;
+		}
+
+		UTextBlock* Line = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Line->SetText(FText::FromString(Label.IsEmpty() ? Value : FString::Printf(TEXT("%s: %s"), *Label, *Value)));
+		Line->SetAutoWrapText(true);
+		Line->SetColorAndOpacity(FSlateColor(bMuted ? UiMutedTextColor : UiTextColor));
+		FSlateFontInfo Font = Line->GetFont();
+		Font.Size = FontSize;
+		Line->SetFont(Font);
+		if (UVerticalBoxSlot* LineSlot = DetailsVBox->AddChildToVerticalBox(Line))
+		{
+			LineSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
+		}
+	};
+
+	AddDetailLine(TEXT(""), SelectedSkillName, false, 18);
+
+	if (SelectedSkill == nullptr)
+	{
+		AddDetailLine(TEXT("Status"), TEXT("Missing DataTable row for this learned skill"), true);
+		return;
+	}
+
+	AddDetailLine(TEXT("Summary"), SelectedSkill->Summary, true);
+	AddDetailLine(TEXT("Description"), SelectedSkill->Description, true);
+	AddDetailLine(TEXT("Category"), EnumToString(SelectedSkill->Category));
+	AddDetailLine(TEXT("Type"), EnumToString(SelectedSkill->SkillType));
+	AddDetailLine(TEXT("Targeting"), EnumToString(SelectedSkill->TargetingMode));
+
+	FString CostText = SelectedSkill->ResourceType == EFableSkillResourceType::None
+		? TEXT("No resource cost")
+		: FString::Printf(TEXT("%.0f %s"), SelectedSkill->ResourceCost, *EnumToString(SelectedSkill->ResourceType));
+	AddDetailLine(TEXT("Cost"), CostText);
+	AddDetailLine(TEXT("Cooldown"), FString::Printf(TEXT("%.1fs"), SelectedSkill->CooldownSeconds));
+	AddDetailLine(TEXT("Cast Time"), FString::Printf(TEXT("%.1fs"), SelectedSkill->CastTimeSeconds));
+	AddDetailLine(TEXT("Range"), FString::Printf(TEXT("%.0f"), SelectedSkill->RangeUnits));
+	if (SelectedSkill->RadiusUnits > 0.0f)
+	{
+		AddDetailLine(TEXT("Radius"), FString::Printf(TEXT("%.0f"), SelectedSkill->RadiusUnits));
+	}
+
+	FString ScalingText = SelectedSkill->ScalingPrimaryStat.IsEmpty()
+		? TEXT("None")
+		: FString::Printf(TEXT("%s x%.2f"), *HumanizeToken(SelectedSkill->ScalingPrimaryStat), SelectedSkill->ScalingPrimaryCoefficient);
+	if (!SelectedSkill->ScalingSecondaryStat.IsEmpty())
+	{
+		ScalingText += FString::Printf(TEXT(", %s x%.2f"), *HumanizeToken(SelectedSkill->ScalingSecondaryStat), SelectedSkill->ScalingSecondaryCoefficient);
+	}
+	AddDetailLine(TEXT("Scaling"), ScalingText);
+	AddDetailLine(TEXT("Tags"), JoinHumanizedList(SelectedSkill->TagsCsv));
+	AddDetailLine(TEXT("Effects"), JoinHumanizedList(SelectedSkill->EffectIdsCsv));
+	AddDetailLine(TEXT("Synergy Rules"), JoinHumanizedList(SelectedSkill->SynergyRuleIdsCsv));
+	AddDetailLine(TEXT("Discovery Rules"), JoinHumanizedList(SelectedSkill->DiscoveryRuleIdsCsv));
+	AddDetailLine(TEXT("Learning Sources"), JoinHumanizedList(SelectedSkill->LearningSourcesCsv));
+	AddDetailLine(TEXT("Witness Skills"), JoinHumanizedList(SelectedSkill->WitnessSkillIdsCsv));
+	AddDetailLine(TEXT("Books"), JoinHumanizedList(SelectedSkill->BookIdsCsv));
+	AddDetailLine(TEXT("Character Animation"), SelectedSkill->CharacterAnimationAsset.ToSoftObjectPath().ToString(), true);
+	AddDetailLine(TEXT("Effect Animation"), SelectedSkill->EffectAnimationAsset.ToString(), true);
+	AddDetailLine(
+		TEXT("Latent Mastery"),
+		FString::Printf(TEXT("Dormant -> Stirring %d, Awakening %d, Manifested %d"),
+			SelectedSkill->StirringProgressThreshold,
+			SelectedSkill->AwakeningProgressThreshold,
+			SelectedSkill->ManifestedProgressThreshold));
+}
+
+void UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable()
+{
+	if (bSkillDefinitionsLoaded)
+	{
+		return;
+	}
+
+	SkillDefinitions.Reset();
+
+	if (UDataTable* SkillsTable = LoadObject<UDataTable>(nullptr, SkillsDataTablePath))
+	{
+		static const FString ContextString(TEXT("UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable"));
+		TArray<FFableSkillDefinitionTableRow*> Rows;
+		SkillsTable->GetAllRows(ContextString, Rows);
+
+		for (const FFableSkillDefinitionTableRow* Row : Rows)
+		{
+			if (Row == nullptr || Row->SkillId.IsEmpty())
+			{
+				continue;
+			}
+
+			SkillDefinitions.Add(Row->SkillId, *Row);
 		}
 	}
+	else
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("Skills DataTable not found at '%s'."), SkillsDataTablePath);
+	}
+
+	bSkillDefinitionsLoaded = true;
+}
+
+const FFableSkillDefinitionTableRow* UFableCharacterMenuWidget::FindSkillDefinition(const FString& SkillId) const
+{
+	return SkillDefinitions.Find(SkillId);
 }
 
 void UFableCharacterMenuWidget::LoadInventoryFromSave()
@@ -667,18 +1246,7 @@ void UFableCharacterMenuWidget::LoadItemDefinitionsFromUnityJson()
 	}
 
 	ItemDefinitions.Reset();
-
-	auto ParseRootObject = [&](const FString& FilePath, TSharedPtr<FJsonObject>& OutRootObject) -> bool
-	{
-		FString JsonText;
-		if (!FFileHelper::LoadFileToString(JsonText, *FilePath))
-		{
-			return false;
-		}
-
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
-		return FJsonSerializer::Deserialize(Reader, OutRootObject) && OutRootObject.IsValid();
-	};
+	IconTextureCache.Reset();
 
 	auto AddDefinition = [&](const FFableUiItemDefinition& Definition)
 	{
@@ -690,117 +1258,98 @@ void UFableCharacterMenuWidget::LoadItemDefinitionsFromUnityJson()
 		ItemDefinitions.Add(Definition.Id, Definition);
 	};
 
-	auto ReadStringField = [](const TSharedPtr<FJsonObject>& JsonObject, const TCHAR* FieldName, const FString& DefaultValue = FString()) -> FString
+	auto LoadDefinitionsFromTable = [&](const TCHAR* TablePath, const TCHAR* TableLabel) -> bool
 	{
-		if (!JsonObject.IsValid())
+		UDataTable* ItemDefinitionsTable = LoadObject<UDataTable>(nullptr, TablePath);
+		if (ItemDefinitionsTable == nullptr)
 		{
-			return DefaultValue;
+			UE_LOG(LogFableForge, Warning, TEXT("%s DataTable not found at '%s'."), TableLabel, TablePath);
+			return false;
 		}
 
-		FString Value;
-		return JsonObject->TryGetStringField(FieldName, Value) ? Value : DefaultValue;
+		const FString ContextString = FString::Printf(TEXT("UFableCharacterMenuWidget::LoadItemDefinitionsFromUnityJson(%s)"), TableLabel);
+		TArray<FFableItemDefinitionTableRow*> Rows;
+		ItemDefinitionsTable->GetAllRows(ContextString, Rows);
+
+		const FString Label = TableLabel;
+		const bool bIsWeaponsTable = Label.Equals(TEXT("Weapons"));
+		const bool bIsArmorTable = Label.Equals(TEXT("Armor"));
+
+		for (const FFableItemDefinitionTableRow* Row : Rows)
+		{
+			if (Row == nullptr)
+			{
+				continue;
+			}
+
+			FFableUiItemDefinition Definition;
+			Definition.Id = Row->ItemId;
+			if (Definition.Id.IsEmpty())
+			{
+				continue;
+			}
+
+			Definition.Name = !Row->DisplayName.IsEmpty() ? Row->DisplayName : Definition.Id;
+			Definition.Category = CategoryFromType(Row->Type);
+			Definition.bStackable = Row->bStackable;
+			Definition.bEquipable = Row->bEquipable;
+			if (bIsWeaponsTable)
+			{
+				const FString LowerId = Definition.Id.ToLower();
+				Definition.EquipmentSlot = (LowerId.Contains(TEXT("bow")) || LowerId.Contains(TEXT("crossbow"))) ? 11 : 0;
+			}
+			else if (bIsArmorTable)
+			{
+				const FString LowerId = Definition.Id.ToLower();
+				if (LowerId.EndsWith(TEXT("_offhand")) || LowerId.EndsWith(TEXT("_off_hand")) || LowerId.Contains(TEXT("shield")))
+				{
+					Definition.EquipmentSlot = 1;
+				}
+				else if (LowerId.EndsWith(TEXT("_back")))
+				{
+					Definition.EquipmentSlot = 7;
+				}
+				else if (LowerId.EndsWith(TEXT("_neck")) || LowerId.Contains(TEXT("amulet")) || LowerId.Contains(TEXT("necklace")))
+				{
+					Definition.EquipmentSlot = 8;
+				}
+				else if (LowerId.Contains(TEXT("ring")))
+				{
+					Definition.EquipmentSlot = 9;
+				}
+				else
+				{
+					FString Left;
+					FString Right;
+					Definition.EquipmentSlot = Definition.Id.Split(TEXT("_"), &Left, &Right, ESearchCase::IgnoreCase, ESearchDir::FromEnd)
+						? ArmorSlotIndexFromString(Right)
+						: INDEX_NONE;
+				}
+			}
+			else
+			{
+				Definition.EquipmentSlot = INDEX_NONE;
+			}
+			Definition.IconAssetPath = Row->IconTexture.ToSoftObjectPath().ToString();
+			Definition.IconToken = BuildIconToken(Definition.Name);
+			Definition.ModelPath.Reset();
+			Definition.ModelPathMale.Reset();
+			Definition.ModelPathFemale.Reset();
+			AddDefinition(Definition);
+		}
+
+		return true;
 	};
 
-	auto ReadBoolField = [](const TSharedPtr<FJsonObject>& JsonObject, const TCHAR* FieldName, bool bDefaultValue = false) -> bool
+	const bool bLoadedAny =
+		LoadDefinitionsFromTable(ItemsDataTablePath, TEXT("Items")) |
+		LoadDefinitionsFromTable(WeaponsDataTablePath, TEXT("Weapons")) |
+		LoadDefinitionsFromTable(ArmorDataTablePath, TEXT("Armor"));
+
+	if (!bLoadedAny)
 	{
-		if (!JsonObject.IsValid())
-		{
-			return bDefaultValue;
-		}
-
-		bool bValue = bDefaultValue;
-		JsonObject->TryGetBoolField(FieldName, bValue);
-		return bValue;
-	};
-
-	TSharedPtr<FJsonObject> ItemsRoot;
-	if (ParseRootObject(UnityItemsPath, ItemsRoot))
-	{
-		const TArray<TSharedPtr<FJsonValue>>* ItemsArray = nullptr;
-		if (ItemsRoot->TryGetArrayField(TEXT("items"), ItemsArray) && ItemsArray != nullptr)
-		{
-			for (const TSharedPtr<FJsonValue>& ItemValue : *ItemsArray)
-			{
-				const TSharedPtr<FJsonObject> ItemObject = ItemValue.IsValid() ? ItemValue->AsObject() : nullptr;
-				if (!ItemObject.IsValid())
-				{
-					continue;
-				}
-
-				FFableUiItemDefinition Definition;
-				Definition.Id = ReadStringField(ItemObject, TEXT("id"));
-				Definition.Name = ReadStringField(ItemObject, TEXT("name"), Definition.Id);
-				Definition.Category = CategoryFromType(ReadStringField(ItemObject, TEXT("type"), TEXT("misc")));
-				Definition.bStackable = ReadBoolField(ItemObject, TEXT("stackable"), true);
-				Definition.bEquipable = false;
-				Definition.ModelPath = ReadStringField(ItemObject, TEXT("prefab3d"));
-				Definition.IconToken = BuildIconToken(Definition.Name);
-				AddDefinition(Definition);
-			}
-		}
-	}
-
-	TSharedPtr<FJsonObject> WeaponsRoot;
-	if (ParseRootObject(UnityWeaponsPath, WeaponsRoot))
-	{
-		const TArray<TSharedPtr<FJsonValue>>* WeaponsArray = nullptr;
-		if (WeaponsRoot->TryGetArrayField(TEXT("weapons"), WeaponsArray) && WeaponsArray != nullptr)
-		{
-			for (const TSharedPtr<FJsonValue>& WeaponValue : *WeaponsArray)
-			{
-				const TSharedPtr<FJsonObject> WeaponObject = WeaponValue.IsValid() ? WeaponValue->AsObject() : nullptr;
-				if (!WeaponObject.IsValid())
-				{
-					continue;
-				}
-
-				FFableUiItemDefinition Definition;
-				Definition.Id = ReadStringField(WeaponObject, TEXT("id"));
-				Definition.Name = ReadStringField(WeaponObject, TEXT("name"), Definition.Id);
-				Definition.Category = CategoryWeaponsAction;
-				Definition.bStackable = ReadBoolField(WeaponObject, TEXT("stackable"), false);
-				Definition.bEquipable = true;
-				Definition.EquipmentSlot = 0;
-				Definition.ModelPath = ReadStringField(WeaponObject, TEXT("prefab3d"));
-				Definition.IconToken = BuildIconToken(Definition.Name);
-				AddDefinition(Definition);
-			}
-		}
-	}
-
-	TSharedPtr<FJsonObject> ArmorRoot;
-	if (ParseRootObject(UnityArmorPath, ArmorRoot))
-	{
-		const TArray<TSharedPtr<FJsonValue>>* ArmorArray = nullptr;
-		if (ArmorRoot->TryGetArrayField(TEXT("armor"), ArmorArray) && ArmorArray != nullptr)
-		{
-			for (const TSharedPtr<FJsonValue>& ArmorValue : *ArmorArray)
-			{
-				const TSharedPtr<FJsonObject> ArmorObject = ArmorValue.IsValid() ? ArmorValue->AsObject() : nullptr;
-				if (!ArmorObject.IsValid())
-				{
-					continue;
-				}
-
-				FFableUiItemDefinition Definition;
-				Definition.Id = ReadStringField(ArmorObject, TEXT("id"));
-				Definition.Name = ReadStringField(ArmorObject, TEXT("name"), Definition.Id);
-				Definition.Category = CategoryArmorAction;
-				Definition.bStackable = ReadBoolField(ArmorObject, TEXT("stackable"), false);
-				Definition.bEquipable = true;
-				Definition.IconToken = BuildIconToken(Definition.Name);
-				Definition.ModelPathMale = ReadStringField(ArmorObject, TEXT("prefab3dMale"));
-				Definition.ModelPathFemale = ReadStringField(ArmorObject, TEXT("prefab3dFemale"));
-
-				const TSharedPtr<FJsonObject>* ArmorDataObject = nullptr;
-				if (ArmorObject->TryGetObjectField(TEXT("armorData"), ArmorDataObject) && ArmorDataObject != nullptr && ArmorDataObject->IsValid())
-				{
-					Definition.EquipmentSlot = ArmorSlotIndexFromString(ReadStringField(*ArmorDataObject, TEXT("slot")));
-				}
-
-				AddDefinition(Definition);
-			}
-		}
+		UE_LOG(LogFableForge, Warning, TEXT("No item definition DataTables were loaded. Expected '%s', '%s', '%s'."),
+			ItemsDataTablePath, WeaponsDataTablePath, ArmorDataTablePath);
 	}
 
 	bItemDefinitionsLoaded = true;
@@ -831,13 +1380,13 @@ void UFableCharacterMenuWidget::RefreshInventorySlotWidgets()
 		}
 
 		const FString ItemId = SourceArray[SlotIndex];
-		if (!bEquipmentSlot && !ItemId.IsEmpty() && ResolveItemCategory(ItemId) != ActiveInventoryCategory)
+		if (!bEquipmentSlot && ActiveInventoryCategory != CategoryAllAction && !ItemId.IsEmpty() && ResolveItemCategory(ItemId) != ActiveInventoryCategory)
 		{
-			SlotWidget->SetItemData(TEXT(""), TEXT(""));
+			SlotWidget->SetItemData(TEXT(""), TEXT(""), nullptr);
 			continue;
 		}
 
-		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, bEquipmentSlot));
+		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, bEquipmentSlot), GetItemIconForSlot(ItemId));
 	}
 }
 
@@ -890,7 +1439,18 @@ bool UFableCharacterMenuWidget::IsItemAllowedInEquipmentSlot(const FString& Item
 		return false;
 	}
 
-	return Definition->EquipmentSlot == EquipmentSlotIndex;
+	if (Definition->EquipmentSlot == EquipmentSlotIndex)
+	{
+		return true;
+	}
+
+	// Allow rings in either ring slot.
+	if (IsRingEquipmentSlotIndex(Definition->EquipmentSlot) && IsRingEquipmentSlotIndex(EquipmentSlotIndex))
+	{
+		return true;
+	}
+
+	return false;
 }
 
 FString UFableCharacterMenuWidget::GetItemLabelForSlot(const FString& ItemId, bool bEquipmentSlot) const
@@ -902,13 +1462,37 @@ FString UFableCharacterMenuWidget::GetItemLabelForSlot(const FString& ItemId, bo
 
 	if (const FFableUiItemDefinition* Definition = ItemDefinitions.Find(ItemId))
 	{
-		if (!Definition->IconToken.IsEmpty())
+		if (!Definition->Name.IsEmpty())
 		{
-			return Definition->IconToken;
+			return Definition->Name;
 		}
 	}
 
-	return bEquipmentSlot ? BuildIconToken(ItemId) : BuildIconToken(ItemId);
+	return bEquipmentSlot ? ItemId : ItemId;
+}
+
+UTexture2D* UFableCharacterMenuWidget::GetItemIconForSlot(const FString& ItemId)
+{
+	if (ItemId.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	if (TObjectPtr<UTexture2D>* CachedTexture = IconTextureCache.Find(ItemId))
+	{
+		return CachedTexture->Get();
+	}
+
+	const FFableUiItemDefinition* Definition = ItemDefinitions.Find(ItemId);
+	if (Definition == nullptr || Definition->IconAssetPath.IsEmpty())
+	{
+		IconTextureCache.Add(ItemId, nullptr);
+		return nullptr;
+	}
+
+	UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *Definition->IconAssetPath);
+	IconTextureCache.Add(ItemId, Texture);
+	return Texture;
 }
 
 FName UFableCharacterMenuWidget::ResolveItemCategory(const FString& ItemId) const
@@ -969,7 +1553,14 @@ void UFableCharacterMenuWidget::HandleInventorySlotDropped(FName FromSlotId, FNa
 	FromArray[FromIndex] = ToArray[ToIndex];
 	ToArray[ToIndex] = TempValue;
 
-	RefreshInventorySlotWidgets();
+	if (ActiveTab == TEXT("inventory"))
+	{
+		QueueTabContentRebuild();
+	}
+	else
+	{
+		RefreshInventorySlotWidgets();
+	}
 	SaveInventoryToSaveSubsystem();
 }
 
@@ -977,7 +1568,18 @@ void UFableCharacterMenuWidget::HandleActionClicked(FName ActionId)
 {
 	if (ActionId == CloseMenuAction)
 	{
-		if (UWorld* World = GetWorld())
+		if (AFableForgePlayerController* ForgePC = Cast<AFableForgePlayerController>(GetOwningPlayer()))
+		{
+			if (UWorld* World = GetWorld())
+			{
+				World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(ForgePC, &AFableForgePlayerController::ToggleCharacterMenu));
+			}
+			else
+			{
+				ForgePC->ToggleCharacterMenu();
+			}
+		}
+		else if (UWorld* World = GetWorld())
 		{
 			World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UFableCharacterMenuWidget::Close));
 		}
@@ -991,37 +1593,98 @@ void UFableCharacterMenuWidget::HandleActionClicked(FName ActionId)
 	if (ActionId == InventoryAction)
 	{
 		ActiveTab = TEXT("inventory");
-		RebuildTabContent();
+		QueueTabContentRebuild();
 		return;
 	}
 
 	if (ActionId == SkillsAction)
 	{
 		ActiveTab = TEXT("skills");
-		RebuildTabContent();
+		QueueTabContentRebuild();
 		return;
 	}
 
 	if (ActionId == CompanionsAction)
 	{
 		ActiveTab = TEXT("companions");
-		RebuildTabContent();
+		QueueTabContentRebuild();
 		return;
 	}
 
 	if (ActionId == BuildAction)
 	{
 		ActiveTab = TEXT("build");
-		RebuildTabContent();
+		QueueTabContentRebuild();
 		return;
 	}
 
-	if (ActionId == CategoryWeaponsAction || ActionId == CategoryArmorAction || ActionId == CategoryConsumablesAction || ActionId == CategoryMiscAction || ActionId == CategoryKeyItemsAction)
+	if (ActionId == CategoryAllAction || ActionId == CategoryWeaponsAction || ActionId == CategoryArmorAction || ActionId == CategoryConsumablesAction || ActionId == CategoryMiscAction || ActionId == CategoryKeyItemsAction)
 	{
 		ActiveInventoryCategory = ActionId;
 		if (ActiveTab == TEXT("inventory"))
 		{
-			RebuildTabContent();
+			QueueTabContentRebuild();
+		}
+		return;
+	}
+
+	FName SkillCategoryAction;
+	if (TryParseSkillCategoryAction(ActionId, SkillCategoryAction))
+	{
+		ActiveSkillCategory = SkillCategoryAction;
+		if (ActiveTab == TEXT("skills"))
+		{
+			QueueTabContentRebuild();
+		}
+		return;
+	}
+
+	if (const FString* SkillId = SkillRowActions.Find(ActionId))
+	{
+		if (!SkillId->IsEmpty() && *SkillId != ActiveSkillDetailsId)
+		{
+			ActiveSkillDetailsId = *SkillId;
+			QueueTabContentRebuild();
 		}
 	}
+}
+
+void UFableCharacterMenuWidget::HandleSkillSlotHovered(FName SlotId, const FString& PayloadId)
+{
+	(void)SlotId;
+
+	if (ActiveTab != TEXT("skills") || PayloadId.IsEmpty())
+	{
+		return;
+	}
+
+	FString SkillId = PayloadId;
+	SkillId.RemoveFromStart(TEXT("skill:"));
+	if (SkillId.IsEmpty() || SkillId == ActiveSkillDetailsId)
+	{
+		return;
+	}
+
+	ActiveSkillDetailsId = SkillId;
+	QueueTabContentRebuild();
+}
+
+void UFableCharacterMenuWidget::HandleSkillSlotClicked(FName SlotId, const FString& PayloadId)
+{
+	(void)SlotId;
+
+	if (ActiveTab != TEXT("skills") || PayloadId.IsEmpty())
+	{
+		return;
+	}
+
+	FString SkillId = PayloadId;
+	SkillId.RemoveFromStart(TEXT("skill:"));
+	if (SkillId.IsEmpty() || SkillId == ActiveSkillDetailsId)
+	{
+		return;
+	}
+
+	ActiveSkillDetailsId = SkillId;
+	QueueTabContentRebuild();
 }

@@ -1,0 +1,25 @@
+Name,EffectId,DisplayName,EffectType,BaseMagnitude,DurationSeconds,RadiusUnits,ForceMagnitude,TickIntervalSeconds,MaxStacks,ApplyTagsCsv,RequiredTargetTagsCsv,ScalingStat,ScalingCoefficient,Notes
+eff_basic_attack_hit,eff_basic_attack_hit,Basic Attack Hit,Damage,22,0,0,0,0,1,hit|melee,,Strength,0.4,Baseline weapon damage for combo tracking
+eff_heal_wave_pulse,eff_heal_wave_pulse,Heal Wave Pulse,Heal,30,0,220,0,0,1,heal|support,,Wisdom,0.8,Small ally heal around caster
+eff_fireball_burst,eff_fireball_burst,Fireball Burst,AreaDamage,44,0,180,0,0,1,fire|aoe,,Intelligence,1.0,Explosion on impact
+eff_burn_dot,eff_burn_dot,Burn Damage Over Time,DamageOverTime,6,5,0,0,1,5,fire|burn,,Intelligence,0.25,Stacking burn damage
+eff_gust_push,eff_gust_push,Gust Push,Push,0,0.2,260,550,0,1,wind|push,,Dexterity,0.2,Directional push on hit enemies or objects
+eff_gust_pull_light,eff_gust_pull_light,Gust Pull In,Pull,0,0.15,220,260,0,1,wind|pull,,Intelligence,0.2,Light vortex style pull for shaped explosions
+eff_spark_jolt_hit,eff_spark_jolt_hit,Spark Jolt Hit,Damage,32,0,0,0,0,1,lightning|hit,,Intelligence,0.85,Fast projectile impact
+eff_shock_debuff,eff_shock_debuff,Shock Debuff,Debuff,0,4,0,0,0,3,lightning|shock|conductive,,Intelligence,0.15,Increases chain and stun susceptibility
+eff_frost_shard_hit,eff_frost_shard_hit,Frost Shard Hit,Damage,28,0,0,0,0,1,ice|hit,,Intelligence,0.8,Piercing ice damage
+eff_chill_slow,eff_chill_slow,Chill Slow,CrowdControl,0,4,0,0,0,3,ice|slow,,Wisdom,0.15,Movement and attack speed slow
+eff_stone_spike_upthrust,eff_stone_spike_upthrust,Stone Spike Upthrust,AreaDamage,48,0,180,0,0,1,earth|ground|aoe,,Strength,0.65,Ground eruption damage
+eff_brief_stagger,eff_brief_stagger,Brief Stagger,CrowdControl,0,1.2,0,0,0,1,stagger,,Strength,0.1,Short interrupt window
+eff_ignite_weapon_buff,eff_ignite_weapon_buff,Ignite Weapon Buff,Buff,0,12,0,0,0,1,fire|weapon|buff,weapon,Intelligence,0.35,Adds fire proc to weapon swings
+eff_weapon_burn_proc,eff_weapon_burn_proc,Weapon Burn Proc,DamageOverTime,4,3,0,0,1,2,fire|weapon|burn_proc,,Strength,0.2,Proc applied on weapon hit while buffed
+eff_fire_punch_hit,eff_fire_punch_hit,Fire Punch Hit,Damage,38,0,90,0,0,1,fire|melee|unarmed,,Strength,0.9,Short range explosive punch hitbox
+eff_blink_move,eff_blink_move,Blink Movement,Movement,0,0,0,0,0,1,teleport|movement,,Dexterity,0.6,Instant short teleport
+eff_afterimage_dodge_window,eff_afterimage_dodge_window,Afterimage Dodge Window,Buff,0,1.2,0,0,0,1,movement|dodge|iframes,,Dexterity,0.25,Brief damage avoid window after blink
+eff_conductive_surge_chain,eff_conductive_surge_chain,Conductive Surge Chain,AreaDamage,52,0,420,0,0,1,lightning|chain|aoe,wet|conductive,Intelligence,1.15,Chains across wet targets and puddles
+eff_fire_tornado_vortex,eff_fire_tornado_vortex,Fire Tornado Vortex,AreaDamage,18,6,360,180,1,1,fire|wind|vortex|aoe,,Intelligence,0.5,Sustained vortex ticks plus pull
+eff_explosion_blast,eff_explosion_blast,Explosion Blast,AreaDamage,60,0,300,0,0,1,explosive|fire|aoe,,Intelligence,0.95,Castable detonation burst
+eff_chain_detonation_multi,eff_chain_detonation_multi,Chain Detonation Multi Blast,AreaDamage,42,2,500,0,0.4,1,explosive|chain|aoe,,Intelligence,1.1,Repeating detonations across marked nodes
+eff_backdraft_wave,eff_backdraft_wave,Backdraft Wave,ForcedMovement,34,2.5,340,420,0.5,1,fire|wind|oil|wave,oil|burning,Intelligence,0.8,Directed flame wave that pushes and burns
+eff_sky_lance_impact,eff_sky_lance_impact,Sky Lance Impact,Damage,58,0,120,0,0,1,airborne|precision|impact,,Dexterity,0.45,High damage downward strike
+eff_stone_breaker_shockwave,eff_stone_breaker_shockwave,Stone Breaker Shockwave,AreaDamage,54,0,260,0,0,1,earth|melee|shockwave,,Strength,1.0,Heavy earth finisher pulse

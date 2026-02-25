@@ -6,8 +6,25 @@
 
 class AFFChestInteractable;
 class AFableForgePlayerController;
+class UCanvasPanel;
+class UCanvasPanelSlot;
+class UImage;
 class UTextBlock;
+class UTexture2D;
 class UVerticalBox;
+class UWrapBox;
+
+USTRUCT()
+struct FFableChestUiItemDefinition
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString DisplayName;
+
+	UPROPERTY()
+	FString IconAssetPath;
+};
 
 UCLASS()
 class UFableChestWidget : public UUserWidget
@@ -24,6 +41,9 @@ public:
 private:
 	void RebuildContent();
 	void RefreshItemRows();
+	void EnsureItemDefinitionsLoaded();
+	FString GetDisplayNameForItem(const FString& ItemId) const;
+	UTexture2D* GetIconForItem(const FString& ItemId);
 
 	UFUNCTION()
 	void HandleTakeAction(FName ActionId);
@@ -36,10 +56,16 @@ private:
 
 private:
 	UPROPERTY(Transient)
+	TObjectPtr<UCanvasPanel> RootCanvas;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCanvasPanelSlot> PanelCanvasSlot;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> RootContent;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UVerticalBox> ItemListBox;
+	TObjectPtr<UWrapBox> ItemGrid;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> HeaderText;
@@ -49,4 +75,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<AFableForgePlayerController> CachedController;
+
+	UPROPERTY(Transient)
+	TMap<FString, FFableChestUiItemDefinition> ItemDefinitions;
+
+	UPROPERTY(Transient)
+	TMap<FString, TObjectPtr<UTexture2D>> IconTextureCache;
+
+	bool bItemDefinitionsLoaded = false;
 };

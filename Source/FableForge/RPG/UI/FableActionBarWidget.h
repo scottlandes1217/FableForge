@@ -13,6 +13,7 @@ class UVerticalBox;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFableActionBarMovedSignature, FGuid, BarId, FVector2D, NewScreenPosition);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFableActionBarExpandToggledSignature, FGuid, BarId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams(FFableActionBarSlotDropSignature, FGuid, BarId, int32, ToSlotIndex, FName, FromSlotId, const FString&, PayloadId, const FString&, PayloadLabel);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FFableActionBarSlotClickSignature, FGuid, BarId, int32, SlotIndex, const FString&, PayloadId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFableActionBarRemoveRequestedSignature, FGuid, BarId);
 
 UCLASS()
@@ -24,9 +25,12 @@ public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual bool NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+	virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
 	void InitializeBar(const FFableActionBarData& InBarData, const TArray<FFableActionSlotData>& InVisibleSlots, bool bInCanExpand, bool bInShowExpanded);
 	FGuid GetBarId() const;
+	bool TryResolveSlotIndexFromScreenPosition(const FVector2D& ScreenPosition, int32& OutSlotIndex) const;
 
 	UPROPERTY(BlueprintAssignable, Category = "ActionBar")
 	FFableActionBarMovedSignature OnBarMoved;
@@ -36,6 +40,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "ActionBar")
 	FFableActionBarSlotDropSignature OnActionSlotDropped;
+
+	UPROPERTY(BlueprintAssignable, Category = "ActionBar")
+	FFableActionBarSlotClickSignature OnActionSlotClicked;
 
 	UPROPERTY(BlueprintAssignable, Category = "ActionBar")
 	FFableActionBarRemoveRequestedSignature OnRemoveRequested;
@@ -55,6 +62,11 @@ private:
 
 	UFUNCTION()
 	void HandleSlotDrop(FName FromSlotId, FName ToSlotId, const FString& PayloadId, const FString& PayloadLabel);
+
+	UFUNCTION()
+	void HandleSlotClicked(FName SlotId, const FString& PayloadId);
+
+	bool ResolveSlotIndexFromDropPosition(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, int32& OutSlotIndex) const;
 
 private:
 	FFableActionBarData BarData;

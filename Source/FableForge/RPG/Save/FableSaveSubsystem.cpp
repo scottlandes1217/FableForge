@@ -1,11 +1,9 @@
 #include "RPG/Save/FableSaveSubsystem.h"
 
 #include "FableForge.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
+#include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
+#include "RPG/Data/FableRaceDefinitionTableRow.h"
 #include "RPG/Save/FableCharacterSaveGame.h"
 #include "RPG/Save/FableProfileIndexSaveGame.h"
 
@@ -16,6 +14,7 @@ namespace
 	constexpr int32 MainActionBarColumns = 10;
 	constexpr int32 MainActionBarCollapsedRows = 2;
 	constexpr int32 MainActionBarExpandedRows = 4;
+	const TCHAR* RacesDataTablePath = TEXT("/Game/Data/DT_Races.DT_Races");
 }
 
 void UFableSaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -44,81 +43,45 @@ const TArray<FFableCharacterProfile>& UFableSaveSubsystem::GetCharacters() const
 
 bool UFableSaveSubsystem::LoadRacesFromJson(const FString& RelativePath)
 {
+	(void)RelativePath;
 	RaceDefinitions.Reset();
 
-	const auto ReadIntField = [](const TSharedPtr<FJsonObject>& JsonObject, const TCHAR* FieldName, int32& OutValue)
+	if (UDataTable* RacesTable = LoadObject<UDataTable>(nullptr, RacesDataTablePath))
 	{
-		double NumberValue = 0.0;
-		if (!JsonObject.IsValid() || !JsonObject->TryGetNumberField(FieldName, NumberValue))
+		static const FString ContextString(TEXT("UFableSaveSubsystem::LoadRacesFromJson"));
+		TArray<FFableRaceDefinitionTableRow*> Rows;
+		RacesTable->GetAllRows(ContextString, Rows);
+
+		for (const FFableRaceDefinitionTableRow* Row : Rows)
 		{
-			return false;
-		}
+			if (Row == nullptr || Row->Id.IsEmpty())
+			{
+				continue;
+			}
 
-		OutValue = FMath::RoundToInt(NumberValue);
-		return true;
-	};
-
-	FString JsonText;
-	const FString FullPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir() / RelativePath);
-	if (!FFileHelper::LoadFileToString(JsonText, *FullPath))
-	{
-		UE_LOG(LogFableForge, Warning, TEXT("Could not load race data from '%s'."), *FullPath);
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> RootObject;
-	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
-	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
-	{
-		UE_LOG(LogFableForge, Warning, TEXT("Race JSON is invalid at '%s'."), *FullPath);
-		return false;
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* RaceArray = nullptr;
-	if (!RootObject->TryGetArrayField(TEXT("races"), RaceArray) || RaceArray == nullptr)
-	{
-		UE_LOG(LogFableForge, Warning, TEXT("Race JSON does not contain a 'races' array."));
-		return false;
-	}
-
-	for (const TSharedPtr<FJsonValue>& Value : *RaceArray)
-	{
-		const TSharedPtr<FJsonObject> RaceObject = Value.IsValid() ? Value->AsObject() : nullptr;
-		if (!RaceObject.IsValid())
-		{
-			continue;
-		}
-
-		FFableRaceDefinition RaceDefinition;
-		RaceDefinition.Id = RaceObject->GetStringField(TEXT("id"));
-		RaceDefinition.Name = RaceObject->GetStringField(TEXT("name"));
-		RaceDefinition.Description = RaceObject->GetStringField(TEXT("description"));
-		RaceDefinition.Image = RaceObject->GetStringField(TEXT("image"));
-
-		ReadIntField(RaceObject, TEXT("baseHitPoints"), RaceDefinition.BaseHitPoints);
-		ReadIntField(RaceObject, TEXT("baseMana"), RaceDefinition.BaseMana);
-		ReadIntField(RaceObject, TEXT("baseEnergy"), RaceDefinition.BaseEnergy);
-		ReadIntField(RaceObject, TEXT("baseRage"), RaceDefinition.BaseRage);
-
-		const TSharedPtr<FJsonObject>* AbilityObject = nullptr;
-		if (RaceObject->TryGetObjectField(TEXT("abilityScoreBonuses"), AbilityObject) && AbilityObject && AbilityObject->IsValid())
-		{
-			ReadIntField(*AbilityObject, TEXT("strength"), RaceDefinition.AbilityScoreBonuses.Strength);
-			ReadIntField(*AbilityObject, TEXT("dexterity"), RaceDefinition.AbilityScoreBonuses.Dexterity);
-			ReadIntField(*AbilityObject, TEXT("constitution"), RaceDefinition.AbilityScoreBonuses.Constitution);
-			ReadIntField(*AbilityObject, TEXT("intelligence"), RaceDefinition.AbilityScoreBonuses.Intelligence);
-			ReadIntField(*AbilityObject, TEXT("wisdom"), RaceDefinition.AbilityScoreBonuses.Wisdom);
-			ReadIntField(*AbilityObject, TEXT("charisma"), RaceDefinition.AbilityScoreBonuses.Charisma);
-		}
-
-		if (!RaceDefinition.Id.IsEmpty())
-		{
+			FFableRaceDefinition RaceDefinition;
+			RaceDefinition.Id = Row->Id;
+			RaceDefinition.Name = Row->DisplayName;
+			RaceDefinition.Description = Row->Description;
+			RaceDefinition.Image = Row->Image;
+			RaceDefinition.BaseHitPoints = Row->BaseHitPoints;
+			RaceDefinition.BaseMana = Row->BaseMana;
+			RaceDefinition.BaseEnergy = Row->BaseEnergy;
+			RaceDefinition.BaseRage = Row->BaseRage;
+			RaceDefinition.AbilityScoreBonuses.Strength = Row->Strength;
+			RaceDefinition.AbilityScoreBonuses.Dexterity = Row->Dexterity;
+			RaceDefinition.AbilityScoreBonuses.Constitution = Row->Constitution;
+			RaceDefinition.AbilityScoreBonuses.Intelligence = Row->Intelligence;
+			RaceDefinition.AbilityScoreBonuses.Wisdom = Row->Wisdom;
+			RaceDefinition.AbilityScoreBonuses.Charisma = Row->Charisma;
 			RaceDefinitions.Add(MoveTemp(RaceDefinition));
 		}
-	}
 
-	UE_LOG(LogFableForge, Log, TEXT("Loaded %d races from '%s'"), RaceDefinitions.Num(), *RelativePath);
-	return RaceDefinitions.Num() > 0;
+		UE_LOG(LogFableForge, Log, TEXT("Loaded %d races from DataTable '%s'"), RaceDefinitions.Num(), RacesDataTablePath);
+		return RaceDefinitions.Num() > 0;
+	}
+	UE_LOG(LogFableForge, Warning, TEXT("Race DataTable not found at '%s'."), RacesDataTablePath);
+	return false;
 }
 
 bool UFableSaveSubsystem::HasAnyCharacters() const
@@ -406,7 +369,9 @@ bool UFableSaveSubsystem::SetActiveInventory(const TArray<FString>& InInventoryS
 	Profile.InventorySlots = InInventorySlots;
 	Profile.EquippedItems = InEquippedSlots;
 	EnsureInventoryData(Profile);
-	return SaveIndex();
+	const bool bSaved = SaveIndex();
+	ActiveInventoryChanged.Broadcast(Profile.InventorySlots, Profile.EquippedItems);
+	return bSaved;
 }
 
 bool UFableSaveSubsystem::TryGetActiveLearnedSkills(TArray<FString>& OutLearnedSkills) const
@@ -464,6 +429,11 @@ int32 UFableSaveSubsystem::GetActiveSlotIndex() const
 const UFableCharacterSaveGame* UFableSaveSubsystem::GetLoadedGame() const
 {
 	return LoadedGame;
+}
+
+FFableActiveInventoryChangedSignature& UFableSaveSubsystem::OnActiveInventoryChanged()
+{
+	return ActiveInventoryChanged;
 }
 
 bool UFableSaveSubsystem::LoadIndex()
@@ -543,6 +513,23 @@ void UFableSaveSubsystem::EnsureCharacterSlots(FFableCharacterProfile& Profile) 
 
 void UFableSaveSubsystem::EnsureInventoryData(FFableCharacterProfile& Profile) const
 {
+	// Migrate legacy 6-slot equipment layout:
+	// [Weapon, Head, Chest, Hands, Legs, Feet]
+	// to new equipment layout:
+	// [Main Hand, Off Hand, Head, Chest, Hands, Legs, Feet, Back, Neck, Ring 1, Ring 2, Bow]
+	if (Profile.EquippedItems.Num() == 6 && EquipmentSlotsPerCharacter >= 11)
+	{
+		TArray<FString> MigratedEquipment;
+		MigratedEquipment.SetNum(EquipmentSlotsPerCharacter);
+		MigratedEquipment[0] = Profile.EquippedItems[0];
+		MigratedEquipment[2] = Profile.EquippedItems[1];
+		MigratedEquipment[3] = Profile.EquippedItems[2];
+		MigratedEquipment[4] = Profile.EquippedItems[3];
+		MigratedEquipment[5] = Profile.EquippedItems[4];
+		MigratedEquipment[6] = Profile.EquippedItems[5];
+		Profile.EquippedItems = MoveTemp(MigratedEquipment);
+	}
+
 	if (Profile.EquippedItems.Num() != EquipmentSlotsPerCharacter)
 	{
 		Profile.EquippedItems.SetNum(EquipmentSlotsPerCharacter);

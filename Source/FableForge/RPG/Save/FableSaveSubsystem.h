@@ -6,6 +6,7 @@
 #include "FableSaveSubsystem.generated.h"
 
 class UFableCharacterSaveGame;
+DECLARE_MULTICAST_DELEGATE_TwoParams(FFableActiveInventoryChangedSignature, const TArray<FString>&, const TArray<FString>&);
 
 UCLASS()
 class UFableSaveSubsystem : public UGameInstanceSubsystem
@@ -14,8 +15,8 @@ class UFableSaveSubsystem : public UGameInstanceSubsystem
 
 public:
 	static constexpr int32 SlotsPerCharacter = 5;
-	static constexpr int32 EquipmentSlotsPerCharacter = 6;
-	static constexpr int32 InventorySlotsPerCharacter = 20;
+	static constexpr int32 EquipmentSlotsPerCharacter = 12;
+	static constexpr int32 InventorySlotsPerCharacter = 40;
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
@@ -49,6 +50,7 @@ public:
 	FGuid GetActiveCharacterId() const;
 	int32 GetActiveSlotIndex() const;
 	const UFableCharacterSaveGame* GetLoadedGame() const;
+	FFableActiveInventoryChangedSignature& OnActiveInventoryChanged();
 
 private:
 	bool LoadIndex();
@@ -73,4 +75,6 @@ private:
 
 	FGuid ActiveCharacterId;
 	int32 ActiveSlotIndex = INDEX_NONE;
+
+	FFableActiveInventoryChangedSignature ActiveInventoryChanged;
 };

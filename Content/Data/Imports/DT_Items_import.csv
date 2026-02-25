@@ -1,0 +1,9 @@
+Name,ItemId,DisplayName,Type,bStackable,bEquipable,IconTexture,WorldStaticMesh,WorldSkeletalMesh
+health_potion,health_potion,Health Potion,consumable,true,false,,,
+mana_potion,mana_potion,Mana Potion,consumable,true,false,,,
+wood,wood,Wood,material,true,false,,,
+stone,stone,Stone,material,true,false,,,
+iron_ore,iron_ore,Iron Ore,material,true,false,,,
+meat,meat,Meat,befriending,true,false,,,
+honey,honey,Honey,befriending,true,false,,,
+berries,berries,Berries,befriending,true,false,,,
