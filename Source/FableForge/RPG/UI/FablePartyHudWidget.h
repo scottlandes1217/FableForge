@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "RPG/Data/FableForgeRPGTypes.h"
+#include "RPG/Data/FableSkillSystemTableRows.h"
 #include "FablePartyHudWidget.generated.h"
 
 class UBorder;
@@ -30,6 +31,7 @@ public:
 	void RefreshFromSaveData();
 	void SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget);
 	bool TryAssignActionAtScreenPosition(const FVector2D& ScreenPosition, FName FromSlotId, const FString& PayloadId, const FString& PayloadLabel);
+	bool TryUseActionAtScreenPosition(const FVector2D& ScreenPosition);
 	bool ClearActionAtSlotId(FName SlotId);
 
 private:
@@ -54,6 +56,10 @@ private:
 	FString BuildActionToken(const FString& PayloadId) const;
 	void SaveActionBars();
 	void AddAdditionalActionBar(EFableActionBarOrientation Orientation);
+	void LoadSkillDefinitionsFromDataTable();
+	const FFableSkillDefinitionTableRow* FindSkillDefinition(const FString& SkillId) const;
+	void UpdateActionBarCooldownVisuals();
+	UFableActionBarWidget* FindActionBarWidgetById(const FGuid& BarId) const;
 
 	FName MakeActionName(const FString& Prefix);
 	FName RegisterCharacterAction(const FGuid& CharacterId);
@@ -130,4 +136,7 @@ private:
 
 	TArray<FFableActionBarData> ActionBars;
 	TMap<FString, FString> ItemTypeLookup;
+	TMap<FString, FFableSkillDefinitionTableRow> SkillDefinitions;
+	TMap<FString, float> ActionCooldownsByPayload;
+	bool bSkillDefinitionsLoaded = false;
 };

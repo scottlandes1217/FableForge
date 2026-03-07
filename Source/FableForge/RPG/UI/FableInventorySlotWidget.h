@@ -21,6 +21,8 @@ class UFableInventorySlotWidget : public UUserWidget
 
 public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -33,6 +35,8 @@ public:
 	void InitializeSlot(FName InSlotId, const FString& InDisplayName, bool bInEquipmentSlot);
 	void SetItemLabel(const FString& InItemLabel);
 	void SetItemData(const FString& InPayloadId, const FString& InItemLabel, UObject* InIconResource = nullptr);
+	void SetCooldownRemaining(float InRemainingSeconds);
+	void PlayUseFeedback();
 	FName GetSlotId() const;
 
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
@@ -64,6 +68,12 @@ private:
 	TObjectPtr<UTextBlock> LabelText;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UBorder> CooldownOverlay;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CooldownText;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UObject> ItemIconResource;
 
 	FName SlotId;
@@ -73,4 +83,7 @@ private:
 	bool bEquipmentSlot = false;
 	bool bDragDetectedThisPress = false;
 	bool bTemporarilyDragHidden = false;
+	bool bActionClickTriggeredThisPress = false;
+	float CooldownRemainingSeconds = 0.0f;
+	float UseFeedbackTimeRemaining = 0.0f;
 };

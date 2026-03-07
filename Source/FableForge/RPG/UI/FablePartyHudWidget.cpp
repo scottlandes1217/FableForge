@@ -17,6 +17,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/DataTable.h"
 #include "Engine/SceneCapture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "FableForgePlayerController.h"
@@ -47,6 +48,7 @@ namespace
 	const FName CancelDeleteActionBarAction = TEXT("cancel_delete_action_bar");
 	const FName OpenCharacterMenuAction = TEXT("open_character_menu");
 	const FName CloseModalAction = TEXT("close_modal");
+	const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
 
 	const FString UnityItemsPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/items.json");
 	const FString UnityWeaponsPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/weapons.json");
@@ -92,6 +94,33 @@ void UFablePartyHudWidget::NativeDestruct()
 void UFablePartyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	if (ActionCooldownsByPayload.Num() == 0)
+	{
+		return;
+	}
+
+	bool bCooldownsChanged = false;
+	TArray<FString> ExpiredPayloads;
+	for (TPair<FString, float>& Pair : ActionCooldownsByPayload)
+	{
+		Pair.Value = FMath::Max(0.0f, Pair.Value - InDeltaTime);
+		if (Pair.Value <= KINDA_SMALL_NUMBER)
+		{
+			ExpiredPayloads.Add(Pair.Key);
+		}
+		bCooldownsChanged = true;
+	}
+
+	for (const FString& PayloadId : ExpiredPayloads)
+	{
+		ActionCooldownsByPayload.Remove(PayloadId);
+	}
+
+	if (bCooldownsChanged)
+	{
+		UpdateActionBarCooldownVisuals();
+	}
 }
 
 void UFablePartyHudWidget::SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget)
@@ -129,6 +158,55 @@ bool UFablePartyHudWidget::TryAssignActionAtScreenPosition(const FVector2D& Scre
 			*PayloadId,
 			*PayloadLabel);
 		HandleActionBarSlotDrop(ActionBarWidget->GetBarId(), ToSlotIndex, FromSlotId, PayloadId, PayloadLabel);
+		return true;
+	}
+
+	return false;
+}
+
+bool UFablePartyHudWidget::TryUseActionAtScreenPosition(const FVector2D& ScreenPosition)
+{
+	if (ActionBarsCanvas == nullptr)
+	{
+		UE_LOG(LogFableForge, Verbose, TEXT("ActionBar use hit-test skipped: ActionBarsCanvas missing"));
+		return false;
+	}
+
+	const int32 ChildCount = ActionBarsCanvas->GetChildrenCount();
+	for (int32 ChildIndex = ChildCount - 1; ChildIndex >= 0; --ChildIndex)
+	{
+		UWidget* ChildWidget = ActionBarsCanvas->GetChildAt(ChildIndex);
+		UFableActionBarWidget* ActionBarWidget = Cast<UFableActionBarWidget>(ChildWidget);
+		if (ActionBarWidget == nullptr || !ActionBarWidget->IsVisible())
+		{
+			continue;
+		}
+
+		int32 SlotIndex = INDEX_NONE;
+		if (!ActionBarWidget->TryResolveSlotIndexFromScreenPosition(ScreenPosition, SlotIndex))
+		{
+			continue;
+		}
+
+		const FGuid BarId = ActionBarWidget->GetBarId();
+		const FFableActionBarData* BarData = ActionBars.FindByPredicate([&BarId](const FFableActionBarData& Candidate)
+		{
+			return Candidate.BarId == BarId;
+		});
+
+		const FString PayloadId = (BarData != nullptr && BarData->Slots.IsValidIndex(SlotIndex))
+			? BarData->Slots[SlotIndex].EntryId
+			: FString();
+
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar controller hit-test bar=%s slot=%d payload=%s"),
+			*BarId.ToString(EGuidFormats::Digits), SlotIndex, *PayloadId);
+
+		if (PayloadId.IsEmpty())
+		{
+			return true; // Cursor is over an action slot; block world click even if empty.
+		}
+
+		HandleActionBarSlotClicked(BarId, SlotIndex, PayloadId);
 		return true;
 	}
 
@@ -252,10 +330,11 @@ void UFablePartyHudWidget::Rebuild()
 	SlotActionMap.Reset();
 
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("PartyHUDRoot"));
-	Root->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	Root->SetVisibility(ESlateVisibility::Visible);
 	WidgetTree->RootWidget = Root;
 
 	ActionBarsCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ActionBarsCanvas"));
+	ActionBarsCanvas->SetVisibility(ESlateVisibility::Visible);
 	if (UCanvasPanelSlot* ActionBarsCanvasSlot = Root->AddChildToCanvas(ActionBarsCanvas))
 	{
 		ActionBarsCanvasSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
@@ -680,12 +759,21 @@ void UFablePartyHudWidget::RebuildActionBars()
 		}
 
 		UFableActionBarWidget* BarWidget = WidgetTree->ConstructWidget<UFableActionBarWidget>(UFableActionBarWidget::StaticClass());
+		BarWidget->SetVisibility(ESlateVisibility::Visible);
+		BarWidget->SetIsEnabled(true);
 		BarWidget->InitializeBar(BarData, VisibleSlots, BarData.bIsMainBar, BarData.bExpanded);
 		BarWidget->OnBarMoved.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarMoved);
 		BarWidget->OnExpandToggled.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarExpandToggled);
 		BarWidget->OnActionSlotDropped.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarSlotDrop);
 		BarWidget->OnActionSlotClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarSlotClicked);
 		BarWidget->OnRemoveRequested.AddDynamic(this, &UFablePartyHudWidget::HandleActionBarRemoveRequested);
+
+		for (int32 SlotIndex = 0; SlotIndex < VisibleSlots.Num(); ++SlotIndex)
+		{
+			const FFableActionSlotData& SlotData = VisibleSlots[SlotIndex];
+			const float* CooldownRemaining = ActionCooldownsByPayload.Find(SlotData.EntryId);
+			BarWidget->SetSlotCooldownRemaining(SlotIndex, CooldownRemaining != nullptr ? *CooldownRemaining : 0.0f);
+		}
 
 		if (UCanvasPanelSlot* BarSlot = ActionBarsCanvas->AddChildToCanvas(BarWidget))
 		{
@@ -1287,8 +1375,179 @@ void UFablePartyHudWidget::HandleActionBarSlotClicked(FGuid BarId, int32 SlotInd
 	UE_LOG(LogFableForge, Log, TEXT("ActionBar use requested bar=%s slot=%d payload=%s"),
 		*BarId.ToString(EGuidFormats::Digits), SlotIndex, *PayloadId);
 
-	// Placeholder hook until gameplay skill/item execution is wired.
-	// Clicking now emits a concrete event and can be connected to cast/use systems.
+	if (PayloadId.IsEmpty())
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("ActionBar use ignored: empty payload bar=%s slot=%d"),
+			*BarId.ToString(EGuidFormats::Digits), SlotIndex);
+		return;
+	}
+
+	if (const float* ExistingCooldown = ActionCooldownsByPayload.Find(PayloadId))
+	{
+		if (*ExistingCooldown > KINDA_SMALL_NUMBER)
+		{
+			UE_LOG(LogFableForge, Log, TEXT("ActionBar use blocked by cooldown bar=%s slot=%d payload=%s remaining=%.2f"),
+				*BarId.ToString(EGuidFormats::Digits), SlotIndex, *PayloadId, *ExistingCooldown);
+			return;
+		}
+	}
+
+	if (UFableActionBarWidget* BarWidget = FindActionBarWidgetById(BarId))
+	{
+		BarWidget->PlaySlotUseFeedback(SlotIndex);
+	}
+	else
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("ActionBar use feedback failed: bar widget not found bar=%s slot=%d payload=%s"),
+			*BarId.ToString(EGuidFormats::Digits), SlotIndex, *PayloadId);
+	}
+
+	float CooldownSeconds = 0.0f;
+
+	if (PayloadId.StartsWith(TEXT("skill:")))
+	{
+		FString SkillId = PayloadId;
+		SkillId.RemoveFromStart(TEXT("skill:"));
+
+		LoadSkillDefinitionsFromDataTable();
+		if (const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId))
+		{
+			CooldownSeconds = FMath::Max(0.0f, SkillRow->CooldownSeconds);
+			UE_LOG(LogFableForge, Log, TEXT("ActionBar skill resolved skillId=%s cooldown=%.2f cast=%.2f"),
+				*SkillId, CooldownSeconds, SkillRow->CastTimeSeconds);
+
+			if (ACharacter* CharacterPawn = Cast<ACharacter>(GetOwningPlayerPawn()))
+			{
+				if (USkeletalMeshComponent* MeshComp = CharacterPawn->GetMesh())
+				{
+					if (UAnimationAsset* AnimAsset = SkillRow->CharacterAnimationAsset.LoadSynchronous())
+					{
+						UE_LOG(LogFableForge, Log, TEXT("ActionBar playing character animation skillId=%s anim=%s"),
+							*SkillId, *GetNameSafe(AnimAsset));
+						MeshComp->PlayAnimation(AnimAsset, false);
+					}
+					else
+					{
+						UE_LOG(LogFableForge, Log, TEXT("ActionBar no character animation asset for skillId=%s"), *SkillId);
+					}
+				}
+				else
+				{
+					UE_LOG(LogFableForge, Warning, TEXT("ActionBar skill use: character mesh missing for skillId=%s"), *SkillId);
+				}
+			}
+			else
+			{
+				UE_LOG(LogFableForge, Warning, TEXT("ActionBar skill use: owning pawn is not ACharacter for skillId=%s pawn=%s"),
+					*SkillId, *GetNameSafe(GetOwningPlayerPawn()));
+			}
+		}
+		else
+		{
+			UE_LOG(LogFableForge, Warning, TEXT("ActionBar skill click missing skill definition skillId=%s"), *SkillId);
+		}
+	}
+
+	if (CooldownSeconds > 0.0f)
+	{
+		ActionCooldownsByPayload.Add(PayloadId, CooldownSeconds);
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar cooldown started payload=%s seconds=%.2f"), *PayloadId, CooldownSeconds);
+		UpdateActionBarCooldownVisuals();
+	}
+	else
+	{
+		UE_LOG(LogFableForge, Log, TEXT("ActionBar use completed without cooldown payload=%s"), *PayloadId);
+	}
+}
+
+void UFablePartyHudWidget::LoadSkillDefinitionsFromDataTable()
+{
+	if (bSkillDefinitionsLoaded)
+	{
+		return;
+	}
+
+	SkillDefinitions.Reset();
+	if (UDataTable* SkillsTable = LoadObject<UDataTable>(nullptr, SkillsDataTablePath))
+	{
+		static const FString ContextString(TEXT("UFablePartyHudWidget::LoadSkillDefinitionsFromDataTable"));
+		TArray<FFableSkillDefinitionTableRow*> Rows;
+		SkillsTable->GetAllRows(ContextString, Rows);
+		for (const FFableSkillDefinitionTableRow* Row : Rows)
+		{
+			if (Row == nullptr || Row->SkillId.IsEmpty())
+			{
+				continue;
+			}
+
+			SkillDefinitions.Add(Row->SkillId, *Row);
+		}
+	}
+	else
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("Skills DataTable not found at '%s'."), SkillsDataTablePath);
+	}
+
+	bSkillDefinitionsLoaded = true;
+}
+
+const FFableSkillDefinitionTableRow* UFablePartyHudWidget::FindSkillDefinition(const FString& SkillId) const
+{
+	return SkillDefinitions.Find(SkillId);
+}
+
+void UFablePartyHudWidget::UpdateActionBarCooldownVisuals()
+{
+	if (ActionBarsCanvas == nullptr)
+	{
+		return;
+	}
+
+	for (int32 ChildIndex = 0; ChildIndex < ActionBarsCanvas->GetChildrenCount(); ++ChildIndex)
+	{
+		UFableActionBarWidget* BarWidget = Cast<UFableActionBarWidget>(ActionBarsCanvas->GetChildAt(ChildIndex));
+		if (BarWidget == nullptr)
+		{
+			continue;
+		}
+
+		const FFableActionBarData* BarData = ActionBars.FindByPredicate([&BarWidget](const FFableActionBarData& Candidate)
+		{
+			return Candidate.BarId == BarWidget->GetBarId();
+		});
+		if (BarData == nullptr)
+		{
+			continue;
+		}
+
+		const int32 VisibleRows = BarData->bExpanded ? BarData->ExpandedRows : BarData->Rows;
+		const int32 VisibleCount = FMath::Max(1, VisibleRows) * FMath::Max(1, BarData->Columns);
+		for (int32 SlotIndex = 0; SlotIndex < VisibleCount; ++SlotIndex)
+		{
+			const FString PayloadId = BarData->Slots.IsValidIndex(SlotIndex) ? BarData->Slots[SlotIndex].EntryId : FString();
+			const float* CooldownRemaining = ActionCooldownsByPayload.Find(PayloadId);
+			BarWidget->SetSlotCooldownRemaining(SlotIndex, CooldownRemaining != nullptr ? *CooldownRemaining : 0.0f);
+		}
+	}
+}
+
+UFableActionBarWidget* UFablePartyHudWidget::FindActionBarWidgetById(const FGuid& BarId) const
+{
+	if (ActionBarsCanvas == nullptr)
+	{
+		return nullptr;
+	}
+
+	for (int32 ChildIndex = 0; ChildIndex < ActionBarsCanvas->GetChildrenCount(); ++ChildIndex)
+	{
+		UFableActionBarWidget* BarWidget = Cast<UFableActionBarWidget>(ActionBarsCanvas->GetChildAt(ChildIndex));
+		if (BarWidget != nullptr && BarWidget->GetBarId() == BarId)
+		{
+			return BarWidget;
+		}
+	}
+
+	return nullptr;
 }
 
 void UFablePartyHudWidget::HandleActionBarRemoveRequested(FGuid BarId)

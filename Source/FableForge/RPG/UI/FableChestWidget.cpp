@@ -25,10 +25,10 @@
 
 namespace
 {
-	const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
-	const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
-	const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
-	const TCHAR* WhiteSquareTexturePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
+	static const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
+	static const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
+	static const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
+	static const TCHAR* WhiteSquareTexturePath = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
 }
 
 TSharedRef<SWidget> UFableChestWidget::RebuildWidget()

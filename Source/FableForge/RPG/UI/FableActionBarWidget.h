@@ -31,6 +31,8 @@ public:
 	void InitializeBar(const FFableActionBarData& InBarData, const TArray<FFableActionSlotData>& InVisibleSlots, bool bInCanExpand, bool bInShowExpanded);
 	FGuid GetBarId() const;
 	bool TryResolveSlotIndexFromScreenPosition(const FVector2D& ScreenPosition, int32& OutSlotIndex) const;
+	void SetSlotCooldownRemaining(int32 SlotIndex, float RemainingSeconds);
+	void PlaySlotUseFeedback(int32 SlotIndex);
 
 	UPROPERTY(BlueprintAssignable, Category = "ActionBar")
 	FFableActionBarMovedSignature OnBarMoved;
@@ -77,4 +79,5 @@ private:
 	FVector2D DragOffset = FVector2D::ZeroVector;
 
 	TMap<FName, int32> SlotAddressMap;
+	TMap<int32, TObjectPtr<UFableInventorySlotWidget>> SlotWidgetsByIndex;
 };

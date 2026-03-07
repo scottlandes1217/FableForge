@@ -42,8 +42,8 @@ namespace
 	const FName CategoryKeyItemsAction = TEXT("cat_key_items");
 	const FName CategoryAllAction = TEXT("cat_all");
 	const FName SkillCategoryAllAction = TEXT("skillcat_all");
-	const TCHAR* SkillSelectActionPrefix = TEXT("skillselect_");
-	const TCHAR* SkillCategoryActionPrefix = TEXT("skillcat_");
+	static const TCHAR* SkillSelectActionPrefix = TEXT("skillselect_");
+	static const TCHAR* SkillCategoryActionPrefix = TEXT("skillcat_");
 
 	const FLinearColor UiPanelColor(0.01f, 0.01f, 0.01f, 0.96f);
 	const FLinearColor UiSectionColor(0.03f, 0.03f, 0.03f, 0.94f);
@@ -88,10 +88,10 @@ namespace
 		{11, 3, 2}   // Bow
 	};
 
-	const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
-	const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
-	const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
-	const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
+	static const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
+	static const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
+	static const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
+	static const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
 
 	FName CategoryFromType(const FString& InType)
 	{

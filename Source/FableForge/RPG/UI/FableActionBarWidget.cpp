@@ -73,6 +73,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 	}
 
 	SlotAddressMap.Reset();
+	SlotWidgetsByIndex.Reset();
 
 	UBorder* RootBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ActionBarBorder"));
 	RootBorder->SetBrushColor(UiBarColor);
@@ -109,6 +110,8 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			const FName SlotId = MakeActionSlotId(BarData.BarId, SlotIndex);
 
 			UFableInventorySlotWidget* SlotWidget = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
+			SlotWidget->SetVisibility(ESlateVisibility::Visible);
+			SlotWidget->SetIsEnabled(true);
 			SlotWidget->InitializeSlot(SlotId, TEXT(""), false);
 			SlotWidget->SetItemData(SlotData.EntryId, SlotData.EntryLabel.IsEmpty() ? ShortToken(SlotData.EntryId) : SlotData.EntryLabel);
 			SlotWidget->OnItemDrop.AddDynamic(this, &UFableActionBarWidget::HandleSlotDrop);
@@ -126,6 +129,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			}
 
 			SlotAddressMap.Add(SlotId, SlotIndex);
+			SlotWidgetsByIndex.Add(SlotIndex, SlotWidget);
 		}
 	}
 
@@ -385,6 +389,28 @@ bool UFableActionBarWidget::TryResolveSlotIndexFromScreenPosition(const FVector2
 	return true;
 }
 
+void UFableActionBarWidget::SetSlotCooldownRemaining(int32 SlotIndex, float RemainingSeconds)
+{
+	if (TObjectPtr<UFableInventorySlotWidget>* SlotWidget = SlotWidgetsByIndex.Find(SlotIndex))
+	{
+		if (SlotWidget->Get() != nullptr)
+		{
+			SlotWidget->Get()->SetCooldownRemaining(RemainingSeconds);
+		}
+	}
+}
+
+void UFableActionBarWidget::PlaySlotUseFeedback(int32 SlotIndex)
+{
+	if (TObjectPtr<UFableInventorySlotWidget>* SlotWidget = SlotWidgetsByIndex.Find(SlotIndex))
+	{
+		if (SlotWidget->Get() != nullptr)
+		{
+			SlotWidget->Get()->PlayUseFeedback();
+		}
+	}
+}
+
 void UFableActionBarWidget::HandleMovePressed()
 {
 	if (BarData.bIsMainBar)
@@ -452,6 +478,8 @@ void UFableActionBarWidget::HandleSlotClicked(FName SlotId, const FString& Paylo
 {
 	if (PayloadId.IsEmpty())
 	{
+		UE_LOG(LogFableForge, Warning, TEXT("ActionBar slot click ignored (empty payload) bar=%s slotId=%s"),
+			*BarData.BarId.ToString(EGuidFormats::Digits), *SlotId.ToString());
 		return;
 	}
 
@@ -460,7 +488,11 @@ void UFableActionBarWidget::HandleSlotClicked(FName SlotId, const FString& Paylo
 		UE_LOG(LogFableForge, Log, TEXT("ActionBar slot click bar=%s slot=%d payload=%s"),
 			*BarData.BarId.ToString(EGuidFormats::Digits), *SlotIndex, *PayloadId);
 		OnActionSlotClicked.Broadcast(BarData.BarId, *SlotIndex, PayloadId);
+		return;
 	}
+
+	UE_LOG(LogFableForge, Warning, TEXT("ActionBar slot click could not resolve slotId bar=%s slotId=%s payload=%s"),
+		*BarData.BarId.ToString(EGuidFormats::Digits), *SlotId.ToString(), *PayloadId);
 }
 
 bool UFableActionBarWidget::ResolveSlotIndexFromDropPosition(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, int32& OutSlotIndex) const

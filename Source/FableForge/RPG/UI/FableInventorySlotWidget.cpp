@@ -24,6 +24,18 @@ namespace
 	const FLinearColor UiSlotBackgroundEquipment(0.022f, 0.022f, 0.022f, 1.0f);
 	const FLinearColor UiSlotText(0.95f, 0.95f, 0.95f, 1.0f);
 	const FLinearColor UiSlotTextMuted(0.46f, 0.46f, 0.46f, 1.0f);
+	const FLinearColor UiCooldownOverlay(0.0f, 0.0f, 0.0f, 0.62f);
+
+	FString FormatCooldownText(const float Seconds)
+	{
+		const float Clamped = FMath::Max(0.0f, Seconds);
+		if (Clamped >= 10.0f)
+		{
+			return FString::Printf(TEXT("%.0f"), FMath::CeilToFloat(Clamped));
+		}
+
+		return FString::Printf(TEXT("%.1f"), FMath::CeilToFloat(Clamped * 10.0f) / 10.0f);
+	}
 }
 
 TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
@@ -63,14 +75,73 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 		LabelSlot->SetPadding(FMargin(2.0f));
 	}
 
+	CooldownOverlay = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("CooldownOverlay"));
+	CooldownOverlay->SetBrushColor(UiCooldownOverlay);
+	if (UOverlaySlot* CooldownOverlaySlot = ContentOverlay->AddChildToOverlay(CooldownOverlay))
+	{
+		CooldownOverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+		CooldownOverlaySlot->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	CooldownText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("CooldownText"));
+	CooldownText->SetColorAndOpacity(FSlateColor(UiSlotText));
+	CooldownText->SetJustification(ETextJustify::Center);
+	if (UOverlaySlot* CooldownTextSlot = ContentOverlay->AddChildToOverlay(CooldownText))
+	{
+		CooldownTextSlot->SetHorizontalAlignment(HAlign_Center);
+		CooldownTextSlot->SetVerticalAlignment(VAlign_Center);
+		CooldownTextSlot->SetPadding(FMargin(2.0f));
+	}
+
 	WidgetTree->RootWidget = RootBorder;
 	RefreshVisual();
 	return Super::RebuildWidget();
 }
 
+void UFableInventorySlotWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+}
+
+void UFableInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	(void)MyGeometry;
+
+	if (UseFeedbackTimeRemaining > 0.0f)
+	{
+		UseFeedbackTimeRemaining = FMath::Max(0.0f, UseFeedbackTimeRemaining - InDeltaTime);
+		const float Alpha = 1.0f - (UseFeedbackTimeRemaining / 0.16f);
+		const float Pulse = FMath::Sin(Alpha * PI);
+		SetRenderScale(FVector2D(1.0f + (Pulse * 0.08f)));
+		if (RootBorder != nullptr)
+		{
+			const FLinearColor BaseColor = bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline;
+			RootBorder->SetBrushColor(FMath::Lerp(BaseColor, FLinearColor(0.95f, 0.9f, 0.45f, 1.0f), Pulse));
+		}
+	}
+	else
+	{
+		SetRenderScale(FVector2D(1.0f, 1.0f));
+		if (RootBorder != nullptr)
+		{
+			RootBorder->SetBrushColor(bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline);
+		}
+	}
+}
+
 FReply UFableInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
 	bDragDetectedThisPress = false;
+	bActionClickTriggeredThisPress = false;
+	(void)InGeometry;
+
+	UE_LOG(LogFableForge, Log, TEXT("Slot mouse down slot=%s payload=%s label=%s button=%s visible=%d"),
+		*SlotId.ToString(),
+		*ItemPayloadId,
+		*ItemLabel,
+		*InMouseEvent.GetEffectingButton().ToString(),
+		static_cast<int32>(GetVisibility()));
 
 	if (!ItemLabel.IsEmpty())
 	{
@@ -87,6 +158,24 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeo
 
 			if (!bCtrlDown)
 			{
+				if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+				{
+					UE_LOG(LogFableForge, Log, TEXT("Action slot left mouse down slot=%s payload=%s ctrl=%d cooldown=%.2f"),
+						*SlotId.ToString(), *ItemPayloadId, bCtrlDown ? 1 : 0, CooldownRemainingSeconds);
+					if (CooldownRemainingSeconds > 0.0f)
+					{
+						UE_LOG(LogFableForge, Log, TEXT("Action slot click blocked by cooldown slot=%s remaining=%.2f"),
+							*SlotId.ToString(), CooldownRemainingSeconds);
+						return FReply::Handled();
+					}
+
+					bActionClickTriggeredThisPress = true;
+					UE_LOG(LogFableForge, Log, TEXT("Action slot click firing on mouse down slot=%s payload=%s"),
+						*SlotId.ToString(), *ItemPayloadId);
+					PlayUseFeedback();
+					OnSlotClicked.Broadcast(SlotId, ItemPayloadId);
+					return FReply::Handled();
+				}
 				return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 			}
 		}
@@ -98,6 +187,13 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeo
 
 FReply UFableInventorySlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	UE_LOG(LogFableForge, Log, TEXT("Slot mouse up slot=%s payload=%s button=%s dragDetected=%d clickOnDown=%d"),
+		*SlotId.ToString(),
+		*ItemPayloadId,
+		*InMouseEvent.GetEffectingButton().ToString(),
+		bDragDetectedThisPress ? 1 : 0,
+		bActionClickTriggeredThisPress ? 1 : 0);
+
 	if (bTemporarilyDragHidden)
 	{
 		SetVisibility(ESlateVisibility::Visible);
@@ -106,6 +202,31 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeome
 
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !ItemPayloadId.IsEmpty())
 	{
+		if (bActionClickTriggeredThisPress)
+		{
+			UE_LOG(LogFableForge, Log, TEXT("Slot mouse up consumed (action click already fired on down) slot=%s"), *SlotId.ToString());
+			bActionClickTriggeredThisPress = false;
+			bDragDetectedThisPress = false;
+			return FReply::Handled();
+		}
+
+		bool bCtrlDown = InMouseEvent.IsControlDown();
+		if (!bCtrlDown)
+		{
+			if (APlayerController* OwningPC = GetOwningPlayer())
+			{
+				bCtrlDown = OwningPC->IsInputKeyDown(EKeys::LeftControl) || OwningPC->IsInputKeyDown(EKeys::RightControl);
+			}
+		}
+
+		if (CooldownRemainingSeconds > 0.0f && SlotId.ToString().StartsWith(TEXT("action_")) && !bCtrlDown)
+		{
+			UE_LOG(LogFableForge, Log, TEXT("Action slot mouse up blocked by cooldown slot=%s remaining=%.2f"),
+				*SlotId.ToString(), CooldownRemainingSeconds);
+			bDragDetectedThisPress = false;
+			return FReply::Handled();
+		}
+
 		const bool bShouldTreatAsClick = !bDragDetectedThisPress;
 		const bool bWasDragRelease = bDragDetectedThisPress;
 		bDragDetectedThisPress = false;
@@ -138,6 +259,7 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeome
 
 		if (bShouldTreatAsClick)
 		{
+			UE_LOG(LogFableForge, Log, TEXT("Slot click firing on mouse up slot=%s payload=%s"), *SlotId.ToString(), *ItemPayloadId);
 			OnSlotClicked.Broadcast(SlotId, ItemPayloadId);
 			return FReply::Handled();
 		}
@@ -319,6 +441,25 @@ void UFableInventorySlotWidget::SetItemData(const FString& InPayloadId, const FS
 	RefreshVisual();
 }
 
+void UFableInventorySlotWidget::SetCooldownRemaining(float InRemainingSeconds)
+{
+	CooldownRemainingSeconds = FMath::Max(0.0f, InRemainingSeconds);
+	UE_LOG(LogFableForge, Verbose, TEXT("Slot cooldown set slot=%s payload=%s remaining=%.2f"),
+		*SlotId.ToString(), *ItemPayloadId, CooldownRemainingSeconds);
+	RefreshVisual();
+}
+
+void UFableInventorySlotWidget::PlayUseFeedback()
+{
+	UseFeedbackTimeRemaining = 0.16f;
+	UE_LOG(LogFableForge, Log, TEXT("Slot use feedback slot=%s payload=%s"), *SlotId.ToString(), *ItemPayloadId);
+	SetRenderScale(FVector2D(1.08f, 1.08f));
+	if (RootBorder != nullptr)
+	{
+		RootBorder->SetBrushColor(FLinearColor(0.95f, 0.9f, 0.45f, 1.0f));
+	}
+}
+
 FName UFableInventorySlotWidget::GetSlotId() const
 {
 	return SlotId;
@@ -366,6 +507,14 @@ void UFableInventorySlotWidget::RefreshVisual()
 		FSlateFontInfo FontInfo = LabelText->GetFont();
 		FontInfo.Size = EmptyDisplayName.IsEmpty() ? 10 : 13;
 		LabelText->SetFont(FontInfo);
+		if (CooldownOverlay != nullptr)
+		{
+			CooldownOverlay->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (CooldownText != nullptr)
+		{
+			CooldownText->SetVisibility(ESlateVisibility::Collapsed);
+		}
 		return;
 	}
 
@@ -375,4 +524,25 @@ void UFableInventorySlotWidget::RefreshVisual()
 	FSlateFontInfo FontInfo = LabelText->GetFont();
 	FontInfo.Size = ItemLabel.Len() <= 3 ? 30 : 15;
 	LabelText->SetFont(FontInfo);
+
+	const bool bShowCooldown = CooldownRemainingSeconds > 0.0f && SlotId.ToString().StartsWith(TEXT("action_"));
+	if (CooldownOverlay != nullptr)
+	{
+		CooldownOverlay->SetVisibility(bShowCooldown ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+	if (CooldownText != nullptr)
+	{
+		if (bShowCooldown)
+		{
+			CooldownText->SetText(FText::FromString(FormatCooldownText(CooldownRemainingSeconds)));
+			CooldownText->SetVisibility(ESlateVisibility::HitTestInvisible);
+			FSlateFontInfo CooldownFont = CooldownText->GetFont();
+			CooldownFont.Size = 18;
+			CooldownText->SetFont(CooldownFont);
+		}
+		else
+		{
+			CooldownText->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
 }

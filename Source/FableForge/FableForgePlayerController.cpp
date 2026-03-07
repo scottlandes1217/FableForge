@@ -430,6 +430,35 @@ void AFableForgePlayerController::RefreshHudData()
 
 void AFableForgePlayerController::HandlePrimaryInteractClick()
 {
+	UE_LOG(LogFableForge, Log, TEXT("Interact click start partyHud=%s visible=%d"),
+		*GetNameSafe(PartyHudWidget),
+		(PartyHudWidget != nullptr && PartyHudWidget->IsVisible()) ? 1 : 0);
+
+	if (PartyHudWidget != nullptr)
+	{
+		float MouseX = 0.0f;
+		float MouseY = 0.0f;
+		if (GetMousePosition(MouseX, MouseY))
+		{
+			const FVector2D MouseScreenPosition(MouseX, MouseY);
+			const bool bActionBarHandled = PartyHudWidget->TryUseActionAtScreenPosition(MouseScreenPosition);
+			UE_LOG(LogFableForge, Log, TEXT("Interact click precheck actionBarHandled=%d mouse=(%.1f, %.1f)"),
+				bActionBarHandled ? 1 : 0, MouseX, MouseY);
+			if (bActionBarHandled)
+			{
+				return;
+			}
+		}
+		else
+		{
+			UE_LOG(LogFableForge, Verbose, TEXT("Interact click precheck: GetMousePosition failed"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("Interact click precheck skipped: PartyHudWidget is null"));
+	}
+
 	if (IsGameInteractionBlocked())
 	{
 		UE_LOG(LogFableForge, Log, TEXT("Interact click ignored: game interaction currently blocked by UI."));

@@ -20,6 +20,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/DataTable.h"
 #include "Engine/GameInstance.h"
+#include "Animation/Skeleton.h"
 #include "RPG/Data/FableItemDefinitionTableRow.h"
 #include "RPG/Save/FableSaveSubsystem.h"
 
@@ -27,6 +28,60 @@ namespace
 {
 	const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
 	const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
+
+	bool CanUseLeaderPoseForModularArmor(const USkeletalMesh* CharacterMesh, const USkeletalMesh* ArmorMesh)
+	{
+		if (CharacterMesh == nullptr || ArmorMesh == nullptr)
+		{
+			return false;
+		}
+
+		const USkeleton* CharacterSkeleton = CharacterMesh->GetSkeleton();
+		const USkeleton* ArmorSkeleton = ArmorMesh->GetSkeleton();
+		if (CharacterSkeleton != nullptr && ArmorSkeleton != nullptr && CharacterSkeleton == ArmorSkeleton)
+		{
+			return true;
+		}
+
+		const FReferenceSkeleton& CharacterRef = CharacterMesh->GetRefSkeleton();
+		const FReferenceSkeleton& ArmorRef = ArmorMesh->GetRefSkeleton();
+		if (CharacterRef.GetNum() == 0 || ArmorRef.GetNum() == 0)
+		{
+			return false;
+		}
+
+		// Leader pose works when armor bones are a compatible subset of the character hierarchy.
+		for (int32 ArmorBoneIndex = 0; ArmorBoneIndex < ArmorRef.GetNum(); ++ArmorBoneIndex)
+		{
+			const FName ArmorBoneName = ArmorRef.GetBoneName(ArmorBoneIndex);
+			const int32 CharacterBoneIndex = CharacterRef.FindBoneIndex(ArmorBoneName);
+			if (CharacterBoneIndex == INDEX_NONE)
+			{
+				return false;
+			}
+
+			const int32 ArmorParentIndex = ArmorRef.GetParentIndex(ArmorBoneIndex);
+			if (ArmorParentIndex == INDEX_NONE)
+			{
+				continue;
+			}
+
+			const int32 CharacterParentIndex = CharacterRef.GetParentIndex(CharacterBoneIndex);
+			if (CharacterParentIndex == INDEX_NONE)
+			{
+				return false;
+			}
+
+			const FName ArmorParentName = ArmorRef.GetBoneName(ArmorParentIndex);
+			const FName CharacterParentName = CharacterRef.GetBoneName(CharacterParentIndex);
+			if (ArmorParentName != CharacterParentName)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
 }
 
 AFableForgeCharacter::AFableForgeCharacter()
@@ -391,6 +446,8 @@ void AFableForgeCharacter::ApplyEquipmentVisuals(const TArray<FString>& InEquipp
 			CreateEquipmentVisualForSlot(SlotIndex, ItemId);
 		}
 	}
+
+	UpdateBodyMaterialVisibility(InEquippedSlots);
 }
 
 void AFableForgeCharacter::ClearEquipmentVisual(int32 SlotIndex)
@@ -404,6 +461,96 @@ void AFableForgeCharacter::ClearEquipmentVisual(int32 SlotIndex)
 	{
 		ExistingComponent->DestroyComponent();
 		EquipmentVisualComponents[SlotIndex] = nullptr;
+	}
+}
+
+void AFableForgeCharacter::SetBodyMaterialSlotsVisible(const TArray<int32>& MaterialSlots, bool bVisible)
+{
+	if (GetMesh() == nullptr || GetMesh()->GetSkinnedAsset() == nullptr)
+	{
+		return;
+	}
+
+	const int32 MaterialCount = GetMesh()->GetSkinnedAsset()->GetMaterials().Num();
+	const int32 LODCount = FMath::Max(1, GetMesh()->GetSkinnedAsset()->GetLODNum());
+	for (const int32 MaterialSlot : MaterialSlots)
+	{
+		if (MaterialSlot < 0 || MaterialSlot >= MaterialCount)
+		{
+			continue;
+		}
+
+		for (int32 LODIndex = 0; LODIndex < LODCount; ++LODIndex)
+		{
+			GetMesh()->ShowMaterialSection(MaterialSlot, MaterialSlot, bVisible, LODIndex);
+		}
+	}
+}
+
+void AFableForgeCharacter::UpdateBodyMaterialVisibility(const TArray<FString>& InEquippedSlots)
+{
+	if (!bHideBodyMaterialsUnderModularArmor || GetMesh() == nullptr || GetMesh()->GetSkinnedAsset() == nullptr)
+	{
+		return;
+	}
+
+	const int32 LODCount = FMath::Max(1, GetMesh()->GetSkinnedAsset()->GetLODNum());
+	for (int32 LODIndex = 0; LODIndex < LODCount; ++LODIndex)
+	{
+		GetMesh()->ShowAllMaterialSections(LODIndex);
+	}
+
+	auto IsModularArmorComponentActive = [&](const int32 SlotIndex) -> bool
+	{
+		if (!InEquippedSlots.IsValidIndex(SlotIndex) || InEquippedSlots[SlotIndex].IsEmpty())
+		{
+			return false;
+		}
+
+		if (!EquipmentVisualComponents.IsValidIndex(SlotIndex))
+		{
+			return false;
+		}
+
+		const USkeletalMeshComponent* SlotComponent = Cast<USkeletalMeshComponent>(EquipmentVisualComponents[SlotIndex].Get());
+		return SlotComponent != nullptr && SlotComponent->GetAttachSocketName().IsNone();
+	};
+
+	const bool bHideChest = IsModularArmorComponentActive(3);
+	const bool bHideHands = IsModularArmorComponentActive(4);
+	const bool bHideLegs = IsModularArmorComponentActive(5);
+	const bool bHideFeet = IsModularArmorComponentActive(6);
+
+	if (bHideChest)
+	{
+		SetBodyMaterialSlotsVisible(ChestArmorHiddenBodyMaterialSlots, false);
+	}
+	if (bHideHands)
+	{
+		SetBodyMaterialSlotsVisible(HandsArmorHiddenBodyMaterialSlots, false);
+	}
+	if (bHideLegs)
+	{
+		SetBodyMaterialSlotsVisible(LegsArmorHiddenBodyMaterialSlots, false);
+	}
+	if (bHideFeet)
+	{
+		SetBodyMaterialSlotsVisible(FeetArmorHiddenBodyMaterialSlots, false);
+	}
+
+	const bool bAnyBodyArmorActive = bHideChest || bHideHands || bHideLegs || bHideFeet;
+	const bool bHasBodyMaskConfig =
+		ChestArmorHiddenBodyMaterialSlots.Num() > 0 ||
+		HandsArmorHiddenBodyMaterialSlots.Num() > 0 ||
+		LegsArmorHiddenBodyMaterialSlots.Num() > 0 ||
+		FeetArmorHiddenBodyMaterialSlots.Num() > 0;
+	if (bAnyBodyArmorActive && !bHasBodyMaskConfig)
+	{
+		UE_LOG(
+			LogFableForge,
+			Warning,
+			TEXT("Modular armor is active but no body mask material slots are configured on '%s'. Set Chest/Hands/Legs/Feet hidden material slots in the character defaults to prevent clipping."),
+			*GetName());
 	}
 }
 
@@ -421,7 +568,76 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 	}
 
 	const FName AttachSocket = GetEquipmentAttachSocket(SlotIndex);
-	const FTransform RelativeTransform = GetEquipmentSlotRelativeTransform(SlotIndex, ItemId);
+	FTransform RelativeTransform = GetEquipmentSlotRelativeTransform(SlotIndex, ItemId);
+	const bool bUsingHandGripSocket = (AttachSocket == TEXT("HandGrip_R")) || (AttachSocket == TEXT("HandGrip_L"));
+
+	if (SlotIndex == 0 || SlotIndex == 1)
+	{
+		UE_LOG(
+			LogFableForge,
+			Warning,
+			TEXT("EquipmentVisual slot=%d item='%s' charSocket='%s' initialRelLoc=(%.2f,%.2f,%.2f)"),
+			SlotIndex,
+			*ItemId,
+			*AttachSocket.ToString(),
+			RelativeTransform.GetLocation().X,
+			RelativeTransform.GetLocation().Y,
+			RelativeTransform.GetLocation().Z);
+	}
+
+	// If a dedicated grip socket exists on the character, let that socket drive placement.
+	// The older hand offsets are primarily for fallback bone attachments (hand_r/hand_l).
+	if ((SlotIndex == 0 || SlotIndex == 1) && bUsingHandGripSocket && !ItemId.Contains(TEXT("staff"), ESearchCase::IgnoreCase))
+	{
+		RelativeTransform = FTransform::Identity;
+	}
+
+	auto TryApplyWeaponGripSocketAlignment = [&](USceneComponent* VisualComponent, FTransform& InOutRelativeTransform) -> bool
+	{
+		if (VisualComponent == nullptr || (SlotIndex != 0 && SlotIndex != 1))
+		{
+			return false;
+		}
+
+		const TArray<FName> CandidateGripSockets = (SlotIndex == 0)
+			? TArray<FName>{ TEXT("HandGrip"), TEXT("Grip"), TEXT("GripSocket"), TEXT("WeaponGrip"), TEXT("HandGrip_R") }
+			: TArray<FName>{ TEXT("HandGrip"), TEXT("Grip"), TEXT("GripSocket"), TEXT("WeaponGrip"), TEXT("HandGrip_L") };
+
+		for (const FName GripSocketName : CandidateGripSockets)
+		{
+			if (!VisualComponent->DoesSocketExist(GripSocketName))
+			{
+				continue;
+			}
+
+			// Align the weapon's own grip socket to the character hand socket by inverting the child socket transform.
+			const FTransform WeaponGripSocketTransform = VisualComponent->GetSocketTransform(GripSocketName, RTS_Component);
+			InOutRelativeTransform = WeaponGripSocketTransform.Inverse();
+
+			UE_LOG(
+				LogFableForge,
+				Warning,
+				TEXT("Aligned equipped weapon '%s' using weapon socket '%s' -> character socket '%s' (weapon socket rel loc %.2f,%.2f,%.2f)."),
+				*ItemId,
+				*GripSocketName.ToString(),
+				*AttachSocket.ToString(),
+				WeaponGripSocketTransform.GetLocation().X,
+				WeaponGripSocketTransform.GetLocation().Y,
+				WeaponGripSocketTransform.GetLocation().Z);
+
+			return true;
+		}
+
+		UE_LOG(
+			LogFableForge,
+			Warning,
+			TEXT("Equipped weapon '%s' (%s) has no recognized grip socket. Character socket='%s'."),
+			*ItemId,
+			*GetNameSafe(VisualComponent),
+			*AttachSocket.ToString());
+
+		return false;
+	};
 
 	if (USkeletalMesh* SkeletalMesh = LoadObject<USkeletalMesh>(nullptr, *AssetPath))
 	{
@@ -437,10 +653,59 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		SkeletalVisual->bUseAttachParentBound = true;
 		SkeletalVisual->BoundsScale = 2.0f;
 		SkeletalVisual->SetSkeletalMesh(SkeletalMesh);
-		SkeletalVisual->SetupAttachment(GetMesh(), AttachSocket);
+
+		// Chest/legs/feet armor are typically modular skinned pieces and should follow the full body pose
+		// only when they share the same skeleton as the character.
+		const bool bIsBodyArmorSlot = (SlotIndex == 3 || SlotIndex == 4 || SlotIndex == 5 || SlotIndex == 6);
+		const USkeletalMesh* CharacterSkeletalMesh = (GetMesh() != nullptr) ? GetMesh()->GetSkeletalMeshAsset() : nullptr;
+		const USkeleton* CharacterSkeleton = (CharacterSkeletalMesh != nullptr) ? CharacterSkeletalMesh->GetSkeleton() : nullptr;
+		const USkeleton* ArmorSkeleton = SkeletalMesh->GetSkeleton();
+		const bool bSkeletonsMatchForModularArmor = CanUseLeaderPoseForModularArmor(CharacterSkeletalMesh, SkeletalMesh);
+		const bool bUseModularSkinnedArmorAttachment = bIsBodyArmorSlot && bSkeletonsMatchForModularArmor;
+		const FName SkeletalAttachSocket = bUseModularSkinnedArmorAttachment ? NAME_None : AttachSocket;
+		FTransform SkeletalRelativeTransform = bUseModularSkinnedArmorAttachment ? FTransform::Identity : RelativeTransform;
+
+		if (bIsBodyArmorSlot && !bSkeletonsMatchForModularArmor)
+		{
+			UE_LOG(
+				LogFableForge,
+				Warning,
+				TEXT("Body armor '%s' uses skeleton '%s' but character uses '%s'; falling back to socket attachment for slot %d."),
+				*ItemId,
+				*GetNameSafe(ArmorSkeleton),
+				*GetNameSafe(CharacterSkeleton),
+				SlotIndex);
+		}
+		else if (bIsBodyArmorSlot && CharacterSkeleton != nullptr && ArmorSkeleton != nullptr && CharacterSkeleton != ArmorSkeleton)
+		{
+			UE_LOG(
+				LogFableForge,
+				Warning,
+				TEXT("Body armor '%s' uses compatible bones with a different skeleton asset ('%s' vs '%s'); using modular leader-pose attachment for slot %d."),
+				*ItemId,
+				*GetNameSafe(ArmorSkeleton),
+				*GetNameSafe(CharacterSkeleton),
+				SlotIndex);
+		}
+
+		UE_LOG(
+			LogFableForge,
+			Warning,
+			TEXT("Equipping item '%s' as SkeletalMesh '%s' on socket '%s' (asset path: %s)."),
+			*ItemId,
+			*GetNameSafe(SkeletalMesh),
+			*SkeletalAttachSocket.ToString(),
+			*AssetPath);
+		SkeletalVisual->SetupAttachment(GetMesh(), SkeletalAttachSocket);
 		SkeletalVisual->RegisterComponent();
-		SkeletalVisual->SetRelativeTransform(RelativeTransform);
-		SkeletalVisual->SetLeaderPoseComponent(GetMesh());
+		TryApplyWeaponGripSocketAlignment(SkeletalVisual, SkeletalRelativeTransform);
+		SkeletalVisual->SetRelativeTransform(SkeletalRelativeTransform);
+			// Modular skinned armor should inherit the full pose. Socket props can remain independently attached.
+			if (bUseModularSkinnedArmorAttachment)
+			{
+				SkeletalVisual->bSyncAttachParentLOD = true;
+				SkeletalVisual->SetLeaderPoseComponent(GetMesh(), true);
+			}
 		EquipmentVisualComponents[SlotIndex] = SkeletalVisual;
 		return;
 	}
@@ -459,8 +724,17 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		StaticVisual->bUseAttachParentBound = true;
 		StaticVisual->BoundsScale = 2.0f;
 		StaticVisual->SetStaticMesh(StaticMesh);
+		UE_LOG(
+			LogFableForge,
+			Warning,
+			TEXT("Equipping item '%s' as StaticMesh '%s' on socket '%s' (asset path: %s)."),
+			*ItemId,
+			*GetNameSafe(StaticMesh),
+			*AttachSocket.ToString(),
+			*AssetPath);
 		StaticVisual->SetupAttachment(GetMesh(), AttachSocket);
 		StaticVisual->RegisterComponent();
+		TryApplyWeaponGripSocketAlignment(StaticVisual, RelativeTransform);
 		StaticVisual->SetRelativeTransform(RelativeTransform);
 		EquipmentVisualComponents[SlotIndex] = StaticVisual;
 		return;
@@ -476,6 +750,17 @@ FName AFableForgeCharacter::GetEquipmentAttachSocket(int32 SlotIndex) const
 		if (GetMesh() != nullptr && GetMesh()->DoesSocketExist(PreferredSocket))
 		{
 			return PreferredSocket;
+		}
+
+		if (GetMesh() != nullptr && (PreferredSocket == TEXT("HandGrip_R") || PreferredSocket == TEXT("HandGrip_L")))
+		{
+			UE_LOG(
+				LogFableForge,
+				Warning,
+				TEXT("Character mesh '%s' is missing socket '%s'; falling back to '%s'."),
+				*GetNameSafe(GetMesh()->GetSkeletalMeshAsset()),
+				*PreferredSocket.ToString(),
+				*FallbackSocket.ToString());
 		}
 
 		return FallbackSocket;
@@ -541,20 +826,41 @@ bool AFableForgeCharacter::ResolveEquipmentMeshPath(const FString& ItemId, int32
 	if (UDataTable* ItemTable = LoadObject<UDataTable>(nullptr, SourceTablePath))
 	{
 		static const FString ContextString(TEXT("AFableForgeCharacter::ResolveEquipmentMeshPath"));
-		if (const FFableItemDefinitionTableRow* Row = ItemTable->FindRow<FFableItemDefinitionTableRow>(FName(*ItemId), ContextString, false))
+		const FFableItemDefinitionTableRow* ResolvedRow = ItemTable->FindRow<FFableItemDefinitionTableRow>(FName(*ItemId), ContextString, false);
+		if (ResolvedRow == nullptr)
 		{
-			if (!Row->WorldSkeletalMesh.IsNull())
+			TArray<FFableItemDefinitionTableRow*> AllRows;
+			ItemTable->GetAllRows(ContextString, AllRows);
+			for (const FFableItemDefinitionTableRow* CandidateRow : AllRows)
 			{
-				OutAssetPath = Row->WorldSkeletalMesh.ToSoftObjectPath().ToString();
+				if (CandidateRow != nullptr && CandidateRow->ItemId.Equals(ItemId, ESearchCase::IgnoreCase))
+				{
+					ResolvedRow = CandidateRow;
+					UE_LOG(
+						LogFableForge,
+						Warning,
+						TEXT("Resolved equipped item '%s' by ItemId field instead of row name in %s."),
+						*ItemId,
+						SourceTablePath);
+					break;
+				}
+			}
+		}
+
+		if (ResolvedRow != nullptr)
+		{
+			if (!ResolvedRow->WorldSkeletalMesh.IsNull())
+			{
+				OutAssetPath = ResolvedRow->WorldSkeletalMesh.ToSoftObjectPath().ToString();
 				if (!OutAssetPath.IsEmpty())
 				{
 					return true;
 				}
 			}
 
-			if (!Row->WorldStaticMesh.IsNull())
+			if (!ResolvedRow->WorldStaticMesh.IsNull())
 			{
-				OutAssetPath = Row->WorldStaticMesh.ToSoftObjectPath().ToString();
+				OutAssetPath = ResolvedRow->WorldStaticMesh.ToSoftObjectPath().ToString();
 				if (!OutAssetPath.IsEmpty())
 				{
 					return true;
@@ -562,6 +868,11 @@ bool AFableForgeCharacter::ResolveEquipmentMeshPath(const FString& ItemId, int32
 			}
 
 			UE_LOG(LogFableForge, Verbose, TEXT("No world mesh set in DataTable row for equipped item '%s' (%s). Using fallback."),
+				*ItemId, SourceTablePath);
+		}
+		else
+		{
+			UE_LOG(LogFableForge, Warning, TEXT("No DataTable row found for equipped item '%s' in %s (row-name lookup + ItemId fallback failed)."),
 				*ItemId, SourceTablePath);
 		}
 	}
@@ -579,6 +890,13 @@ bool AFableForgeCharacter::ResolveEquipmentMeshPath(const FString& ItemId, int32
 		OutAssetPath = TEXT("/Game/External/FreeMeleeWeaps/Static_Meshes/SM_Sword.SM_Sword");
 		return true;
 	}
+
+	UE_LOG(
+		LogFableForge,
+		Warning,
+		TEXT("Armor item '%s' has no mapped world mesh in %s; using placeholder cube visual."),
+		*ItemId,
+		SourceTablePath);
 
 	OutAssetPath = TEXT("/Engine/BasicShapes/Cube.Cube");
 	return true;

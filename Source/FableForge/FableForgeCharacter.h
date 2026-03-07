@@ -206,9 +206,26 @@ private:
 	void ApplyEquipmentVisuals(const TArray<FString>& InEquippedSlots);
 	void ClearEquipmentVisual(int32 SlotIndex);
 	void CreateEquipmentVisualForSlot(int32 SlotIndex, const FString& ItemId);
+	void UpdateBodyMaterialVisibility(const TArray<FString>& InEquippedSlots);
+	void SetBodyMaterialSlotsVisible(const TArray<int32>& MaterialSlots, bool bVisible);
 	FName GetEquipmentAttachSocket(int32 SlotIndex) const;
 	FTransform GetEquipmentSlotRelativeTransform(int32 SlotIndex, const FString& ItemId) const;
 	bool ResolveEquipmentMeshPath(const FString& ItemId, int32 SlotIndex, FString& OutAssetPath) const;
+
+	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
+	bool bHideBodyMaterialsUnderModularArmor = true;
+
+	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
+	TArray<int32> ChestArmorHiddenBodyMaterialSlots;
+
+	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
+	TArray<int32> HandsArmorHiddenBodyMaterialSlots;
+
+	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
+	TArray<int32> LegsArmorHiddenBodyMaterialSlots;
+
+	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
+	TArray<int32> FeetArmorHiddenBodyMaterialSlots;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USceneComponent>> EquipmentVisualComponents;
