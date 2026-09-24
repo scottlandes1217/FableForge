@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "FableForgeCharacter.h"
+#include "RPG/Animation/FableWeaponPoseMeshComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -17,12 +18,17 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/DataTable.h"
 #include "Engine/GameInstance.h"
 #include "Animation/Skeleton.h"
 #include "RPG/Data/FableItemDefinitionTableRow.h"
 #include "RPG/Save/FableSaveSubsystem.h"
+#include "RPG/UI/FableAppearanceAssets.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
 
 namespace
 {
@@ -34,13 +40,6 @@ namespace
 		if (CharacterMesh == nullptr || ArmorMesh == nullptr)
 		{
 			return false;
-		}
-
-		const USkeleton* CharacterSkeleton = CharacterMesh->GetSkeleton();
-		const USkeleton* ArmorSkeleton = ArmorMesh->GetSkeleton();
-		if (CharacterSkeleton != nullptr && ArmorSkeleton != nullptr && CharacterSkeleton == ArmorSkeleton)
-		{
-			return true;
 		}
 
 		const FReferenceSkeleton& CharacterRef = CharacterMesh->GetRefSkeleton();
@@ -84,7 +83,8 @@ namespace
 	}
 }
 
-AFableForgeCharacter::AFableForgeCharacter()
+AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectInitializer)
+ : Super(ObjectInitializer.SetDefaultSubobjectClass<UFableWeaponPoseMeshComponent>(ACharacter::MeshComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
 	EquipmentVisualComponents.SetNum(UFableSaveSubsystem::EquipmentSlotsPerCharacter);
@@ -98,7 +98,7 @@ AFableForgeCharacter::AFableForgeCharacter()
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
@@ -124,6 +124,8 @@ AFableForgeCharacter::AFableForgeCharacter()
 	CameraBoom->bEnableCameraLag = true;
 	CameraBoom->bEnableCameraRotationLag = false;
 	CameraBoom->CameraLagSpeed = 10.0f;
+	CameraBoom->bUseCameraLagSubstepping = true;
+	CameraBoom->CameraLagMaxDistance = 60.0f;
 	CameraBoom->CameraRotationLagSpeed = 0.0f;
 
 	// Create a follow camera
@@ -148,6 +150,9 @@ void AFableForgeCharacter::BeginPlay()
 
 	if (FollowCamera != nullptr)
 	{
+		// Keep the character camera active even when the pawn is spawned before possession.
+		// The player controller will still be free to replace the view target explicitly.
+		FollowCamera->Activate(true);
 		FollowCamera->SetRelativeRotation(FRotator(CameraPitchOffsetDegrees, 0.0f, 0.0f));
 	}
 
@@ -212,6 +217,9 @@ void AFableForgeCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 
 void AFableForgeCharacter::Move(const FInputActionValue& Value)
 {
+	if (const AFableForgePlayerController* ForgePlayerController = Cast<AFableForgePlayerController>(GetController()))
+		if (ForgePlayerController->IsWheelInputCaptured()) return;
+
 	// input is a Vector2D
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -240,6 +248,14 @@ void AFableForgeCharacter::Look(const FInputActionValue& Value)
 {
 	// input is a Vector2D
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
+	if (AFableForgePlayerController* ForgePlayerController = Cast<AFableForgePlayerController>(GetController()))
+	{
+		if (ForgePlayerController->IsWheelInputCaptured())
+		{
+			ForgePlayerController->RouteRightStickToWheel(LookAxisVector);
+			return;
+		}
+	}
 
 	if (LookAxisVector.SizeSquared() > KINDA_SMALL_NUMBER)
 	{
@@ -280,18 +296,23 @@ void AFableForgeCharacter::MouseLook(const FInputActionValue& Value)
 
 void AFableForgeCharacter::UpdateShoulderCamera(float DeltaSeconds)
 {
+	// Controller ownership can briefly report false while a saved character is being
+	// possessed. The camera still belongs to this pawn, so only require the controller
+	// and boom that are needed for the follow/recenter calculation.
 	if (CameraBoom == nullptr || Controller == nullptr)
 	{
 		return;
 	}
 
-	const bool bShouldFollow = IsMovementActive() && !IsManualLookActive();
-	float TargetArmLength = IdleCameraArmLength;
+	// Do not recenter the camera behind the character while moving. That feedback
+	// loop fights camera-relative stick movement and can spin the player after a jump.
+	const bool bShouldFollow = false;
+	float TargetArmLength = bFirstPersonView ? FirstPersonCameraArmLength : IdleCameraArmLength;
 	if (bAdjustArmLengthWithMovement)
 	{
 		TargetArmLength = bShouldFollow ? MovingCameraArmLength : IdleCameraArmLength;
 	}
-	FVector TargetSocketOffset = IdleCameraSocketOffset;
+	FVector TargetSocketOffset = bFirstPersonView ? FirstPersonCameraSocketOffset : IdleCameraSocketOffset;
 	if (bAdjustSocketOffsetWithMovement)
 	{
 		TargetSocketOffset = bShouldFollow ? MovingCameraSocketOffset : IdleCameraSocketOffset;
@@ -338,6 +359,12 @@ void AFableForgeCharacter::UpdateShoulderCamera(float DeltaSeconds)
 	bWasAutoFollowActive = bShouldFollow;
 }
 
+void AFableForgeCharacter::ToggleFirstPersonView()
+{
+	bFirstPersonView = !bFirstPersonView;
+	UE_LOG(LogFableForge, Log, TEXT("Camera view changed: %s"), bFirstPersonView ? TEXT("First Person") : TEXT("Shoulder"));
+}
+
 bool AFableForgeCharacter::IsMovementActive() const
 {
 	const UWorld* World = GetWorld();
@@ -367,17 +394,13 @@ void AFableForgeCharacter::DoMove(float Right, float Forward)
 {
 	if (GetController() != nullptr)
 	{
-		// WoW-style movement: A/D turn character yaw, W/S move along facing direction.
-		if (!FMath::IsNearlyZero(Right))
-		{
-			const float DeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
-			AddActorLocalRotation(FRotator(0.0f, Right * KeyboardTurnRate * DeltaSeconds, 0.0f));
-		}
-
-		if (!FMath::IsNearlyZero(Forward))
-		{
-			AddMovementInput(GetActorForwardVector(), Forward);
-		}
+		// Standard third-person controller movement: both axes are relative to the
+		// camera yaw, while the right stick remains dedicated to camera look.
+		const FRotator YawRotation(0.0f, GetController()->GetControlRotation().Yaw, 0.0f);
+		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		AddMovementInput(ForwardDirection, Forward);
+		AddMovementInput(RightDirection, Right);
 	}
 }
 
@@ -405,21 +428,93 @@ void AFableForgeCharacter::DoJumpEnd()
 
 void AFableForgeCharacter::RefreshEquipmentVisualsFromSave()
 {
+	// An explicit refresh also supports runtime character mesh or asset changes.
+	bEquipmentVisualsInitialized = false;
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
 		if (UFableSaveSubsystem* SaveSubsystem = GameInstance->GetSubsystem<UFableSaveSubsystem>())
 		{
-			TArray<FString> InventorySlots;
-			TArray<FString> EquippedSlots;
-			if (SaveSubsystem->TryGetActiveInventory(InventorySlots, EquippedSlots))
+			FFableCharacterProfile Profile;
+			if (SaveSubsystem->TryGetActiveCharacterProfile(Profile))
 			{
-				ApplyEquipmentVisuals(EquippedSlots);
+				ApplyAppearanceFromProfile(Profile);
 				return;
 			}
 		}
 	}
 
 	ApplyEquipmentVisuals(TArray<FString>());
+}
+
+void AFableForgeCharacter::ApplyAppearanceFromProfile(const FFableCharacterProfile& Profile)
+{
+	bAppearanceFemale = Profile.Gender == EFableGender::Female;
+	const TCHAR* BodyPath = bAppearanceFemale ? TEXT("/Game/Characters/PlayableCharacter/Meshes/femalecharacter_v2.femalecharacter_v2") : TEXT("/Game/Characters/PlayableCharacter/Meshes/basecharacter_v2.basecharacter_v2");
+	if (USkeletalMesh* Body = LoadObject<USkeletalMesh>(nullptr, BodyPath))
+	{
+		if (GetMesh() && GetMesh()->GetSkeletalMeshAsset() != Body)
+		{
+			GetMesh()->SetSkeletalMesh(Body);
+			// Discard blueprint material overrides so the authored v2 skin materials are used.
+			GetMesh()->EmptyOverrideMaterials();
+		}
+	}
+	AppliedBodyMorphs = Profile.BodyMorphs;
+	if (bAppearanceFemale) { AppliedBodyMorphs.Remove(TEXT("FemaleBody")); }
+	if (!bAppearanceFemale && !AppliedBodyMorphs.Contains(TEXT("FemaleBody")))
+	{
+		AppliedBodyMorphs.Add(TEXT("FemaleBody"), Profile.Gender == EFableGender::Female ? 1.f : 0.f);
+	}
+	if (GetMesh())
+	{
+		const FName Parameters[] = { TEXT("HairTint"),TEXT("EyeTint"),TEXT("SkinTint") };
+		const FLinearColor Colors[] = { Profile.HairColor,Profile.EyeColor,Profile.SkinColor };
+		for (int32 Index=0; Index<3; ++Index)
+		{
+			if (UMaterialInstanceDynamic* Material=GetMesh()->CreateAndSetMaterialInstanceDynamic(Index))
+			{
+				Material->SetVectorParameterValue(Parameters[Index],Colors[Index]);
+			}
+		}
+	}
+	if (!AppearanceHair)
+	{
+		AppearanceHair=NewObject<UStaticMeshComponent>(this,TEXT("AppearanceHair"));
+		AppearanceHair->RegisterComponent();
+	}
+	if (!AppearanceBeard)
+	{
+		AppearanceBeard=NewObject<UStaticMeshComponent>(this,TEXT("AppearanceBeard"));
+		AppearanceBeard->RegisterComponent();
+	}
+	FableAppearanceAssets::ConfigureStyle(AppearanceHair,GetMesh(),Profile.HairStyle,false,Profile.HairColor,Profile.BodyMorphs.FindRef(TEXT("HeadSize")));
+	FableAppearanceAssets::ConfigureStyle(AppearanceBeard,GetMesh(),Profile.BeardStyle,true,Profile.HairColor,Profile.BodyMorphs.FindRef(TEXT("HeadSize")));
+	const float Height = FMath::IsFinite(Profile.HeightScale) ? FMath::Clamp(Profile.HeightScale, 0.7f, 1.2f) : 1.0f;
+	SetActorScale3D(FVector(Height));
+	ApplyEquipmentVisuals(Profile.EquippedItems);
+}
+
+void AFableForgeCharacter::ApplyAppearanceMorphs()
+{
+	auto ApplyToMesh = [this](USkeletalMeshComponent* Component)
+	{
+		if (!Component) { return; }
+		Component->ClearMorphTargets();
+		for (const TPair<FName, float>& Morph : AppliedBodyMorphs)
+		{
+			const bool PositiveOnly = Morph.Key == TEXT("FemaleBody") || Morph.Key == TEXT("BodyFat") || Morph.Key == TEXT("Muscle") || Morph.Key == TEXT("Bust");
+			const float Weight = FMath::IsFinite(Morph.Value) ? FMath::Clamp(Morph.Value, PositiveOnly ? 0.f : -1.f, 1.f) : 0.f;
+			Component->SetMorphTarget(Morph.Key, Weight);
+		}
+	};
+	ApplyToMesh(GetMesh());
+	for (USceneComponent* Component : EquipmentVisualComponents)
+	{
+		if (USkeletalMeshComponent* Armor = Cast<USkeletalMeshComponent>(Component))
+		{
+			if (Armor->GetAttachSocketName().IsNone()) { ApplyToMesh(Armor); }
+		}
+	}
 }
 
 void AFableForgeCharacter::HandleActiveInventoryChanged(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots)
@@ -430,24 +525,42 @@ void AFableForgeCharacter::HandleActiveInventoryChanged(const TArray<FString>& I
 
 void AFableForgeCharacter::ApplyEquipmentVisuals(const TArray<FString>& InEquippedSlots)
 {
+ if(UFableWeaponPoseMeshComponent* WeaponMesh=Cast<UFableWeaponPoseMeshComponent>(GetMesh()))
+  WeaponMesh->SetSwordEquipped(InEquippedSlots.IsValidIndex(0) && InEquippedSlots[0]==TEXT("iron_sword"));
 	const int32 SlotCount = UFableSaveSubsystem::EquipmentSlotsPerCharacter;
 	if (EquipmentVisualComponents.Num() != SlotCount)
 	{
 		EquipmentVisualComponents.SetNum(SlotCount);
 	}
 
+	const USkeletalMesh* CharacterMesh = GetMesh() ? GetMesh()->GetSkeletalMeshAsset() : nullptr;
+	const bool bRebuildAll = !bEquipmentVisualsInitialized || AppliedCharacterMesh.Get() != CharacterMesh;
+	AppliedEquipmentItemIds.SetNum(SlotCount);
+	bool bEquipmentChanged = bRebuildAll;
 	for (int32 SlotIndex = 0; SlotIndex < SlotCount; ++SlotIndex)
 	{
-		ClearEquipmentVisual(SlotIndex);
-
 		const FString ItemId = InEquippedSlots.IsValidIndex(SlotIndex) ? InEquippedSlots[SlotIndex] : FString();
+		if (!bRebuildAll && AppliedEquipmentItemIds[SlotIndex] == ItemId)
+		{
+			continue;
+		}
+
+		ClearEquipmentVisual(SlotIndex);
 		if (!ItemId.IsEmpty())
 		{
 			CreateEquipmentVisualForSlot(SlotIndex, ItemId);
 		}
+		AppliedEquipmentItemIds[SlotIndex] = ItemId;
+		bEquipmentChanged = true;
 	}
 
-	UpdateBodyMaterialVisibility(InEquippedSlots);
+	AppliedCharacterMesh = GetMesh() ? GetMesh()->GetSkeletalMeshAsset() : nullptr;
+	bEquipmentVisualsInitialized = true;
+	ApplyAppearanceMorphs();
+	if (bEquipmentChanged)
+	{
+		UpdateBodyMaterialVisibility(InEquippedSlots);
+	}
 }
 
 void AFableForgeCharacter::ClearEquipmentVisual(int32 SlotIndex)
@@ -482,7 +595,8 @@ void AFableForgeCharacter::SetBodyMaterialSlotsVisible(const TArray<int32>& Mate
 
 		for (int32 LODIndex = 0; LODIndex < LODCount; ++LODIndex)
 		{
-			GetMesh()->ShowMaterialSection(MaterialSlot, MaterialSlot, bVisible, LODIndex);
+			// These settings are material IDs, not section IDs; bypass LOD section remapping.
+			GetMesh()->ShowMaterialSection(MaterialSlot, INDEX_NONE, bVisible, LODIndex);
 		}
 	}
 }
@@ -567,6 +681,17 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		return;
 	}
 
+	if (bAppearanceFemale && ItemId == TEXT("peasant_chest"))
+	{
+		AssetPath = TEXT("/Game/Items/Armor/FittedTunic/female_tunic_v2.female_tunic_v2");
+	}
+
+	if (bAppearanceFemale && (ItemId == TEXT("peasant_legs") || ItemId == TEXT("peasant_feet")))
+	{
+		const FString FemaleAsset = TEXT("female_") + ItemId + TEXT("_v2");
+		AssetPath = TEXT("/Game/Items/Armor/FittedLowerArmor/") + FemaleAsset + TEXT(".") + FemaleAsset;
+	}
+
 	const FName AttachSocket = GetEquipmentAttachSocket(SlotIndex);
 	FTransform RelativeTransform = GetEquipmentSlotRelativeTransform(SlotIndex, ItemId);
 	const bool bUsingHandGripSocket = (AttachSocket == TEXT("HandGrip_R")) || (AttachSocket == TEXT("HandGrip_L"));
@@ -613,7 +738,13 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 			// Align the weapon's own grip socket to the character hand socket by inverting the child socket transform.
 			const FTransform WeaponGripSocketTransform = VisualComponent->GetSocketTransform(GripSocketName, RTS_Component);
 			InOutRelativeTransform = WeaponGripSocketTransform.Inverse();
-
+			// Preserve the upright blade direction and roll only around the sword's
+			// own length so its cutting edge faces outward.
+			if (ItemId.Equals(TEXT("iron_sword"), ESearchCase::IgnoreCase))
+			{
+				InOutRelativeTransform.SetRotation(
+					(InOutRelativeTransform.GetRotation() * FQuat(FVector::UpVector, FMath::DegreesToRadians(90.0f))).GetNormalized());
+			}
 			UE_LOG(
 				LogFableForge,
 				Warning,
@@ -639,7 +770,9 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		return false;
 	};
 
-	if (USkeletalMesh* SkeletalMesh = LoadObject<USkeletalMesh>(nullptr, *AssetPath))
+	// Load once as UObject so a static mesh does not first attempt a failed skeletal mesh load.
+	UObject* VisualAsset = LoadObject<UObject>(nullptr, *AssetPath);
+	if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(VisualAsset))
 	{
 		USkeletalMeshComponent* SkeletalVisual = NewObject<USkeletalMeshComponent>(this);
 		if (SkeletalVisual == nullptr)
@@ -650,12 +783,10 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		SkeletalVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		SkeletalVisual->SetGenerateOverlapEvents(false);
 		SkeletalVisual->SetCanEverAffectNavigation(false);
-		SkeletalVisual->bUseAttachParentBound = true;
-		SkeletalVisual->BoundsScale = 2.0f;
+		SkeletalVisual->bUseAttachParentBound = false;
 		SkeletalVisual->SetSkeletalMesh(SkeletalMesh);
 
-		// Chest/legs/feet armor are typically modular skinned pieces and should follow the full body pose
-		// only when they share the same skeleton as the character.
+		// Body armor must match the character's bone hierarchy to share its pose.
 		const bool bIsBodyArmorSlot = (SlotIndex == 3 || SlotIndex == 4 || SlotIndex == 5 || SlotIndex == 6);
 		const USkeletalMesh* CharacterSkeletalMesh = (GetMesh() != nullptr) ? GetMesh()->GetSkeletalMeshAsset() : nullptr;
 		const USkeleton* CharacterSkeleton = (CharacterSkeletalMesh != nullptr) ? CharacterSkeletalMesh->GetSkeleton() : nullptr;
@@ -670,11 +801,12 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 			UE_LOG(
 				LogFableForge,
 				Warning,
-				TEXT("Body armor '%s' uses skeleton '%s' but character uses '%s'; falling back to socket attachment for slot %d."),
+				TEXT("Body armor '%s' has incompatible bones (armor skeleton '%s', character '%s'). Assign a compatible modular mesh for slot %d; keeping the base character visible."),
 				*ItemId,
 				*GetNameSafe(ArmorSkeleton),
 				*GetNameSafe(CharacterSkeleton),
 				SlotIndex);
+			return;
 		}
 		else if (bIsBodyArmorSlot && CharacterSkeleton != nullptr && ArmorSkeleton != nullptr && CharacterSkeleton != ArmorSkeleton)
 		{
@@ -700,17 +832,18 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		SkeletalVisual->RegisterComponent();
 		TryApplyWeaponGripSocketAlignment(SkeletalVisual, SkeletalRelativeTransform);
 		SkeletalVisual->SetRelativeTransform(SkeletalRelativeTransform);
-			// Modular skinned armor should inherit the full pose. Socket props can remain independently attached.
-			if (bUseModularSkinnedArmorAttachment)
-			{
-				SkeletalVisual->bSyncAttachParentLOD = true;
-				SkeletalVisual->SetLeaderPoseComponent(GetMesh(), true);
-			}
+		// Share the body pose without independently evaluating another animation instance.
+		if (bUseModularSkinnedArmorAttachment)
+		{
+			SkeletalVisual->bUseAttachParentBound = true;
+			SkeletalVisual->bSyncAttachParentLOD = true;
+			SkeletalVisual->SetLeaderPoseComponent(GetMesh(), true, false);
+		}
 		EquipmentVisualComponents[SlotIndex] = SkeletalVisual;
 		return;
 	}
 
-	if (UStaticMesh* StaticMesh = LoadObject<UStaticMesh>(nullptr, *AssetPath))
+	if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(VisualAsset))
 	{
 		UStaticMeshComponent* StaticVisual = NewObject<UStaticMeshComponent>(this);
 		if (StaticVisual == nullptr)
@@ -721,8 +854,8 @@ void AFableForgeCharacter::CreateEquipmentVisualForSlot(int32 SlotIndex, const F
 		StaticVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		StaticVisual->SetGenerateOverlapEvents(false);
 		StaticVisual->SetCanEverAffectNavigation(false);
-		StaticVisual->bUseAttachParentBound = true;
-		StaticVisual->BoundsScale = 2.0f;
+		// Weapons can extend beyond the character bounds, especially long staves.
+		StaticVisual->bUseAttachParentBound = false;
 		StaticVisual->SetStaticMesh(StaticMesh);
 		UE_LOG(
 			LogFableForge,
@@ -801,8 +934,10 @@ FTransform AFableForgeCharacter::GetEquipmentSlotRelativeTransform(int32 SlotInd
 	case 2: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.22f, 0.22f, 0.18f));
 	case 3: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.18f, 0.28f, 0.42f));
 	case 4: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.12f, 0.12f, 0.26f));
-	case 5: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.14f, 0.14f, 0.35f));
-	case 6: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.18f, 0.12f, 0.08f));
+	// Give the fitted lower garments a small clearance envelope so the body
+	// cannot break through at the glute, ankle, or heel during locomotion.
+		case 5: return FTransform(FRotator::ZeroRotator, FVector(0.0f, 0.0f, 1.6f), FVector(0.147f, 0.147f, 0.37f));
+	case 6: return FTransform(FRotator::ZeroRotator, FVector(0.0f, 0.0f, -0.6f), FVector(0.192f, 0.128f, 0.086f));
 	case 7: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.25f, 0.25f, 0.25f));
 	case 8: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.10f, 0.10f, 0.10f));
 	case 9: return FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(0.05f, 0.05f, 0.05f));
@@ -877,8 +1012,7 @@ bool AFableForgeCharacter::ResolveEquipmentMeshPath(const FString& ItemId, int32
 		}
 	}
 
-	// Shared character mesh setup: no male/female split. Weapons use imported meshes; armor uses a visible placeholder
-	// until dedicated Unreal armor assets are imported and mapped.
+	// Retain imported weapon fallbacks. Unmapped armor has no visual until an artist assigns a mesh.
 	if (SlotIndex == 0)
 	{
 		if (LowerId.Contains(TEXT("dagger")))
@@ -894,10 +1028,49 @@ bool AFableForgeCharacter::ResolveEquipmentMeshPath(const FString& ItemId, int32
 	UE_LOG(
 		LogFableForge,
 		Warning,
-		TEXT("Armor item '%s' has no mapped world mesh in %s; using placeholder cube visual."),
+		TEXT("Armor item '%s' has no mapped world mesh in %s; keeping the base character visible."),
 		*ItemId,
 		SourceTablePath);
 
-	OutAssetPath = TEXT("/Engine/BasicShapes/Cube.Cube");
+	return false;
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFableModularArmorHierarchyTest,
+	"FableForge.Character.ModularArmorHierarchy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFableModularArmorHierarchyTest::RunTest(const FString& Parameters)
+{
+	auto MakeMesh = [](const TArray<FMeshBoneInfo>& Bones)
+	{
+		USkeletalMesh* Mesh = NewObject<USkeletalMesh>();
+		FReferenceSkeletonModifier Modifier(Mesh->GetRefSkeleton(), nullptr);
+		for (const FMeshBoneInfo& Bone : Bones)
+		{
+			Modifier.Add(Bone, FTransform::Identity);
+		}
+		return Mesh;
+	};
+	const FMeshBoneInfo Root(TEXT("root"), TEXT("root"), INDEX_NONE);
+	const FMeshBoneInfo Spine(TEXT("spine"), TEXT("spine"), 0);
+	USkeletalMesh* Character = MakeMesh({ Root, Spine, FMeshBoneInfo(TEXT("hand"), TEXT("hand"), 1) });
+	USkeletalMesh* CompatibleArmor = MakeMesh({ Root, Spine });
+	USkeletalMesh* WrongParent = MakeMesh({ Root, Spine, FMeshBoneInfo(TEXT("hand"), TEXT("hand"), 0) });
+	USkeletalMesh* MissingBone = MakeMesh({ Root, FMeshBoneInfo(TEXT("cape"), TEXT("cape"), 0) });
+	USkeletalMesh* EmptyMesh = MakeMesh({});
+
+	TestFalse(TEXT("Missing mesh cannot drive modular armor"), CanUseLeaderPoseForModularArmor(nullptr, CompatibleArmor));
+	TestFalse(TEXT("Empty skeleton cannot drive modular armor"), CanUseLeaderPoseForModularArmor(Character, EmptyMesh));
+	TestTrue(TEXT("A matching hierarchy subset can share the character pose"), CanUseLeaderPoseForModularArmor(Character, CompatibleArmor));
+	TestFalse(TEXT("Unmapped armor bones cannot share the character pose"), CanUseLeaderPoseForModularArmor(Character, MissingBone));
+	TestFalse(TEXT("Matching bone names with different parents are incompatible"), CanUseLeaderPoseForModularArmor(Character, WrongParent));
+
+	// A shared skeleton asset alone does not guarantee compatible mesh hierarchies.
+	USkeleton* SharedSkeleton = NewObject<USkeleton>();
+	Character->SetSkeleton(SharedSkeleton);
+	WrongParent->SetSkeleton(SharedSkeleton);
+	TestFalse(TEXT("Shared skeleton asset does not override a hierarchy mismatch"), CanUseLeaderPoseForModularArmor(Character, WrongParent));
 	return true;
 }
+#endif

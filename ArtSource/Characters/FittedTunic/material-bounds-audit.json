@@ -1,0 +1,30 @@
+{
+  "body": {
+    "sections": [
+      0,
+      1,
+      2
+    ],
+    "materials": [
+      "/Game/Characters/PlayableCharacter/Meshes/MI_Hair_1_002.MI_Hair_1_002",
+      "/Game/Characters/PlayableCharacter/Materials/Base_Eye_Brown_Mat.Base_Eye_Brown_Mat",
+      "/Game/Characters/PlayableCharacter/Materials/M_BodySkin_V2.M_BodySkin_V2"
+    ],
+    "bounds": "<Struct 'BoxSphereBounds' (0x3bce54080) {origin: {x: -0.314676, y: 6.614121, z: 88.198839}, box_extent: {x: 51.873808, y: 20.456539, z: 89.134597}, sphere_radius: 105.139613}>",
+    "bones": 89,
+    "root": "<Struct 'Transform' (0x3e2db4690) {rotation: {x: 0.000000, y: 0.000000, z: 0.000000, w: 1.000000}, translation: {x: 0.000000, y: 0.000000, z: 0.000000}, scale3d: {x: 1.000000, y: 1.000000, z: 1.000000}}>"
+  },
+  "tunic": {
+    "sections": [
+      0,
+      1
+    ],
+    "materials": [
+      "/Game/Items/Armor/FittedTunic/Linen_Ochre.Linen_Ochre",
+      "/Game/Items/Armor/FittedTunic/Woven_Trim.Woven_Trim"
+    ],
+    "bounds": "<Struct 'BoxSphereBounds' (0x3bce56a00) {origin: {x: 0.006535, y: 0.657794, z: 127.126560}, box_extent: {x: 33.001282, y: 15.598945, z: 25.349270}, sphere_radius: 44.440940}>",
+    "bones": 89,
+    "root": "<Struct 'Transform' (0x3e2db4690) {rotation: {x: 0.000000, y: 0.000000, z: 0.000000, w: 1.000000}, translation: {x: 0.000000, y: 0.000000, z: 0.000000}, scale3d: {x: 1.000000, y: 1.000000, z: 1.000000}}>"
+  }
+}

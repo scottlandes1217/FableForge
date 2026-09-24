@@ -1,0 +1,14 @@
+{
+  "body": {
+    "reloaded": true,
+    "bones": 89,
+    "lods": 1,
+    "materials_and_physics_preserved": true
+  },
+  "shirt": {
+    "reloaded": true,
+    "bones": 89,
+    "lods": 1,
+    "materials_and_physics_preserved": true
+  }
+}

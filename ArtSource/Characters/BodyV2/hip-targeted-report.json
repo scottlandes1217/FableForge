@@ -1,0 +1,26 @@
+{
+  "original": {
+    "arms": {
+      "max_edge_stretch": 5.084327499179229,
+      "p99": 1.741252383160671,
+      "edges_over_3x": 5
+    },
+    "hips": {
+      "max_edge_stretch": 3.0644836549307635,
+      "p99": 1.7817239708024992,
+      "edges_over_3x": 1
+    }
+  },
+  "targeted": {
+    "arms": {
+      "max_edge_stretch": 5.084327499179229,
+      "p99": 1.741252383160671,
+      "edges_over_3x": 5
+    },
+    "hips": {
+      "max_edge_stretch": 3.061176397831687,
+      "p99": 1.7815873995774394,
+      "edges_over_3x": 1
+    }
+  }
+}

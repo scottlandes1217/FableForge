@@ -5,6 +5,7 @@
 AFFDoorInteractable::AFFDoorInteractable()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	DoorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DoorMesh"));
 	DoorMesh->SetupAttachment(SceneRoot);
@@ -42,6 +43,7 @@ void AFFDoorInteractable::Tick(float DeltaSeconds)
 	{
 		DoorMesh->SetRelativeRotation(TargetRotation);
 		bMoving = false;
+		SetActorTickEnabled(false);
 	}
 }
 
@@ -51,4 +53,5 @@ void AFFDoorInteractable::Interact_Implementation(AActor* Interactor)
 
 	bOpen = !bOpen;
 	bMoving = true;
+	SetActorTickEnabled(true);
 }

@@ -1,0 +1,38 @@
+{
+  "male_before": {
+    "flipped_triangles": 0,
+    "head_width_cm": 18.124646186828613,
+    "head_top_cm": 177.3334197998047,
+    "race_height_scale": 0.79
+  },
+  "male_default": {
+    "flipped_triangles": 0,
+    "head_width_cm": 21.76769256591797,
+    "head_top_cm": 182.0234375,
+    "race_height_scale": 0.79
+  },
+  "male_maximum": {
+    "flipped_triangles": 0,
+    "head_width_cm": 23.562028884887695,
+    "head_top_cm": 184.3334503173828,
+    "race_height_scale": 0.79
+  },
+  "female_before": {
+    "flipped_triangles": 0,
+    "head_width_cm": 17.7890682220459,
+    "head_top_cm": 176.66433715820312,
+    "race_height_scale": 0.75
+  },
+  "female_default": {
+    "flipped_triangles": 0,
+    "head_width_cm": 21.361982345581055,
+    "head_top_cm": 181.21986389160156,
+    "race_height_scale": 0.75
+  },
+  "female_maximum": {
+    "flipped_triangles": 0,
+    "head_width_cm": 23.121774673461914,
+    "head_top_cm": 183.46363830566406,
+    "race_height_scale": 0.75
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "male_neutral": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 29.00969409942627,
+    "same_vertices_upperarm_mean_radius_cm": 6.72249258596649
+  },
+  "male_default": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 32.88796424865723,
+    "same_vertices_upperarm_mean_radius_cm": 8.320384663012895
+  },
+  "male_upper": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 38.268638610839844,
+    "same_vertices_upperarm_mean_radius_cm": 8.59789935046729
+  },
+  "female_neutral": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 26.669495582580566,
+    "same_vertices_upperarm_mean_radius_cm": 4.178999922763585
+  },
+  "female_default": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 29.257498741149902,
+    "same_vertices_upperarm_mean_radius_cm": 5.2100045785048135
+  },
+  "female_upper": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 31.479326248168945,
+    "same_vertices_upperarm_mean_radius_cm": 5.360115269954514
+  }
+}

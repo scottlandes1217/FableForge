@@ -4,12 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "RPG/Data/FableForgeRPGTypes.h"
 #include "FableForgePlayerController.generated.h"
 
 class UFableCharacterMenuWidget;
 class UFableChestWidget;
 class UFableMainMenuWidget;
 class UFablePartyHudWidget;
+class UFableTimeWheelWidget;
+class UFableWheelAssignmentWidget;
 class UInputMappingContext;
 class UUserWidget;
 class AFFChestInteractable;
@@ -26,6 +29,17 @@ public:
 	void EnterGameFromCharacterSlot(const FGuid& CharacterId, int32 SlotIndex, bool bCreateNewSave);
 	void ShowMainMenu();
 	void NotifyManualMoveInput();
+	void ToggleFirstPersonView();
+	void OpenWheelAssignment();
+	void OpenWheelAssignmentForPayload(const FString& PreferredPayload);
+	void OpenSkillsForQa();
+	void OpenQuickWheelForQa();
+	bool IsWheelInputCaptured() const { return bWheelInputCaptured; }
+	void RouteRightStickToWheel(const FVector2D& Value);
+	void RunControllerInputSmokeTest();
+	bool RequestSkillPayload(const FString& PayloadId);
+	void ConfirmTargetedSkill();
+	void CancelTargetedSkill();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ToggleCharacterMenu();
@@ -72,11 +86,39 @@ protected:
 	virtual void SetupInputComponent() override;
 	virtual void PlayerTick(float DeltaTime) override;
 
+	void HandleDPadUp();
+	void HandleDPadDown();
+	void HandleDPadLeft();
+	void HandleDPadRight();
+	void HandleElementReleased();
+	void HandleTimePressed();
+	void HandleTimeReleased();
+	void HandleQuickWheelPressed();
+	void HandleQuickWheelReleased();
+	void HandleLeftTriggerPressed();
+	void HandleLeftTriggerReleased();
+	void HandleQuickWheelNext();
+	void HandleQuickWheelPrevious();
+	void HandleRightTriggerPressed();
+	void HandleRightTriggerReleased();
+	void HandleRightStickX(float Value);
+	void HandleRightStickY(float Value);
+	void HandleRightTrigger(float Value);
+	void HandleLeftTrigger(float Value);
+	UFUNCTION()
+	void HandleWheelAssignmentChanged(const TArray<FFableQuickWheelPageData>& Pages);
+	UFUNCTION()
+	void HandleWheelAssignmentClosed();
+	void SetWheelInputCapture(bool bCapture);
+	void PerformWeaponAttack(bool bOffHand);
+	FVector ResolveAimPoint(FHitResult* OutHit = nullptr) const;
+
 private:
 	void ApplyActiveCharacterMesh();
 	void EnsureUiWidgets();
 	void RefreshHudData();
 	void HandlePrimaryInteractClick();
+	void CloseActivePanel();
 	void UpdateHoveredInteractable();
 	bool IsActorInteractable(const AActor* Actor) const;
 	bool IsActorWithinSelectionDistance(const AActor* Actor) const;
@@ -84,6 +126,10 @@ private:
 	bool IsGameInteractionBlocked() const;
 	void ClearHoveredInteractable();
 	void ClearPendingInteraction();
+	bool IsJournalOpen() const;
+	bool IsControllerUiInputHandledByFocusedWidget() const;
+	bool IsWheelAssignmentOpen() const;
+	void HandleControllerActivate();
 
 	/** Returns true if the player should use UMG touch controls */
 	bool ShouldUseTouchControls() const;
@@ -122,4 +168,38 @@ private:
 
 	UPROPERTY(Transient)
 	bool bHasPendingInteractionApproachLocation = false;
+
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
+	float SlowTimeDilation = 0.12f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
+	float TimeHoldThreshold = 0.30f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
+	float GestureSampleInterval = 0.04f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFableTimeWheelWidget> TimeWheelWidget;
+	UPROPERTY(Transient)
+	TObjectPtr<UFableWheelAssignmentWidget> WheelAssignmentWidget;
+	TArray<FFableQuickWheelPageData> QuickWheelPages;
+	FVector2D RightStickValue = FVector2D::ZeroVector;
+	FVector2D GestureStart = FVector2D::ZeroVector;
+	float GestureTravel = 0.0f;
+	float GestureTurn = 0.0f;
+	float LastGestureAngle = 0.0f;
+	float TimeHeldSeconds = 0.0f;
+	bool bTimeHeld = false;
+	bool bTimeStopped = false;
+	bool bQuickWheelHeld = false;
+	bool bElementHeld = false;
+	FName ActiveElement = TEXT("None");
+	int32 QuickWheelPage = 0;
+	float LastGestureSampleTime = -100.0f;
+	bool bTargetingSkill = false;
+	FString PendingSkillId;
+	FVector PendingTargetLocation = FVector::ZeroVector;
+	TWeakObjectPtr<AActor> PendingTargetActor;
+	bool bRightTriggerLatched = false;
+	bool bLeftTriggerLatched = false;
+	bool bWheelInputCaptured = false;
+	bool bWheelAssignmentEmbedded = false;
 };

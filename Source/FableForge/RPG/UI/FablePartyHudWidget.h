@@ -11,11 +11,12 @@ class UCanvasPanel;
 class UImage;
 class UProgressBar;
 class UTextBlock;
-class UTextureRenderTarget2D;
+class UViewport;
+class USkeletalMeshComponent;
 class UVerticalBox;
 class UFableActionBarWidget;
 class UFableCharacterMenuWidget;
-class ASceneCapture2D;
+
 
 UCLASS()
 class UFablePartyHudWidget : public UUserWidget
@@ -28,11 +29,14 @@ public:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+	bool IsModalOpen() const;
+	void CloseModal();
 	void RefreshFromSaveData();
 	void SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget);
 	bool TryAssignActionAtScreenPosition(const FVector2D& ScreenPosition, FName FromSlotId, const FString& PayloadId, const FString& PayloadLabel);
 	bool TryUseActionAtScreenPosition(const FVector2D& ScreenPosition);
 	bool ClearActionAtSlotId(FName SlotId);
+	bool TryUseQuickWheelPayload(const FString& PayloadId);
 
 private:
 	enum class EModalState : uint8
@@ -83,8 +87,7 @@ private:
 	UFUNCTION()
 	void HandleActionBarRemoveRequested(FGuid BarId);
 
-	void EnsurePlayerPortraitCapture();
-	void UpdatePlayerPortraitCapture();
+	void UpdatePlayerPortrait();
 
 private:
 	EModalState ModalState = EModalState::None;
@@ -98,11 +101,6 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> PlayerNameText;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UImage> PlayerPortraitImage;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> PlayerPortraitFallbackText;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> PartyMembersBox;
@@ -129,10 +127,14 @@ private:
 	TObjectPtr<UFableCharacterMenuWidget> CharacterMenuWidget;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextureRenderTarget2D> PlayerPortraitRenderTarget;
+	TObjectPtr<UViewport> PortraitViewport;
 
 	UPROPERTY(Transient)
-	TObjectPtr<ASceneCapture2D> PlayerPortraitCaptureActor;
+	TObjectPtr<AActor> PortraitSubject;
+
+	uint32 PortraitSignature = 0;
+	bool bPortraitInitialized = false;
+	float PortraitRefreshTime = 0.f;
 
 	TArray<FFableActionBarData> ActionBars;
 	TMap<FString, FString> ItemTypeLookup;

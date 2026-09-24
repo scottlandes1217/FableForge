@@ -1,0 +1,18 @@
+{
+  "mesh": "/Game/Items/Armor/FittedTunic/peasant_tunic_v2.peasant_tunic_v2",
+  "bones": 89,
+  "skeleton": "/Game/Characters/PlayableCharacter/Meshes/SK_Mannequin.SK_Mannequin",
+  "datatable_updated": true,
+  "morphs": [
+    "BodyBuild",
+    "ShoulderWidth",
+    "WaistWidth",
+    "HipWidth",
+    "FemaleBody",
+    "BodyFat",
+    "Muscle",
+    "Bust",
+    "TorsoLength",
+    "HeadSize"
+  ]
+}

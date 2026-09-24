@@ -1,0 +1,73 @@
+{
+  "/Game/Items/Armor/Materials/MI_Peasant": {
+    "type": "MaterialInstanceConstant",
+    "base": "/InterchangeAssets/Materials/FBXLegacyPhongSurfaceMaterial.FBXLegacyPhongSurfaceMaterial",
+    "parent": "<Object '/InterchangeAssets/Materials/FBXLegacyPhongSurfaceMaterial.FBXLegacyPhongSurfaceMaterial' (0x3def1e080) Class 'Material'>",
+    "textures": "[]",
+    "scalars": "[{parameter_info: {name: \"Shininess\", association: GlobalParameter, index: -1}, parameter_value: 25.000000}]",
+    "vectors": "[{parameter_info: {name: \"AmbientColor\", association: GlobalParameter, index: -1}, parameter_value: {r: 0.000000, g: 0.000000, b: 0.000000, a: 1.000000}}, {parameter_info: {name: \"EmissiveColor\", association: GlobalParameter, index: -1}, parameter_value: {r: 0.000000, g: 0.000000, b: 0.000000, a: 1.000000}}, {parameter_info: {name: \"SpecularColor\", association: GlobalParameter, index: -1}, parameter_value: {r: 0.021732, g: 0.200004, b: 0.171746, a: 1.000000}}]",
+    "texture_names": [
+      "NormalMap",
+      "DiffuseColorMap",
+      "AmbientColorMap",
+      "SpecularColorMap",
+      "ShininessMap",
+      "EmissiveColorMap",
+      "OpacityMaskMap",
+      "OpacityMap",
+      "AmbientOcclusionMap"
+    ],
+    "scalar_names": [
+      "one",
+      "DiffuseColorMapWeight",
+      "SpecularColorMapWeight",
+      "Shininess",
+      "NormalMapWeight",
+      "ShininessMapWeight",
+      "AmbientColorMapWeight",
+      "EmissiveColorMapWeight",
+      "OpacityMaskMapWeight",
+      "Opacity",
+      "OpacityMapWeight",
+      "AmbientOcclusionMapWeight",
+      "AmbientOcclusion"
+    ],
+    "vector_names": [
+      "DiffuseColor",
+      "SpecularColor",
+      "AmbientColor",
+      "EmissiveColor"
+    ]
+  },
+  "/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining": {
+    "type": "Material",
+    "base": "/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining.Boot_Leather_Lining",
+    "texture_names": [],
+    "scalar_names": [],
+    "vector_names": []
+  },
+  "/Game/Items/Armor/FittedLowerArmor/male_peasant_legs_v2": {
+    "materials": [
+      "<Object '/Game/Items/Armor/Materials/MI_Peasant.MI_Peasant' (0x3deeeeb00) Class 'MaterialInstanceConstant'>",
+      "<Object '/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining.Boot_Leather_Lining' (0x3def1d0c0) Class 'Material'>"
+    ]
+  },
+  "/Game/Items/Armor/FittedLowerArmor/male_peasant_feet_v2": {
+    "materials": [
+      "<Object '/Game/Items/Armor/Materials/MI_Peasant.MI_Peasant' (0x3deeeeb00) Class 'MaterialInstanceConstant'>",
+      "<Object '/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining.Boot_Leather_Lining' (0x3def1d0c0) Class 'Material'>"
+    ]
+  },
+  "/Game/Items/Armor/FittedLowerArmor/female_peasant_legs_v2": {
+    "materials": [
+      "<Object '/Game/Items/Armor/Materials/MI_Peasant.MI_Peasant' (0x3deeeeb00) Class 'MaterialInstanceConstant'>",
+      "<Object '/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining.Boot_Leather_Lining' (0x3def1d0c0) Class 'Material'>"
+    ]
+  },
+  "/Game/Items/Armor/FittedLowerArmor/female_peasant_feet_v2": {
+    "materials": [
+      "<Object '/Game/Items/Armor/Materials/MI_Peasant.MI_Peasant' (0x3deeeeb00) Class 'MaterialInstanceConstant'>",
+      "<Object '/Game/Items/Armor/FittedLowerArmor/Boot_Leather_Lining.Boot_Leather_Lining' (0x3def1d0c0) Class 'Material'>"
+    ]
+  }
+}

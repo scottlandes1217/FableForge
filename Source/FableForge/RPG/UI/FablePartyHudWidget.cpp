@@ -8,6 +8,17 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
+#include "Components/Viewport.h"
+#include "RPG/UI/FableTransparentViewport.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Animation/AnimSequence.h"
+#include "ImageUtils.h"
+#include "Engine/Texture2D.h"
+#include "Misc/Paths.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
@@ -18,12 +29,12 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/DataTable.h"
-#include "Engine/SceneCapture2D.h"
-#include "Engine/TextureRenderTarget2D.h"
 #include "FableForgePlayerController.h"
 #include "Misc/FileHelper.h"
 #include "RPG/Save/FableSaveSubsystem.h"
 #include "RPG/UI/FableActionButton.h"
+#include "RPG/UI/FableBookStyle.h"
+#include "RPG/UI/FableAppearanceAssets.h"
 #include "RPG/UI/FableActionBarWidget.h"
 #include "RPG/UI/FableCharacterMenuWidget.h"
 #include "FableForgePlayerController.h"
@@ -32,9 +43,9 @@
 #include "Serialization/JsonSerializer.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Components/SceneCaptureComponent2D.h"
 #include "GameFramework/Character.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Styling/CoreStyle.h"
 
 namespace
 {
@@ -55,16 +66,16 @@ namespace
 	const FString UnityArmorPath = TEXT("/Users/scottlandes/Projects/Unity/FableForge/Assets/Resources/Prefabs/Objects/armor.json");
 
 	const FLinearColor UiBackdropColor(0.0f, 0.0f, 0.0f, 0.62f);
-	const FLinearColor UiPanelColor(0.01f, 0.01f, 0.01f, 0.96f);
+	const FLinearColor UiPanelColor(0.008f, 0.013f, 0.019f, 0.98f);
 	const FLinearColor UiTransparentColor(0.0f, 0.0f, 0.0f, 0.0f);
-	const FLinearColor UiCardColor(0.0f, 0.0f, 0.0f, 0.82f);
-	const FLinearColor UiButtonColor(0.05f, 0.05f, 0.05f, 1.0f);
+	const FLinearColor UiCardColor(0.008f, 0.013f, 0.019f, 0.96f);
+	const FLinearColor UiButtonColor(0.028f, 0.039f, 0.048f, 1.0f);
 	const FLinearColor UiButtonDisabledColor(0.03f, 0.03f, 0.03f, 0.75f);
-	const FLinearColor UiTextColor(0.95f, 0.95f, 0.95f, 1.0f);
-	const FLinearColor UiMutedTextColor(0.72f, 0.72f, 0.72f, 1.0f);
-	const FLinearColor UiHealthColor(0.85f, 0.2f, 0.2f, 1.0f);
-	const FLinearColor UiManaColor(0.24f, 0.45f, 0.95f, 1.0f);
-	const FLinearColor UiExperienceColor(0.87f, 0.71f, 0.2f, 1.0f);
+	const FLinearColor UiTextColor(0.92f, 0.86f, 0.73f, 1.0f);
+	const FLinearColor UiMutedTextColor(0.65f, 0.65f, 0.57f, 1.0f);
+	const FLinearColor UiHealthColor(0.58f, 0.13f, 0.15f, 1.0f);
+	const FLinearColor UiManaColor(0.19f, 0.40f, 0.61f, 1.0f);
+	const FLinearColor UiExperienceColor(0.67f, 0.49f, 0.23f, 1.0f);
 }
 
 TSharedRef<SWidget> UFablePartyHudWidget::RebuildWidget()
@@ -81,19 +92,22 @@ void UFablePartyHudWidget::NativeConstruct()
 
 void UFablePartyHudWidget::NativeDestruct()
 {
-	if (PlayerPortraitCaptureActor != nullptr)
-	{
-		PlayerPortraitCaptureActor->Destroy();
-		PlayerPortraitCaptureActor = nullptr;
-	}
-
-	PlayerPortraitRenderTarget = nullptr;
+	if (IsValid(PortraitSubject)) PortraitSubject->Destroy();
+	PortraitSubject = nullptr;
+	PortraitViewport = nullptr;
+	bPortraitInitialized = false;
 	Super::NativeDestruct();
 }
 
 void UFablePartyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	PortraitRefreshTime += InDeltaTime;
+	if (PortraitRefreshTime >= .25f)
+	{
+		PortraitRefreshTime = 0.f;
+		UpdatePlayerPortrait();
+	}
 
 	if (ActionCooldownsByPayload.Num() == 0)
 	{
@@ -121,6 +135,19 @@ void UFablePartyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
 	{
 		UpdateActionBarCooldownVisuals();
 	}
+}
+
+bool UFablePartyHudWidget::IsModalOpen() const
+{
+	return ModalState != EModalState::None;
+}
+
+void UFablePartyHudWidget::CloseModal()
+{
+	ModalState = EModalState::None;
+	PendingDeleteActionBarId.Invalidate();
+	PendingLoadCharacterId.Invalidate();
+	RebuildModal();
 }
 
 void UFablePartyHudWidget::SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget)
@@ -239,6 +266,37 @@ bool UFablePartyHudWidget::ClearActionAtSlotId(FName SlotId)
 	return true;
 }
 
+bool UFablePartyHudWidget::TryUseQuickWheelPayload(const FString& PayloadId)
+{
+	if (PayloadId.IsEmpty()) return false;
+	if (AFableForgePlayerController* Controller = Cast<AFableForgePlayerController>(GetOwningPlayer()))
+	{
+		if (Controller->RequestSkillPayload(PayloadId)) return true;
+	}
+	if (!PayloadId.StartsWith(TEXT("skill:"))) return false;
+	FString SkillId = PayloadId;
+	SkillId.RemoveFromStart(TEXT("skill:"));
+	LoadSkillDefinitionsFromDataTable();
+	const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId);
+	if (SkillRow == nullptr)
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("Quick wheel skill not found: %s"), *SkillId);
+		return false;
+	}
+	if (ACharacter* CharacterPawn = Cast<ACharacter>(GetOwningPlayerPawn()))
+	{
+		if (USkeletalMeshComponent* MeshComp = CharacterPawn->GetMesh())
+		{
+			if (UAnimationAsset* AnimAsset = SkillRow->CharacterAnimationAsset.LoadSynchronous())
+			{
+				MeshComp->PlayAnimation(AnimAsset, false);
+			}
+		}
+	}
+	UE_LOG(LogFableForge, Log, TEXT("Quick wheel requested skill=%s"), *SkillId);
+	return true;
+}
+
 void UFablePartyHudWidget::RefreshFromSaveData()
 {
 	UFableSaveSubsystem* SaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr;
@@ -315,7 +373,7 @@ void UFablePartyHudWidget::RefreshFromSaveData()
 	ActionBars = ActiveProfile.ActionBars;
 	RebuildPartyMembers(ActiveProfile);
 	RebuildActionBars();
-	UpdatePlayerPortraitCapture();
+	UpdatePlayerPortrait();
 }
 
 void UFablePartyHudWidget::Rebuild()
@@ -343,13 +401,14 @@ void UFablePartyHudWidget::Rebuild()
 
 	UBorder* PartyPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PartyPanel"));
 	PartyPanel->SetBrushColor(UiTransparentColor);
+	PartyPanel->SetPadding(FMargin(0));
 	PartyPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	if (UCanvasPanelSlot* PartySlot = Root->AddChildToCanvas(PartyPanel))
 	{
 		PartySlot->SetAnchors(FAnchors(0.0f, 0.0f));
 		PartySlot->SetAlignment(FVector2D(0.0f, 0.0f));
-		PartySlot->SetPosition(FVector2D(16.0f, 16.0f));
-		PartySlot->SetSize(FVector2D(360.0f, 320.0f));
+		PartySlot->SetPosition(FVector2D(0.0f, 0.0f));
+		PartySlot->SetSize(FVector2D(350.0f, 340.0f));
 	}
 
 	PartyMembersBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("PartyMembers"));
@@ -358,61 +417,55 @@ void UFablePartyHudWidget::Rebuild()
 	UFableActionButton* SettingsButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("SettingsButton"));
 	SettingsButton->InitializeAction(ToggleSettingsAction);
 	SettingsButton->OnActionClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionClicked);
-	SettingsButton->SetBackgroundColor(UiButtonColor);
-
-	UTextBlock* SettingsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	SettingsText->SetText(FText::FromString(TEXT("Settings")));
-	SettingsText->SetColorAndOpacity(FSlateColor(UiTextColor));
-	SettingsText->SetJustification(ETextJustify::Center);
-	{
-		FSlateFontInfo FontInfo = SettingsText->GetFont();
-		FontInfo.Size = 14;
-		SettingsText->SetFont(FontInfo);
-	}
-	SettingsButton->AddChild(SettingsText);
-	if (UButtonSlot* ButtonSlot = Cast<UButtonSlot>(SettingsText->Slot))
-	{
-		ButtonSlot->SetHorizontalAlignment(HAlign_Center);
-		ButtonSlot->SetVerticalAlignment(VAlign_Center);
-		ButtonSlot->SetPadding(FMargin(4.0f, 3.0f));
-	}
+	static TStrongObjectPtr<UTexture2D> SettingsTexture;
+	if (!SettingsTexture.IsValid()) SettingsTexture.Reset(FImageUtils::ImportFileAsTexture2D(
+		FPaths::ProjectContentDir() / TEXT("Slate/Textures/SettingsEmblem.png")));
+	FSlateBrush SettingsBrush;
+	SettingsBrush.SetResourceObject(SettingsTexture.Get());
+	SettingsBrush.ImageSize = FVector2D(64, 64);
+	SettingsBrush.DrawAs = ESlateBrushDrawType::Image;
+	FButtonStyle SettingsStyle;
+	SettingsStyle.SetNormal(SettingsBrush);
+	SettingsBrush.TintColor = FLinearColor(1.15f, 1.1f, 1.f);
+	SettingsStyle.SetHovered(SettingsBrush);
+	SettingsBrush.TintColor = FLinearColor(.72f, .68f, .60f);
+	SettingsStyle.SetPressed(SettingsBrush);
+	SettingsButton->SetStyle(SettingsStyle);
+	SettingsButton->SetToolTipText(FText::FromString(TEXT("Settings")));
 
 	if (UCanvasPanelSlot* SettingsButtonSlot = Root->AddChildToCanvas(SettingsButton))
 	{
 		SettingsButtonSlot->SetAnchors(FAnchors(1.0f, 0.0f));
 		SettingsButtonSlot->SetAlignment(FVector2D(1.0f, 0.0f));
-		SettingsButtonSlot->SetPosition(FVector2D(-16.0f, 16.0f));
-		SettingsButtonSlot->SetSize(FVector2D(144.0f, 34.0f));
+		SettingsButtonSlot->SetPosition(FVector2D(-12.0f, 10.0f));
+		SettingsButtonSlot->SetSize(FVector2D(64.0f, 64.0f));
 	}
 
 	UFableActionButton* CharacterButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("CharacterButton"));
 	CharacterButton->InitializeAction(OpenCharacterMenuAction);
 	CharacterButton->OnActionClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionClicked);
-	CharacterButton->SetBackgroundColor(UiButtonColor);
-
-	UTextBlock* CharacterText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	CharacterText->SetText(FText::FromString(TEXT("Character")));
-	CharacterText->SetColorAndOpacity(FSlateColor(UiTextColor));
-	CharacterText->SetJustification(ETextJustify::Center);
-	{
-		FSlateFontInfo FontInfo = CharacterText->GetFont();
-		FontInfo.Size = 14;
-		CharacterText->SetFont(FontInfo);
-	}
-	CharacterButton->AddChild(CharacterText);
-	if (UButtonSlot* CharacterTextSlot = Cast<UButtonSlot>(CharacterText->Slot))
-	{
-		CharacterTextSlot->SetHorizontalAlignment(HAlign_Center);
-		CharacterTextSlot->SetVerticalAlignment(VAlign_Center);
-		CharacterTextSlot->SetPadding(FMargin(4.0f, 3.0f));
-	}
+	static TStrongObjectPtr<UTexture2D> JournalTexture;
+	if (!JournalTexture.IsValid())
+		JournalTexture.Reset(FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir() / TEXT("Slate/Textures/JournalUpright.png")));
+	FSlateBrush BookBrush;
+	BookBrush.SetResourceObject(JournalTexture.Get());
+	BookBrush.ImageSize = FVector2D(104.f, 104.f);
+	BookBrush.DrawAs = ESlateBrushDrawType::Image;
+	FButtonStyle BookStyle;
+	BookStyle.SetNormal(BookBrush);
+	BookBrush.TintColor = FLinearColor(1.18f, 1.13f, 1.04f);
+	BookStyle.SetHovered(BookBrush);
+	BookBrush.TintColor = FLinearColor(0.72f, 0.70f, 0.65f);
+	BookStyle.SetPressed(BookBrush);
+	CharacterButton->SetStyle(BookStyle);
+	CharacterButton->SetToolTipText(FText::FromString(TEXT("Character (I)")));
 
 	if (UCanvasPanelSlot* CharacterButtonSlot = Root->AddChildToCanvas(CharacterButton))
 	{
 		CharacterButtonSlot->SetAnchors(FAnchors(1.0f, 1.0f));
 		CharacterButtonSlot->SetAlignment(FVector2D(1.0f, 1.0f));
 		CharacterButtonSlot->SetPosition(FVector2D(-16.0f, -16.0f));
-		CharacterButtonSlot->SetSize(FVector2D(144.0f, 34.0f));
+		CharacterButtonSlot->SetSize(FVector2D(88.0f, 100.0f));
 	}
 
 	ModalBackdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ModalBackdrop"));
@@ -446,107 +499,169 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		return;
 	}
 
+	if (IsValid(PortraitSubject)) PortraitSubject->Destroy();
+	PortraitSubject = nullptr;
+	PortraitViewport = nullptr;
+	bPortraitInitialized = false;
 	PartyMembersBox->ClearChildren();
 	PlayerHealthBar = nullptr;
 	PlayerManaBar = nullptr;
 	PlayerExperienceBar = nullptr;
-	PlayerPortraitImage = nullptr;
-	PlayerPortraitFallbackText = nullptr;
 
+	int32 MaxHealth = 10;
+	int32 MaxMana = 0;
+	if (UFableSaveSubsystem* Saves = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr)
+		for (const FFableRaceDefinition& Race : Saves->GetRaces())
+			if (Race.Id == ActiveProfile.RaceId)
+			{
+				MaxHealth = FMath::Max(1, Race.BaseHitPoints);
+				MaxMana = FMath::Max(0, Race.BaseMana);
+				break;
+			}
+	auto PointsLabel = [](float Percent, int32 Maximum)
+	{
+		return FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(FMath::Clamp(Percent, 0.f, 1.f) * Maximum), Maximum);
+	};
+
+	// Nested light and dark edges give the brass frame a bevel and the leather an inset.
+	auto Frame = [&](const FLinearColor& Color, const FMargin& Padding)
+	{
+		UBorder* Border = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		Border->SetBrushColor(Color);
+		Border->SetPadding(Padding);
+		return Border;
+	};
 	auto AddPartyCard = [&](const FString& Name, float HealthPct, float ManaPct, float ExperiencePct, bool bPlayerCard, const FString& PortraitLabel)
 	{
-		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Card->SetBrushColor(UiCardColor);
-		Card->SetPadding(FMargin(8.0f));
-		if (UVerticalBoxSlot* CardSlot = PartyMembersBox->AddChildToVerticalBox(Card))
-		{
-			CardSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
-		}
-
-		UHorizontalBox* CardRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-		Card->SetContent(CardRow);
+		static TStrongObjectPtr<UTexture2D> CardTexture;
+		if (!CardTexture.IsValid()) CardTexture.Reset(FImageUtils::ImportFileAsTexture2D(
+			FPaths::ProjectContentDir() / TEXT("Slate/Textures/PortraitFrame.png")));
+		USizeBox* CardBounds = WidgetTree->ConstructWidget<USizeBox>();
+		CardBounds->SetWidthOverride(350.f);
+		CardBounds->SetHeightOverride(138.f);
+		UBorder* Card = Frame(FLinearColor::White, FMargin(20.f, 33.f, 20.f, 28.f));
+		CardBounds->SetContent(Card);
+		FSlateBrush CardBrush;
+		CardBrush.SetResourceObject(CardTexture.Get());
+		CardBrush.DrawAs = ESlateBrushDrawType::Image;
+		Card->SetBrush(CardBrush);
+		PartyMembersBox->AddChildToVerticalBox(CardBounds)->SetPadding(FMargin(0, 0, 0, 6));
+		UVerticalBox* CardContent = WidgetTree->ConstructWidget<UVerticalBox>();
+		Card->SetContent(CardContent);
+		UHorizontalBox* CardRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		CardContent->AddChildToVerticalBox(CardRow);
 
 		USizeBox* PortraitSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		PortraitSizeBox->SetWidthOverride(64.0f);
-		PortraitSizeBox->SetHeightOverride(74.0f);
+		PortraitSizeBox->SetWidthOverride(72.f);
+		PortraitSizeBox->SetHeightOverride(77.f);
 		if (UHorizontalBoxSlot* PortraitSlot = CardRow->AddChildToHorizontalBox(PortraitSizeBox))
 		{
-			PortraitSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
-			PortraitSlot->SetVerticalAlignment(VAlign_Top);
+			PortraitSlot->SetPadding(FMargin(0, 0, 12, 0));
+			PortraitSlot->SetVerticalAlignment(VAlign_Center);
 		}
-
-		UBorder* PortraitBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		PortraitBorder->SetBrushColor(UiButtonColor);
-		PortraitSizeBox->SetContent(PortraitBorder);
-
+		UBorder* PortraitMetal = Frame(FLinearColor(0.30f, 0.20f, 0.10f, 1), FMargin(1));
+		PortraitSizeBox->SetContent(PortraitMetal);
+		UBorder* PortraitRecess = Frame(FLinearColor(0.018f, 0.014f, 0.010f, 1), FMargin(0));
+		PortraitMetal->SetContent(PortraitRecess);
 		UOverlay* PortraitOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-		PortraitBorder->SetContent(PortraitOverlay);
-
+		PortraitRecess->SetContent(PortraitOverlay);
 		UImage* PortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-		if (UOverlaySlot* PortraitImageSlot = PortraitOverlay->AddChildToOverlay(PortraitImage))
-		{
-			PortraitImageSlot->SetHorizontalAlignment(HAlign_Fill);
-			PortraitImageSlot->SetVerticalAlignment(VAlign_Fill);
-		}
-
+		PortraitOverlay->AddChildToOverlay(PortraitImage);
 		UTextBlock* PortraitText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		PortraitText->SetText(FText::FromString(PortraitLabel));
-		PortraitText->SetJustification(ETextJustify::Center);
+		PortraitText->SetFont(FableBookStyle::Font(32, true));
 		PortraitText->SetColorAndOpacity(FSlateColor(UiTextColor));
 		if (UOverlaySlot* PortraitTextSlot = PortraitOverlay->AddChildToOverlay(PortraitText))
 		{
 			PortraitTextSlot->SetHorizontalAlignment(HAlign_Center);
 			PortraitTextSlot->SetVerticalAlignment(VAlign_Center);
 		}
-
 		if (bPlayerCard)
 		{
-			PlayerPortraitImage = PortraitImage;
-			PlayerPortraitFallbackText = PortraitText;
+			PortraitViewport = WidgetTree->ConstructWidget<UFableTransparentViewport>();
+			PortraitViewport->TakeWidget();
+			PortraitViewport->SetEnableAdvancedFeatures(false);
+			PortraitViewport->SetBackgroundColor(FLinearColor::Black);
+			PortraitViewport->SetLightIntensity(.22f);
+			PortraitViewport->SetSkyIntensity(.12f);
+			PortraitViewport->SetVisibility(ESlateVisibility::HitTestInvisible);
+			UOverlaySlot* StudioSlot = PortraitOverlay->AddChildToOverlay(PortraitViewport);
+			StudioSlot->SetHorizontalAlignment(HAlign_Fill);
+			StudioSlot->SetVerticalAlignment(VAlign_Fill);
+			PortraitText->SetVisibility(ESlateVisibility::Collapsed);
+			PortraitImage->SetVisibility(ESlateVisibility::Collapsed);
 		}
 
 		UVerticalBox* InfoColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		if (UHorizontalBoxSlot* InfoSlot = CardRow->AddChildToHorizontalBox(InfoColumn))
 		{
-			FSlateChildSize FillSize;
-			FillSize.SizeRule = ESlateSizeRule::Fill;
-			FillSize.Value = 1.0f;
-			InfoSlot->SetSize(FillSize);
+			InfoSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			InfoSlot->SetVerticalAlignment(VAlign_Center);
 		}
 
 		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		NameText->SetText(FText::FromString(Name));
 		NameText->SetColorAndOpacity(FSlateColor(UiTextColor));
-		if (UVerticalBoxSlot* NameSlot = InfoColumn->AddChildToVerticalBox(NameText))
+		NameText->SetFont(FableBookStyle::Font(16, true));
+		NameText->SetJustification(ETextJustify::Center);
+		NameText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+		NameText->SetShadowOffset(FVector2D(0, 1));
+		NameText->SetShadowColorAndOpacity(FLinearColor::Black);
+		USizeBox* NameBounds = WidgetTree->ConstructWidget<USizeBox>();
+		NameBounds->SetHeightOverride(22.f);
+		NameBounds->SetContent(NameText);
+		UVerticalBoxSlot* NameSlot = InfoColumn->AddChildToVerticalBox(NameBounds);
+		NameSlot->SetHorizontalAlignment(HAlign_Fill);
+		NameSlot->SetPadding(FMargin(0, 0, 0, 3));
+		if (bPlayerCard) PlayerNameText = NameText;
+
+		auto AddStatBar = [&](const TCHAR* Label, float Percent, const FLinearColor& FillColor, TObjectPtr<UProgressBar>* OutPlayerBarRef, bool bSmall = false)
 		{
-			NameSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
-		}
-
-			auto AddStatBar = [&](float Percent, const FLinearColor& FillColor, TObjectPtr<UProgressBar>* OutPlayerBarRef)
+			USizeBox* BarSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			BarSizeBox->SetHeightOverride(bSmall ? 3.f : 19.f);
+			InfoColumn->AddChildToVerticalBox(BarSizeBox)->SetPadding(FMargin(0, 0, 0, 3));
+			UBorder* Rim = Frame(FLinearColor(0.35f, 0.24f, 0.12f, 1), FMargin(1));
+			BarSizeBox->SetContent(Rim);
+			UBorder* Inset = Frame(FLinearColor(0.004f, 0.005f, 0.007f, 1), FMargin(1, 2, 1, 1));
+			Rim->SetContent(Inset);
+			UOverlay* BarOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+			Inset->SetContent(BarOverlay);
+			UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+			Bar->SetPercent(FMath::Clamp(Percent, 0.f, 1.f));
+			Bar->SetFillColorAndOpacity(FillColor);
+			FProgressBarStyle Style = Bar->GetWidgetStyle();
+			Style.BackgroundImage.TintColor = FSlateColor(FLinearColor(0.025f, 0.016f, 0.014f, 1));
+			Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
+			Bar->SetWidgetStyle(Style);
+			UOverlaySlot* FillSlot = BarOverlay->AddChildToOverlay(Bar);
+			FillSlot->SetHorizontalAlignment(HAlign_Fill);
+			FillSlot->SetVerticalAlignment(VAlign_Fill);
+			// A narrow specular highlight sits above the colored reservoir.
+			UBorder* Glint = Frame(FLinearColor(1, 0.91f, 0.72f, 0.20f), FMargin(0));
+			USizeBox* GlintHeight = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			GlintHeight->SetHeightOverride(2);
+			GlintHeight->SetContent(Glint);
+			BarOverlay->AddChildToOverlay(GlintHeight)->SetVerticalAlignment(VAlign_Top);
+			if (!bSmall)
 			{
-				UProgressBar* Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
-				Bar->SetPercent(FMath::Clamp(Percent, 0.0f, 1.0f));
-				Bar->SetFillColorAndOpacity(FillColor);
-				USizeBox* BarSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-				BarSizeBox->SetHeightOverride(10.0f);
-				BarSizeBox->SetContent(Bar);
-				if (UVerticalBoxSlot* BarSlot = InfoColumn->AddChildToVerticalBox(BarSizeBox))
-				{
-					BarSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
-				}
-
-			if (OutPlayerBarRef != nullptr)
-			{
-				*OutPlayerBarRef = Bar;
+				UTextBlock* BarLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+				BarLabel->SetText(FText::FromString(Label));
+				BarLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 9));
+				BarLabel->SetColorAndOpacity(FSlateColor(UiTextColor));
+				BarLabel->SetShadowOffset(FVector2D(1, 1));
+				BarLabel->SetShadowColorAndOpacity(FLinearColor::Black);
+				UOverlaySlot* LabelSlot = BarOverlay->AddChildToOverlay(BarLabel);
+				LabelSlot->SetHorizontalAlignment(HAlign_Center);
+				LabelSlot->SetVerticalAlignment(VAlign_Center);
 			}
+			if (OutPlayerBarRef) *OutPlayerBarRef = Bar;
 		};
-
-			AddStatBar(HealthPct, UiHealthColor, bPlayerCard ? &PlayerHealthBar : nullptr);
-			if (bPlayerCard)
-			{
-				AddStatBar(ManaPct, UiManaColor, &PlayerManaBar);
-				AddStatBar(ExperiencePct, UiExperienceColor, &PlayerExperienceBar);
-			}
+		AddStatBar(*PointsLabel(HealthPct, MaxHealth), HealthPct, UiHealthColor, bPlayerCard ? &PlayerHealthBar : nullptr);
+		if (bPlayerCard)
+		{
+			AddStatBar(*PointsLabel(ManaPct, MaxMana), MaxMana > 0 ? ManaPct : 0.f, UiManaColor, &PlayerManaBar);
+			AddStatBar(TEXT(""), ExperiencePct, UiExperienceColor, &PlayerExperienceBar, true);
+		}
 	};
 
 	const FString PlayerPortrait = ActiveProfile.CharacterName.IsEmpty()
@@ -566,166 +681,116 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		AddPartyCard(CompanionName, 1.0f, 0.0f, 0.0f, false, CompanionPortrait);
 	}
 
-	UpdatePlayerPortraitCapture();
+	UpdatePlayerPortrait();
 }
 
-void UFablePartyHudWidget::EnsurePlayerPortraitCapture()
+void UFablePartyHudWidget::UpdatePlayerPortrait()
 {
-	if (PlayerPortraitRenderTarget == nullptr)
+	ACharacter* Player = Cast<ACharacter>(GetOwningPlayerPawn());
+	USkeletalMeshComponent* Source = Player ? Player->GetMesh() : nullptr;
+	if (!PortraitViewport || !Source || !Source->GetSkeletalMeshAsset()) return;
+	FFableCharacterProfile Profile;
+	UFableSaveSubsystem* Saves = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr;
+	if (!Saves || !Saves->TryGetActiveCharacterProfile(Profile)) return;
+
+	// Watch the actual attached visuals, including swaps that arrive after HUD creation.
+	// The portrait remains still and does not depend on map lighting or locomotion.
+	uint32 Signature = GetTypeHash(Source->GetSkeletalMeshAsset());
+	auto HashMaterials = [&Signature](UMeshComponent* Mesh)
 	{
-		PlayerPortraitRenderTarget = NewObject<UTextureRenderTarget2D>(this, TEXT("PlayerPortraitRT"));
-		if (PlayerPortraitRenderTarget != nullptr)
+		for (int32 Slot=0; Slot<Mesh->GetNumMaterials(); ++Slot)
+			Signature = HashCombine(Signature, GetTypeHash(Mesh->GetMaterial(Slot)));
+	};
+	HashMaterials(Source);
+	for (const auto& Morph : Profile.BodyMorphs)
+		Signature = HashCombine(Signature, HashCombine(GetTypeHash(Morph.Key), GetTypeHash(Morph.Value)));
+	TArray<UMeshComponent*> Attachments;
+	for (USceneComponent* Child : Source->GetAttachChildren())
+	{
+		UMeshComponent* Mesh = Cast<UMeshComponent>(Child);
+		if (!Mesh || !Mesh->IsVisible() || Mesh->bHiddenInGame) continue;
+		Attachments.Add(Mesh);
+		Signature = HashCombine(Signature, GetTypeHash(Mesh));
+		if (USkeletalMeshComponent* Skinned = Cast<USkeletalMeshComponent>(Mesh))
+			Signature = HashCombine(Signature, GetTypeHash(Skinned->GetSkeletalMeshAsset()));
+		if (UStaticMeshComponent* Rigid = Cast<UStaticMeshComponent>(Mesh))
+			Signature = HashCombine(Signature, GetTypeHash(Rigid->GetStaticMesh()));
+		HashMaterials(Mesh);
+	}
+	if (bPortraitInitialized && Signature == PortraitSignature) return;
+	if (IsValid(PortraitSubject)) PortraitSubject->Destroy();
+	PortraitSubject = PortraitViewport->Spawn(AActor::StaticClass());
+	if (!PortraitSubject) return;
+	USkeletalMeshComponent* Body = NewObject<USkeletalMeshComponent>(PortraitSubject);
+	PortraitSubject->SetRootComponent(Body);
+	Body->SetSkeletalMesh(Source->GetSkeletalMeshAsset());
+	Body->SetRelativeRotation(FRotator(0, -90, 0));
+	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->RegisterComponent();
+	auto CopyAppearance = [&Profile](UMeshComponent* From, UMeshComponent* To)
+	{
+		for (int32 Slot=0; Slot<From->GetNumMaterials(); ++Slot) To->SetMaterial(Slot, From->GetMaterial(Slot));
+		To->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		To->SetCastShadow(false);
+		if (USkeletalMeshComponent* Skinned = Cast<USkeletalMeshComponent>(To))
+			for (const auto& Morph : Profile.BodyMorphs)
+				if (Profile.Gender != EFableGender::Female || Morph.Key != TEXT("FemaleBody"))
+					Skinned->SetMorphTarget(Morph.Key, Morph.Value);
+	};
+	CopyAppearance(Source, Body);
+	if (UAnimSequence* Idle = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/PlayableCharacter/Anims/Unarmed/MM_Idle.MM_Idle")))
+	{
+		Body->PlayAnimation(Idle, false);
+		Body->TickAnimation(0.f, false);
+		Body->RefreshBoneTransforms();
+		Body->bPauseAnims = true;
+	}
+	int32 CopiedAttachments = 0;
+	for (UMeshComponent* From : Attachments)
+	{
+		UMeshComponent* Copy = nullptr;
+		if (USkeletalMeshComponent* Skinned = Cast<USkeletalMeshComponent>(From))
 		{
-			PlayerPortraitRenderTarget->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA8;
-			PlayerPortraitRenderTarget->ClearColor = FLinearColor(0.03f, 0.03f, 0.03f, 1.0f);
-			PlayerPortraitRenderTarget->InitAutoFormat(256, 256);
-			PlayerPortraitRenderTarget->UpdateResourceImmediate(true);
+			USkeletalMeshComponent* Armor = NewObject<USkeletalMeshComponent>(PortraitSubject);
+			Armor->SetSkeletalMesh(Skinned->GetSkeletalMeshAsset());
+			Armor->SetupAttachment(Body, From->GetAttachSocketName());
+			Armor->RegisterComponent();
+			if (Skinned->LeaderPoseComponent.Get() == Source) Armor->SetLeaderPoseComponent(Body, true, false);
+			Copy = Armor;
 		}
-	}
-
-	if (PlayerPortraitCaptureActor == nullptr)
-	{
-		UWorld* World = GetWorld();
-		if (World == nullptr)
+		else if (UStaticMeshComponent* Rigid = Cast<UStaticMeshComponent>(From))
 		{
-			return;
+			UStaticMeshComponent* Accessory = NewObject<UStaticMeshComponent>(PortraitSubject);
+			Accessory->SetStaticMesh(Rigid->GetStaticMesh());
+			Accessory->SetupAttachment(Body, From->GetAttachSocketName());
+			Accessory->RegisterComponent();
+			Copy = Accessory;
 		}
-
-		PlayerPortraitCaptureActor = World->SpawnActor<ASceneCapture2D>(ASceneCapture2D::StaticClass(), FTransform::Identity);
-		if (PlayerPortraitCaptureActor != nullptr)
-		{
-			PlayerPortraitCaptureActor->SetActorHiddenInGame(false);
-			PlayerPortraitCaptureActor->SetActorEnableCollision(false);
-			if (USceneCaptureComponent2D* Capture = PlayerPortraitCaptureActor->GetCaptureComponent2D())
-			{
-				Capture->bCaptureEveryFrame = false;
-				Capture->bCaptureOnMovement = false;
-				Capture->TextureTarget = PlayerPortraitRenderTarget;
-				Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-				Capture->FOVAngle = 22.0f;
-				Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
-				Capture->ShowOnlyActors.Empty();
-				Capture->ShowOnlyComponents.Empty();
-				Capture->PostProcessBlendWeight = 1.0f;
-				Capture->PostProcessSettings.bOverride_AutoExposureBias = true;
-				Capture->PostProcessSettings.AutoExposureBias = 6.0f;
-			}
-		}
+		if (!Copy) continue;
+		Copy->SetRelativeTransform(From->GetRelativeTransform());
+		CopyAppearance(From, Copy);
+		++CopiedAttachments;
 	}
-
-	if (PlayerPortraitImage != nullptr && PlayerPortraitRenderTarget != nullptr)
-	{
-		FSlateBrush Brush = PlayerPortraitImage->GetBrush();
-		Brush.SetResourceObject(PlayerPortraitRenderTarget);
-		Brush.ImageSize = FVector2D(64.0f, 74.0f);
-		PlayerPortraitImage->SetBrush(Brush);
-		PlayerPortraitImage->SetColorAndOpacity(FLinearColor::White);
-	}
-}
-
-void UFablePartyHudWidget::UpdatePlayerPortraitCapture()
-{
-	if (PlayerPortraitImage == nullptr)
-	{
-		return;
-	}
-
-	EnsurePlayerPortraitCapture();
-	if (PlayerPortraitCaptureActor == nullptr || PlayerPortraitRenderTarget == nullptr)
-	{
-		if (PlayerPortraitFallbackText != nullptr)
-		{
-			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
-		}
-		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
-		return;
-	}
-
-	APawn* PlayerPawn = GetOwningPlayerPawn();
-	if (PlayerPawn == nullptr)
-	{
-		if (PlayerPortraitFallbackText != nullptr)
-		{
-			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
-		}
-		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
-		return;
-	}
-
-	USceneCaptureComponent2D* Capture = PlayerPortraitCaptureActor->GetCaptureComponent2D();
-	if (Capture == nullptr)
-	{
-		return;
-	}
-
-	Capture->TextureTarget = PlayerPortraitRenderTarget;
-	Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
-	Capture->ShowOnlyActors.Empty();
-	Capture->ClearShowOnlyComponents();
-	Capture->ShowOnlyActorComponents(PlayerPawn, true);
-
-	int32 RemovedCapsules = 0;
-	TArray<UPrimitiveComponent*> PortraitComponents;
-	PlayerPawn->GetComponents<UPrimitiveComponent>(PortraitComponents);
-	for (UPrimitiveComponent* Primitive : PortraitComponents)
-	{
-		if (Primitive != nullptr && Primitive->IsA<UCapsuleComponent>())
-		{
-			Capture->RemoveShowOnlyComponent(Primitive);
-			++RemovedCapsules;
-		}
-	}
-
-	const int32 AddedPortraitComponents = Capture->ShowOnlyComponents.Num();
-	if (AddedPortraitComponents <= 0)
-	{
-		if (PlayerPortraitFallbackText != nullptr)
-		{
-			PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Visible);
-		}
-		PlayerPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
-		UE_LOG(LogFableForge, Warning, TEXT("Portrait capture: no visible primitive components found on pawn %s"), *GetNameSafe(PlayerPawn));
-		return;
-	}
-	UE_LOG(LogFableForge, Log, TEXT("Portrait capture components=%d (capsules removed=%d) pawn=%s"),
-		AddedPortraitComponents, RemovedCapsules, *GetNameSafe(PlayerPawn));
-
-	FVector BoundsOrigin = PlayerPawn->GetActorLocation();
-	FVector BoundsExtent(30.0f, 30.0f, 88.0f);
-	FVector PortraitForward = PlayerPawn->GetActorForwardVector();
-	FVector PortraitRight = PlayerPawn->GetActorRightVector();
-	if (ACharacter* CharacterPawn = Cast<ACharacter>(PlayerPawn))
-	{
-		if (USkeletalMeshComponent* MeshComp = CharacterPawn->GetMesh())
-		{
-			BoundsOrigin = MeshComp->Bounds.Origin;
-			BoundsExtent = MeshComp->Bounds.BoxExtent;
-			PortraitForward = MeshComp->GetForwardVector();
-			PortraitRight = MeshComp->GetRightVector();
-		}
-		else
-		{
-			PlayerPawn->GetActorBounds(true, BoundsOrigin, BoundsExtent);
-		}
-	}
-	else
-	{
-		PlayerPawn->GetActorBounds(true, BoundsOrigin, BoundsExtent);
-	}
-
-	const FVector FocusPoint = BoundsOrigin + FVector(0.0f, 0.0f, BoundsExtent.Z * 0.82f);
-	const float CameraDistance = FMath::Clamp(BoundsExtent.Z * 1.55f, 110.0f, 240.0f);
-	const FVector PortraitDirection = (PortraitRight).GetSafeNormal();
-	const FVector CaptureLocation = FocusPoint + (PortraitDirection * CameraDistance) + FVector(0.0f, 0.0f, BoundsExtent.Z * 0.02f);
-	PlayerPortraitCaptureActor->SetActorLocation(CaptureLocation);
-	PlayerPortraitCaptureActor->SetActorRotation(UKismetMathLibrary::FindLookAtRotation(CaptureLocation, FocusPoint));
-	Capture->CaptureScene();
-
-	PlayerPortraitImage->SetVisibility(ESlateVisibility::HitTestInvisible);
-	if (PlayerPortraitFallbackText != nullptr)
-	{
-		PlayerPortraitFallbackText->SetVisibility(ESlateVisibility::Collapsed);
-	}
+	// A chest-up crop leaves room for hair/head-size variations and visible armor.
+	const float HeadScale = 1.f + .30f * Profile.BodyMorphs.FindRef(TEXT("HeadSize"));
+	const FVector Focus = Body->GetSocketLocation(TEXT("head")) + FVector(0, 0, -5.f);
+	const FVector Camera = Focus + FVector(40.f * HeadScale, -3.f, 1.f);
+	PortraitViewport->SetViewLocation(Camera);
+	PortraitViewport->SetViewRotation((Focus - Camera).Rotation());
+	UPointLightComponent* Key = NewObject<UPointLightComponent>(PortraitSubject);
+	Key->SetIntensityUnits(ELightUnits::Lumens);
+	Key->SetIntensity(22.f);
+	Key->SetAttenuationRadius(520.f);
+	Key->SetSourceRadius(90.f);
+	Key->SetSoftSourceRadius(120.f);
+	Key->SetSpecularScale(.1f);
+	Key->SetCastShadows(false);
+	Key->SetLightColor(FColor(242, 240, 235));
+	Key->RegisterComponent();
+	Key->SetWorldLocation(Focus + FVector(78, -15, 45));
+	PortraitSignature = Signature;
+	bPortraitInitialized = true;
+	UE_LOG(LogFableForge, Log, TEXT("Portrait refreshed from %s: %d attached visuals"), *GetNameSafe(Source->GetSkeletalMeshAsset()), CopiedAttachments);
 }
 
 void UFablePartyHudWidget::RebuildActionBars()
@@ -736,6 +801,12 @@ void UFablePartyHudWidget::RebuildActionBars()
 	}
 
 	ActionBarsCanvas->ClearChildren();
+	// Gameplay no longer presents draggable action bars. Their saved data is
+	// retained for migration, while the controller radial wheel is the only
+	// combat shortcut surface.
+	ActionBarsCanvas->SetVisibility(ESlateVisibility::Collapsed);
+	return;
+
 	FVector2D ViewportSize = FVector2D(1920.0f, 1080.0f);
 	if (GetWorld() != nullptr && GetWorld()->GetGameViewport() != nullptr)
 	{
@@ -958,6 +1029,7 @@ void UFablePartyHudWidget::RebuildModal()
 
 	UTextBlock* TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ModalTitle"));
 	TitleText->SetColorAndOpacity(FSlateColor(UiTextColor));
+	TitleText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 24));
 	TitleText->SetJustification(ETextJustify::Center);
 	if (UHorizontalBoxSlot* TitleSlot = HeaderRow->AddChildToHorizontalBox(TitleText))
 	{
@@ -983,6 +1055,7 @@ void UFablePartyHudWidget::RebuildModal()
 		CloseText->SetText(FText::FromString(TEXT("X")));
 		CloseText->SetColorAndOpacity(FSlateColor(UiTextColor));
 		CloseText->SetJustification(ETextJustify::Center);
+		CloseText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 16));
 		CloseButton->AddChild(CloseText);
 		if (UButtonSlot* CloseTextSlot = Cast<UButtonSlot>(CloseText->Slot))
 		{
@@ -1096,6 +1169,7 @@ void UFablePartyHudWidget::AddModalButton(UVerticalBox* Parent, const FString& L
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Label));
+	Text->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 16));
 	Text->SetColorAndOpacity(FSlateColor(UiTextColor));
 	Text->SetJustification(ETextJustify::Center);
 	Button->AddChild(Text);
@@ -1213,16 +1287,13 @@ void UFablePartyHudWidget::HandleActionClicked(FName ActionId)
 
 	if (ActionId == CloseModalAction)
 	{
-		ModalState = EModalState::None;
-		RebuildModal();
+		CloseModal();
 		return;
 	}
 
 	if (ActionId == CancelDeleteActionBarAction)
 	{
-		PendingDeleteActionBarId.Invalidate();
-		ModalState = EModalState::None;
-		RebuildModal();
+		CloseModal();
 		return;
 	}
 

@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "hairStyles": [
+    {
+      "id": "none",
+      "name": "Bald",
+      "maleMesh": "",
+      "femaleMesh": ""
+    },
+    {
+      "id": "buzzed",
+      "name": "Short",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_Buzzed.SM_Hair_Buzzed",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_Buzzed.SM_Female_Hair_Buzzed"
+    },
+    {
+      "id": "buzzed_female",
+      "name": "Cropped",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_BuzzedFemale.SM_Hair_BuzzedFemale",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_BuzzedFemale.SM_Female_Hair_BuzzedFemale"
+    },
+    {
+      "id": "parted",
+      "name": "Parted",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_SimpleParted.SM_Hair_SimpleParted",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_SimpleParted.SM_Female_Hair_SimpleParted"
+    },
+    {
+      "id": "long",
+      "name": "Long",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_Long.SM_Hair_Long",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_Long.SM_Female_Hair_Long"
+    },
+    {
+      "id": "buns",
+      "name": "Buns",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_Buns.SM_Hair_Buns",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_Buns.SM_Female_Hair_Buns"
+    }
+  ],
+  "beardStyles": [
+    {
+      "id": "none",
+      "name": "None",
+      "maleMesh": "",
+      "femaleMesh": ""
+    },
+    {
+      "id": "beard",
+      "name": "Full beard",
+      "maleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Hair_Beard.SM_Hair_Beard",
+      "femaleMesh": "/Game/Characters/PlayableCharacter/Hair/SM_Female_Hair_Beard.SM_Female_Hair_Beard"
+    }
+  ],
+  "hairColors": [
+    {
+      "id": "black",
+      "name": "Black",
+      "rgb": [
+        0.025,
+        0.02,
+        0.018
+      ]
+    },
+    {
+      "id": "brown",
+      "name": "Brown",
+      "rgb": [
+        0.18,
+        0.1,
+        0.055
+      ]
+    },
+    {
+      "id": "chestnut",
+      "name": "Chestnut",
+      "rgb": [
+        0.3,
+        0.13,
+        0.06
+      ]
+    },
+    {
+      "id": "blond",
+      "name": "Blond",
+      "rgb": [
+        0.55,
+        0.32,
+        0.12
+      ]
+    },
+    {
+      "id": "auburn",
+      "name": "Auburn",
+      "rgb": [
+        0.45,
+        0.11,
+        0.045
+      ]
+    },
+    {
+      "id": "silver",
+      "name": "Silver",
+      "rgb": [
+        0.65,
+        0.65,
+        0.65
+      ]
+    }
+  ],
+  "eyeColors": [
+    {
+      "id": "brown",
+      "name": "Brown",
+      "rgb": [
+        0.28,
+        0.16,
+        0.07
+      ]
+    },
+    {
+      "id": "hazel",
+      "name": "Hazel",
+      "rgb": [
+        0.3,
+        0.25,
+        0.1
+      ]
+    },
+    {
+      "id": "blue",
+      "name": "Blue",
+      "rgb": [
+        0.1,
+        0.28,
+        0.4
+      ]
+    },
+    {
+      "id": "green",
+      "name": "Green",
+      "rgb": [
+        0.18,
+        0.34,
+        0.15
+      ]
+    },
+    {
+      "id": "gray",
+      "name": "Gray",
+      "rgb": [
+        0.36,
+        0.4,
+        0.43
+      ]
+    },
+    {
+      "id": "amber",
+      "name": "Amber",
+      "rgb": [
+        0.55,
+        0.32,
+        0.12
+      ]
+    }
+  ]
+}

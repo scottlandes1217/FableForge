@@ -1,0 +1,81 @@
+{
+  "male_source_to_current_rotation": [
+    [
+      1.0,
+      -1.913776866677147e-09,
+      -2.437704023684439e-11
+    ],
+    [
+      1.9137768560191623e-09,
+      0.9999999999999064,
+      -4.372067057075615e-07
+    ],
+    [
+      2.437787695292295e-11,
+      4.372067066064175e-07,
+      0.9999999999999044
+    ]
+  ],
+  "translation_m": [
+    2.1957436887227465e-09,
+    -0.009999939592400003,
+    1.2683158067499578e-06
+  ],
+  "brow_mean_residual_m": 1.5886007663891815e-06,
+  "styles": {
+    "Female_Hair_Buns": {
+      "female_source": true,
+      "texture": 2,
+      "vertices": 1699
+    },
+    "Female_Hair_SimpleParted": {
+      "female_source": false,
+      "texture": 1,
+      "vertices": 695
+    },
+    "Female_Hair_Long": {
+      "female_source": true,
+      "texture": 2,
+      "vertices": 1521
+    },
+    "Female_Hair_BuzzedFemale": {
+      "female_source": true,
+      "texture": 1,
+      "vertices": 1775,
+      "scalp_fit": {
+        "moved_vertices": 890,
+        "maximum_displacement_m": 0.010802962979874618,
+        "minimum_vertex_clearance_m": 0.002927848239778541,
+        "minimum_face_clearance_m": 0.0019229304814416537,
+        "target_clearance_m": 0.003
+      }
+    },
+    "Female_Eyebrows_Regular": {
+      "female_source": false,
+      "texture": 1,
+      "vertices": 558
+    },
+    "Female_Hair_Beard": {
+      "female_source": false,
+      "texture": 1,
+      "vertices": 596
+    },
+    "Female_Hair_Buzzed": {
+      "female_source": false,
+      "texture": 1,
+      "vertices": 1775,
+      "scalp_fit": {
+        "moved_vertices": 1249,
+        "maximum_displacement_m": 0.014582396440403201,
+        "minimum_vertex_clearance_m": 0.0029869414065615274,
+        "minimum_face_clearance_m": 0.001801485467240127,
+        "target_clearance_m": 0.003
+      }
+    },
+    "Female_Eyebrows_Female": {
+      "female_source": true,
+      "texture": 2,
+      "vertices": 748
+    }
+  }
+}

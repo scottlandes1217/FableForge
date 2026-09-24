@@ -2,17 +2,20 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Styling/SlateBrush.h"
 #include "FableInventorySlotWidget.generated.h"
 
 class UBorder;
 class UImage;
 class UObject;
 class UOverlay;
+class UScaleBox;
 class UTextBlock;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FFableInventorySlotDropSignature, FName, FromSlotId, FName, ToSlotId, const FString&, PayloadId, const FString&, PayloadLabel);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFableInventorySlotHoverSignature, FName, SlotId, const FString&, PayloadId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFableInventorySlotClickSignature, FName, SlotId, const FString&, PayloadId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFableInventorySlotRightClickSignature, FName, SlotId, const FString&, PayloadId);
 
 UCLASS()
 class UFableInventorySlotWidget : public UUserWidget
@@ -22,6 +25,9 @@ class UFableInventorySlotWidget : public UUserWidget
 public:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
+	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
+		bool bParentEnabled) const override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -33,10 +39,15 @@ public:
 	virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
 	void InitializeSlot(FName InSlotId, const FString& InDisplayName, bool bInEquipmentSlot);
+	/** Opts this slot into single-width shared-edge journal grid rendering. */
+	void SetJournalGridCell(int32 InColumn, int32 InRow, int32 InColumnCount, int32 InRowCount);
+	void SetEmptyEquipmentBrush(const FSlateBrush& InBrush);
+	void SetControllerSelection(bool bSelected, bool bPicked);
 	void SetItemLabel(const FString& InItemLabel);
 	void SetItemData(const FString& InPayloadId, const FString& InItemLabel, UObject* InIconResource = nullptr);
 	void SetCooldownRemaining(float InRemainingSeconds);
 	void PlayUseFeedback();
+	void ResetDragVisual();
 	FName GetSlotId() const;
 
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
@@ -48,8 +59,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FFableInventorySlotClickSignature OnSlotClicked;
 
+	UPROPERTY(BlueprintAssignable, Category = "Inventory")
+	FFableInventorySlotRightClickSignature OnSlotRightClicked;
+
 private:
 	void RefreshVisual();
+	void RefreshCooldownVisual();
+	FString LastCooldownDisplay;
+	bool bCooldownVisualInitialized = false;
 
 private:
 	UPROPERTY(Transient)
@@ -60,6 +77,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UOverlay> ContentOverlay;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UScaleBox> IconScaleBox;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> IconImage;
@@ -76,14 +96,24 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UObject> ItemIconResource;
 
+	UPROPERTY(Transient)
+	FSlateBrush EmptyEquipmentBrush;
+
 	FName SlotId;
 	FString EmptyDisplayName;
 	FString ItemLabel;
 	FString ItemPayloadId;
 	bool bEquipmentSlot = false;
+	bool bControllerSelected = false;
+	bool bControllerPicked = false;
 	bool bDragDetectedThisPress = false;
 	bool bTemporarilyDragHidden = false;
 	bool bActionClickTriggeredThisPress = false;
 	float CooldownRemainingSeconds = 0.0f;
 	float UseFeedbackTimeRemaining = 0.0f;
+	bool bJournalGridCell = false;
+	int32 JournalGridColumn = 0;
+	int32 JournalGridRow = 0;
+	int32 JournalGridColumnCount = 0;
+	int32 JournalGridRowCount = 0;
 };

@@ -11,7 +11,10 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class USceneComponent;
+class USkeletalMesh;
+class UStaticMeshComponent;
 struct FInputActionValue;
+struct FFableCharacterProfile;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -133,11 +136,14 @@ protected:
 
 	/** True while blending camera yaw back behind the character after manual drag */
 	bool bCameraRecentering = false;
+	bool bFirstPersonView = false;
+	float FirstPersonCameraArmLength = 0.0f;
+	FVector FirstPersonCameraSocketOffset = FVector(0.0f, 0.0f, 72.0f);
 
 public:
 
 	/** Constructor */
-	AFableForgeCharacter();	
+	AFableForgeCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 protected:
 
@@ -193,6 +199,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Equipment")
 	void RefreshEquipmentVisualsFromSave();
 
+	void ApplyAppearanceFromProfile(const FFableCharacterProfile& Profile);
+
 public:
 
 	/** Returns CameraBoom subobject **/
@@ -200,10 +208,18 @@ public:
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	void ToggleFirstPersonView();
 
 private:
 	void HandleActiveInventoryChanged(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots);
 	void ApplyEquipmentVisuals(const TArray<FString>& InEquippedSlots);
+	void ApplyAppearanceMorphs();
+	TMap<FName, float> AppliedBodyMorphs;
+	bool bAppearanceFemale = false;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> AppearanceHair;
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> AppearanceBeard;
 	void ClearEquipmentVisual(int32 SlotIndex);
 	void CreateEquipmentVisualForSlot(int32 SlotIndex, const FString& ItemId);
 	void UpdateBodyMaterialVisibility(const TArray<FString>& InEquippedSlots);
@@ -226,6 +242,11 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="Equipment|Body Mask")
 	TArray<int32> FeetArmorHiddenBodyMaterialSlots;
+
+	// Inventory-only changes must not rebuild animated equipment or synchronously reload assets.
+	TArray<FString> AppliedEquipmentItemIds;
+	TWeakObjectPtr<USkeletalMesh> AppliedCharacterMesh;
+	bool bEquipmentVisualsInitialized = false;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USceneComponent>> EquipmentVisualComponents;

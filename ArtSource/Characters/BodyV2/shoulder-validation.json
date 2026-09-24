@@ -1,0 +1,9 @@
+{
+  "vertices": 8421,
+  "maximum_rest_position_change_cm": 0.0,
+  "max_weight_sum_error": 4.528556019067764e-08,
+  "morph_count": 26,
+  "blender_deform_bones": 88,
+  "unreal_bones_including_armature_root": 89,
+  "changed_shoulder_vertices": 518
+}

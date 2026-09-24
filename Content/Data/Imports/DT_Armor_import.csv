@@ -1,5 +1,5 @@
 Name,ItemId,DisplayName,Type,bStackable,bEquipable,IconTexture,WorldStaticMesh,WorldSkeletalMesh
-peasant_chest,peasant_chest,Peasant Chest,armor,false,true,,,
-peasant_legs,peasant_legs,Peasant Legs,armor,false,true,,,
-peasant_feet,peasant_feet,Peasant Feet,armor,false,true,,,
+peasant_chest,peasant_chest,Linen Tunic,armor,false,true,,,/Game/Items/Armor/FittedTunic/peasant_tunic_v2.peasant_tunic_v2
+peasant_legs,peasant_legs,Linen Trousers,armor,false,true,,,/Game/Items/Armor/FittedLowerArmor/male_peasant_legs_v2.male_peasant_legs_v2
+peasant_feet,peasant_feet,Leather Boots,armor,false,true,,,/Game/Items/Armor/FittedLowerArmor/male_peasant_feet_v2.male_peasant_feet_v2
 peasant_arms,peasant_arms,Peasant Arms,armor,false,true,,,

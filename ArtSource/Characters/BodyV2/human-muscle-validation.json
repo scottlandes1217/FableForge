@@ -1,0 +1,22 @@
+{
+  "male_neutral": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 29.00969409942627,
+    "upperarm_mean_radius_cm": 7.697347090089187
+  },
+  "male_default": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 31.519989013671875,
+    "upperarm_mean_radius_cm": 8.652548526482464
+  },
+  "female_neutral": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 26.669495582580566,
+    "upperarm_mean_radius_cm": 4.783370542635138
+  },
+  "female_default": {
+    "flipped_triangles": 0,
+    "chest_depth_cm": 28.353227615356445,
+    "upperarm_mean_radius_cm": 5.614997691934462
+  }
+}

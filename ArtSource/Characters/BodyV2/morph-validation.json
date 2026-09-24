@@ -1,0 +1,110 @@
+{
+  "vertices": 8421,
+  "morphs": {
+    "BodyBuild": {
+      "affected_vertices": 5147,
+      "maximum_displacement_cm": 6.4865797023118485
+    },
+    "ShoulderWidth": {
+      "affected_vertices": 2733,
+      "maximum_displacement_cm": 5.7315031338932485
+    },
+    "WaistWidth": {
+      "affected_vertices": 3271,
+      "maximum_displacement_cm": 6.661031566290001
+    },
+    "HipWidth": {
+      "affected_vertices": 3305,
+      "maximum_displacement_cm": 6.699106572493746
+    },
+    "JawWidth": {
+      "affected_vertices": 1408,
+      "maximum_displacement_cm": 1.1678274828342952
+    },
+    "CheekWidth": {
+      "affected_vertices": 2206,
+      "maximum_displacement_cm": 0.8512671072048952
+    },
+    "NoseWidth": {
+      "affected_vertices": 1107,
+      "maximum_displacement_cm": 0.3852787565815404
+    },
+    "EarLength": {
+      "affected_vertices": 618,
+      "maximum_displacement_cm": 2.735373679755672
+    },
+    "FemaleBody": {
+      "affected_vertices": 3418,
+      "maximum_displacement_cm": 2.711619728278447
+    },
+    "BodyFat": {
+      "affected_vertices": 4188,
+      "maximum_displacement_cm": 12.783019106642726
+    },
+    "Muscle": {
+      "affected_vertices": 3138,
+      "maximum_displacement_cm": 2.416198882399083
+    },
+    "Bust": {
+      "affected_vertices": 108,
+      "maximum_displacement_cm": 3.1862058817404444
+    },
+    "TorsoLength": {
+      "affected_vertices": 1913,
+      "maximum_displacement_cm": 2.4986209880734243
+    },
+    "ChinHeight": {
+      "affected_vertices": 356,
+      "maximum_displacement_cm": 1.220668456538951
+    },
+    "ChinDepth": {
+      "affected_vertices": 385,
+      "maximum_displacement_cm": 1.2745354254802563
+    },
+    "JawDepth": {
+      "affected_vertices": 1220,
+      "maximum_displacement_cm": 1.3511840202180512
+    },
+    "CheekFullness": {
+      "affected_vertices": 1932,
+      "maximum_displacement_cm": 1.3216061095418639
+    },
+    "NoseLength": {
+      "affected_vertices": 966,
+      "maximum_displacement_cm": 0.9117579303811819
+    },
+    "NoseHeight": {
+      "affected_vertices": 959,
+      "maximum_displacement_cm": 0.5210045596635269
+    },
+    "EyeSize": {
+      "affected_vertices": 1393,
+      "maximum_displacement_cm": 0.22644416513881965
+    },
+    "EyeSpacing": {
+      "affected_vertices": 1588,
+      "maximum_displacement_cm": 0.7440853548925691
+    },
+    "BrowHeight": {
+      "affected_vertices": 1283,
+      "maximum_displacement_cm": 0.6785343297160171
+    },
+    "MouthWidth": {
+      "affected_vertices": 412,
+      "maximum_displacement_cm": 0.40191056718547513
+    },
+    "LipFullness": {
+      "affected_vertices": 231,
+      "maximum_displacement_cm": 0.6115139078709306
+    },
+    "EarPoint": {
+      "affected_vertices": 485,
+      "maximum_displacement_cm": 2.8939149846610985
+    },
+    "HeadSize": {
+      "affected_vertices": 2680,
+      "maximum_displacement_cm": 7.053301384995599
+    }
+  },
+  "linear_skinning": true
+}

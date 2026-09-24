@@ -1,0 +1,88 @@
+{
+  "basecharacter_v2": {
+    "lod_sections": [
+      [
+        0,
+        1,
+        2
+      ]
+    ],
+    "materials": [
+      "/Game/Characters/PlayableCharacter/Materials/M_BodyHair_V2.M_BodyHair_V2",
+      "/Game/Characters/PlayableCharacter/Materials/M_BodyEyes_V2.M_BodyEyes_V2",
+      "/Game/Characters/PlayableCharacter/Materials/M_BodySkin_V2.M_BodySkin_V2"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "ShoulderWidth",
+      "WaistWidth",
+      "HipWidth",
+      "JawWidth",
+      "CheekWidth",
+      "NoseWidth",
+      "EarLength",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "Bust",
+      "TorsoLength",
+      "ChinHeight",
+      "ChinDepth",
+      "JawDepth",
+      "CheekFullness",
+      "NoseLength",
+      "NoseHeight",
+      "EyeSize",
+      "EyeSpacing",
+      "BrowHeight",
+      "MouthWidth",
+      "LipFullness",
+      "EarPoint",
+      "HeadSize"
+    ],
+    "morph_usage_verified": true
+  },
+  "femalecharacter_v2": {
+    "lod_sections": [
+      [
+        0,
+        1,
+        2
+      ]
+    ],
+    "materials": [
+      "/Game/Characters/PlayableCharacter/Materials/M_BodyHair_V2.M_BodyHair_V2",
+      "/Game/Characters/PlayableCharacter/Materials/M_BodyEyes_V2.M_BodyEyes_V2",
+      "/Game/Characters/PlayableCharacter/Materials/M_FemaleSkin_V2.M_FemaleSkin_V2"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "ShoulderWidth",
+      "WaistWidth",
+      "HipWidth",
+      "JawWidth",
+      "CheekWidth",
+      "NoseWidth",
+      "EarLength",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "Bust",
+      "TorsoLength",
+      "ChinHeight",
+      "ChinDepth",
+      "JawDepth",
+      "CheekFullness",
+      "NoseLength",
+      "NoseHeight",
+      "EyeSize",
+      "EyeSpacing",
+      "BrowHeight",
+      "MouthWidth",
+      "LipFullness",
+      "EarPoint",
+      "HeadSize"
+    ],
+    "morph_usage_verified": true
+  }
+}

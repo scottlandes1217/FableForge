@@ -1,0 +1,35 @@
+[
+	{
+		"Name": "peasant_chest",
+		"ItemId": "peasant_chest",
+		"DisplayName": "Peasant Chest",
+		"Type": "armor",
+		"bStackable": false,
+		"bEquipable": true,
+		"IconTexture": "None",
+		"WorldStaticMesh": "None",
+		"WorldSkeletalMesh": "/Game/Items/Armor/Skeletal_Meshes/shirt.shirt"
+	},
+	{
+		"Name": "peasant_legs",
+		"ItemId": "peasant_legs",
+		"DisplayName": "Peasant Legs",
+		"Type": "armor",
+		"bStackable": false,
+		"bEquipable": true,
+		"IconTexture": "None",
+		"WorldStaticMesh": "None",
+		"WorldSkeletalMesh": "/Game/Items/Armor/Skeletal_Meshes/Male_Peasant_Legs.Male_Peasant_Legs"
+	},
+	{
+		"Name": "peasant_feet",
+		"ItemId": "peasant_feet",
+		"DisplayName": "Peasant Feet",
+		"Type": "armor",
+		"bStackable": false,
+		"bEquipable": true,
+		"IconTexture": "None",
+		"WorldStaticMesh": "None",
+		"WorldSkeletalMesh": "/Game/Items/Armor/Skeletal_Meshes/Male_Peasant_Feet.Male_Peasant_Feet"
+	}
+]

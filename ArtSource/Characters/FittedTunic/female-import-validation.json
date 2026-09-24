@@ -1,0 +1,17 @@
+{
+  "mesh": "/Game/Items/Armor/FittedTunic/female_tunic_v2.female_tunic_v2",
+  "bones": 89,
+  "skeleton": "/Game/Characters/PlayableCharacter/Meshes/SK_Mannequin.SK_Mannequin",
+  "datatable_updated": false,
+  "morphs": [
+    "BodyBuild",
+    "ShoulderWidth",
+    "WaistWidth",
+    "HipWidth",
+    "FemaleBody",
+    "BodyFat",
+    "Muscle",
+    "Bust",
+    "TorsoLength"
+  ]
+}

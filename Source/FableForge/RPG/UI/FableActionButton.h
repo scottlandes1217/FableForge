@@ -22,6 +22,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Action")
 	FFableActionButtonClickedSignature OnActionClicked;
 
+
 private:
 	UFUNCTION()
 	void HandleInternalClicked();

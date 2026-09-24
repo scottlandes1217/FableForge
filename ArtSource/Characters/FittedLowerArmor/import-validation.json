@@ -1,0 +1,60 @@
+[
+  {
+    "asset": "/Game/Items/Armor/FittedLowerArmor/male_peasant_legs_v2.male_peasant_legs_v2",
+    "bones": 89,
+    "materials": [
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedTrouserCloth.M_FittedTrouserCloth",
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedTrouserCloth.M_FittedTrouserCloth"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "WaistWidth",
+      "HipWidth",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "TorsoLength"
+    ]
+  },
+  {
+    "asset": "/Game/Items/Armor/FittedLowerArmor/male_peasant_feet_v2.male_peasant_feet_v2",
+    "bones": 89,
+    "materials": [
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedBootLeather.M_FittedBootLeather",
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedBootLeather.M_FittedBootLeather"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "Muscle"
+    ]
+  },
+  {
+    "asset": "/Game/Items/Armor/FittedLowerArmor/female_peasant_legs_v2.female_peasant_legs_v2",
+    "bones": 89,
+    "materials": [
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedTrouserCloth.M_FittedTrouserCloth",
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedTrouserCloth.M_FittedTrouserCloth"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "WaistWidth",
+      "HipWidth",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "TorsoLength"
+    ]
+  },
+  {
+    "asset": "/Game/Items/Armor/FittedLowerArmor/female_peasant_feet_v2.female_peasant_feet_v2",
+    "bones": 89,
+    "materials": [
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedBootLeather.M_FittedBootLeather",
+      "/Game/Items/Armor/FittedLowerArmor/M_FittedBootLeather.M_FittedBootLeather"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "Muscle"
+    ]
+  }
+]

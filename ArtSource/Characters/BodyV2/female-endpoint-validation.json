@@ -1,0 +1,248 @@
+{
+  "BodyBuild": {
+    "-1": {
+      "min_triangle_area_ratio": 0.6839863425371324,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.9029333587266419,
+      "flipped_triangles": 0
+    }
+  },
+  "ShoulderWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.7289054753139094,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8648099203751145,
+      "flipped_triangles": 0
+    }
+  },
+  "WaistWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.6530777892321604,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8486953209195527,
+      "flipped_triangles": 0
+    }
+  },
+  "HipWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.6689887097472592,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8956136674128361,
+      "flipped_triangles": 0
+    }
+  },
+  "JawWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.7618621013382165,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.905763090778755,
+      "flipped_triangles": 0
+    }
+  },
+  "CheekWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.8249086101675034,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.924705147699224,
+      "flipped_triangles": 0
+    }
+  },
+  "NoseWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.6918504166481492,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8182488221626024,
+      "flipped_triangles": 0
+    }
+  },
+  "EarLength": {
+    "-1": {
+      "min_triangle_area_ratio": 0.23963432397871373,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.9146073759304062,
+      "flipped_triangles": 0
+    }
+  },
+  "FemaleBody": {
+    "1": {
+      "min_triangle_area_ratio": 0.9626919274978054,
+      "flipped_triangles": 0
+    }
+  },
+  "BodyFat": {
+    "1": {
+      "min_triangle_area_ratio": 0.8660922771271126,
+      "flipped_triangles": 0
+    }
+  },
+  "Muscle": {
+    "1": {
+      "min_triangle_area_ratio": 0.8753203395717379,
+      "flipped_triangles": 0
+    }
+  },
+  "Bust": {
+    "1": {
+      "min_triangle_area_ratio": 0.7859807019026286,
+      "flipped_triangles": 0
+    }
+  },
+  "TorsoLength": {
+    "-1": {
+      "min_triangle_area_ratio": 0.9099637054477427,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.910621066284067,
+      "flipped_triangles": 0
+    }
+  },
+  "ChinHeight": {
+    "-1": {
+      "min_triangle_area_ratio": 0.705565483151087,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.7742845724412362,
+      "flipped_triangles": 0
+    }
+  },
+  "ChinDepth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.8545599971158561,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8306680462458509,
+      "flipped_triangles": 0
+    }
+  },
+  "JawDepth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.8647562174722869,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8610230068431062,
+      "flipped_triangles": 0
+    }
+  },
+  "CheekFullness": {
+    "-1": {
+      "min_triangle_area_ratio": 0.7917343956887356,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8640632357154713,
+      "flipped_triangles": 0
+    }
+  },
+  "NoseLength": {
+    "-1": {
+      "min_triangle_area_ratio": 0.8013567898051848,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8274142140972471,
+      "flipped_triangles": 0
+    }
+  },
+  "NoseHeight": {
+    "-1": {
+      "min_triangle_area_ratio": 0.8151841479927803,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8204949073359684,
+      "flipped_triangles": 0
+    }
+  },
+  "EyeSize": {
+    "-1": {
+      "min_triangle_area_ratio": 0.6867615669663397,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8881202212942287,
+      "flipped_triangles": 0
+    }
+  },
+  "EyeSpacing": {
+    "-1": {
+      "min_triangle_area_ratio": 0.5121066413425313,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.7773444642022137,
+      "flipped_triangles": 0
+    }
+  },
+  "BrowHeight": {
+    "-1": {
+      "min_triangle_area_ratio": 0.7871624771602659,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8307547599838186,
+      "flipped_triangles": 0
+    }
+  },
+  "MouthWidth": {
+    "-1": {
+      "min_triangle_area_ratio": 0.7751545341229696,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8949191429379192,
+      "flipped_triangles": 0
+    }
+  },
+  "LipFullness": {
+    "-1": {
+      "min_triangle_area_ratio": 0.88076305463519,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.8944374332854456,
+      "flipped_triangles": 0
+    }
+  },
+  "EarPoint": {
+    "-1": {
+      "min_triangle_area_ratio": 0.2995654650581759,
+      "flipped_triangles": 0
+    },
+    "1": {
+      "min_triangle_area_ratio": 0.7376138163257662,
+      "flipped_triangles": 0
+    }
+  },
+  "HeadSize": {
+    "1": {
+      "min_triangle_area_ratio": 0.8345960706978234,
+      "flipped_triangles": 0
+    }
+  },
+  "CombinedValidation": {
+    "1": {
+      "min_triangle_area_ratio": 0.7515552022275368,
+      "flipped_triangles": 0
+    }
+  }
+}

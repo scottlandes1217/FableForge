@@ -63,6 +63,18 @@ struct FFableActionBarData
 };
 
 USTRUCT(BlueprintType)
+struct FFableQuickWheelPageData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quick Wheel")
+	FString PageName = TEXT("Combat");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quick Wheel")
+	TArray<FFableActionSlotData> Slots;
+};
+
+USTRUCT(BlueprintType)
 struct FFableRaceAbilityBonuses
 {
 	GENERATED_BODY()
@@ -154,6 +166,27 @@ struct FFableCharacterProfile
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character")
 	EFableGender Gender = EFableGender::Male;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	TMap<FName, float> BodyMorphs;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	float HeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	FLinearColor SkinColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	FLinearColor HairColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	FLinearColor EyeColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	FString HairStyle = TEXT("none");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+	FString BeardStyle = TEXT("none");
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character")
 	TArray<FString> CompanionNames;
 
@@ -177,6 +210,9 @@ struct FFableCharacterProfile
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ActionBars")
 	TArray<FFableActionBarData> ActionBars;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quick Wheel")
+	TArray<FFableQuickWheelPageData> QuickWheelPages;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")
 	TArray<FFableSaveSlotMeta> SaveSlots;

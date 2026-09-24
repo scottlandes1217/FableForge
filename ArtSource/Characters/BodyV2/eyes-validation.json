@@ -1,0 +1,11 @@
+{
+  "EyeSize": {
+    "eyeball_vertices_affected": 556,
+    "eyeball_vertices": 556
+  },
+  "EyeSpacing": {
+    "eyeball_vertices_affected": 556,
+    "eyeball_vertices": 556
+  },
+  "head_only": true
+}

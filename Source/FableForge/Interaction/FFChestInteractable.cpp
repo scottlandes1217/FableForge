@@ -72,25 +72,52 @@ bool AFFChestInteractable::TakeOneAtIndex(int32 ItemIndex, APlayerController* Lo
 
 int32 AFFChestInteractable::TakeAll(APlayerController* LootingController)
 {
-	int32 ItemsTaken = 0;
-
-	for (int32 Index = ChestItems.Num() - 1; Index >= 0; --Index)
+	UGameInstance* GameInstance = LootingController ? LootingController->GetGameInstance() : nullptr;
+	UFableSaveSubsystem* SaveSubsystem = GameInstance ? GameInstance->GetSubsystem<UFableSaveSubsystem>() : nullptr;
+	TArray<FString> InventorySlots;
+	TArray<FString> EquippedSlots;
+	if (!SaveSubsystem || !SaveSubsystem->TryGetActiveInventory(InventorySlots, EquippedSlots))
 	{
-		FFChestItemEntry& ItemEntry = ChestItems[Index];
+		return 0;
+	}
 
+	// Build one transaction: saving and broadcasting after each item caused repeated UI and mesh rebuilds.
+	TArray<FFChestItemEntry> RemainingItems = ChestItems;
+	int32 ItemsTaken = 0;
+	int32 NextInventorySlot = 0;
+	for (int32 Index = RemainingItems.Num() - 1; Index >= 0; --Index)
+	{
+		FFChestItemEntry& ItemEntry = RemainingItems[Index];
+		if (ItemEntry.ItemId.IsEmpty())
+		{
+			continue;
+		}
 		while (ItemEntry.Quantity > 0)
 		{
-			if (!TryAddItemToInventory(LootingController, ItemEntry.ItemId))
+			while (InventorySlots.IsValidIndex(NextInventorySlot) && !InventorySlots[NextInventorySlot].IsEmpty())
 			{
-				CleanupEmptyEntries();
-				return ItemsTaken;
+				++NextInventorySlot;
 			}
-
-			ItemEntry.Quantity -= 1;
+			if (!InventorySlots.IsValidIndex(NextInventorySlot))
+			{
+				break;
+			}
+			InventorySlots[NextInventorySlot++] = ItemEntry.ItemId;
+			--ItemEntry.Quantity;
 			++ItemsTaken;
 		}
 	}
 
+	if (ItemsTaken == 0)
+	{
+		CleanupEmptyEntries();
+		return 0;
+	}
+	if (!SaveSubsystem->SetActiveInventory(InventorySlots, EquippedSlots))
+	{
+		return 0;
+	}
+	ChestItems = MoveTemp(RemainingItems);
 	CleanupEmptyEntries();
 	return ItemsTaken;
 }

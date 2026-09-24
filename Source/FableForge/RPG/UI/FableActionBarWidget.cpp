@@ -15,6 +15,9 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/Texture2D.h"
+#include "UObject/StrongObjectPtr.h"
+#include "RPG/UI/FableBookStyle.h"
 #include "FableForge.h"
 #include "RPG/UI/FableActionButton.h"
 #include "RPG/UI/FableInventoryDragDropOperation.h"
@@ -22,11 +25,66 @@
 
 namespace
 {
-	const FLinearColor UiBarColor(0.01f, 0.01f, 0.01f, 0.95f);
-	const FLinearColor UiTextColor(0.95f, 0.95f, 0.95f, 1.0f);
-	const FLinearColor UiButtonColor(0.05f, 0.05f, 0.05f, 1.0f);
-	const FLinearColor UiDragHandleColor(0.08f, 0.08f, 0.08f, 1.0f);
+	const FLinearColor UiTextColor(0.92f, 0.86f, 0.73f, 1.0f);
+	const FLinearColor UiButtonColor(1.f, 1.f, 1.f, 1.f);
+	const FLinearColor UiDragHandleColor(1.f, 1.f, 1.f, 1.f);
 	const FVector2D UiSmallControlSize(26.0f, 26.0f);
+
+	// Nine-sliced brass edging retains its bevel and corner tooling on any bar length.
+	FSlateBrush ActionFrameBrush(bool bSlot)
+	{
+		static TStrongObjectPtr<UTexture2D> FrameTexture, SlotTexture;
+		TStrongObjectPtr<UTexture2D>& Cached = bSlot ? SlotTexture : FrameTexture;
+		constexpr int32 Size = 96;
+		if (!Cached.IsValid())
+		{
+			TArray<FColor> Pixels;
+			Pixels.Init(FColor::Transparent, Size * Size);
+			for (int32 Y = 1; Y < Size-1; ++Y)
+			for (int32 X = 1; X < Size-1; ++X)
+			{
+				const int32 DX = FMath::Min(X, Size-1-X);
+				const int32 DY = FMath::Min(Y, Size-1-Y);
+				if (DX + DY < 7) continue;
+				const int32 Edge = FMath::Min(DX, DY);
+				const int32 Grain = (X * 13 + Y * 7 + X * Y) % 7;
+				FColor Color(32+Grain, 24+Grain, 18+Grain);
+				if (Edge == 1) Color = FColor(14,10,7);
+				else if (Edge == 2) Color = FColor(164,121,60);
+				else if (Edge == 3) Color = FColor(218,177,101);
+				else if (Edge == 4) Color = FColor(99,66,29);
+				else if (Edge == 5) Color = FColor(13,10,8);
+				else if (Edge == 7 && !bSlot) Color = FColor(82,59,32);
+				if (Edge < 5 && (Y > Size/2 || X > Size-5))
+				{
+					Color.R = uint8(Color.R * .66f); Color.G = uint8(Color.G * .66f); Color.B = uint8(Color.B * .66f);
+				}
+				Pixels[Y*Size+X] = Color;
+			}
+			// Four small brass studs, each with a bright upper facet and dark seat.
+			for (int32 CY : {8, Size-9}) for (int32 CX : {8, Size-9})
+			for (int32 Y = -3; Y <= 3; ++Y) for (int32 X = -3; X <= 3; ++X)
+			{
+				if (FMath::Abs(X)+FMath::Abs(Y)>3) continue;
+				Pixels[(CY+Y)*Size+CX+X] = Y < 0 ? FColor(229,187,110) : FColor(113,76,35);
+			}
+			UTexture2D* Texture = UTexture2D::CreateTransient(Size, Size, PF_B8G8R8A8);
+			Texture->SRGB = true;
+			Texture->NeverStream = true;
+			Texture->LODGroup = TEXTUREGROUP_UI;
+			void* Dest = Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
+			FMemory::Memcpy(Dest, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+			Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
+			Texture->UpdateResource();
+			Cached.Reset(Texture);
+		}
+		FSlateBrush Brush;
+		Brush.SetResourceObject(Cached.Get());
+		Brush.ImageSize = FVector2D(Size, Size);
+		Brush.DrawAs = ESlateBrushDrawType::Box;
+		Brush.Margin = FMargin(12.f / Size);
+		return Brush;
+	}
 
 	FString ShortToken(const FString& InValue)
 	{
@@ -76,7 +134,8 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 	SlotWidgetsByIndex.Reset();
 
 	UBorder* RootBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ActionBarBorder"));
-	RootBorder->SetBrushColor(UiBarColor);
+	RootBorder->SetBrush(ActionFrameBrush(false));
+	RootBorder->SetBrushColor(FLinearColor::White);
 	RootBorder->SetPadding(FMargin(8.0f));
 	WidgetTree->RootWidget = RootBorder;
 
@@ -120,7 +179,12 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			SlotSizeBox->SetWidthOverride(60.0f);
 			SlotSizeBox->SetHeightOverride(60.0f);
-			SlotSizeBox->SetContent(SlotWidget);
+			UBorder* SlotFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+			SlotFrame->SetBrush(ActionFrameBrush(true));
+			SlotFrame->SetBrushColor(FLinearColor::White);
+			SlotFrame->SetPadding(FMargin(4.f));
+			SlotFrame->SetContent(SlotWidget);
+			SlotSizeBox->SetContent(SlotFrame);
 
 			if (UUniformGridSlot* GridSlot = SlotsGrid->AddChildToUniformGrid(SlotSizeBox, RowIndex, ColumnIndex))
 			{
@@ -145,6 +209,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 	{
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), WidgetName);
 		Button->InitializeAction(ActionName);
+		FableBookStyle::ApplyButton(Button, true);
 		Button->SetBackgroundColor(ButtonColor);
 
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());

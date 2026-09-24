@@ -6,6 +6,7 @@
 #include "RPG/Data/FableRaceDefinitionTableRow.h"
 #include "RPG/Save/FableCharacterSaveGame.h"
 #include "RPG/Save/FableProfileIndexSaveGame.h"
+#include "RPG/UI/FableAppearancePresets.h"
 
 namespace
 {
@@ -115,7 +116,7 @@ bool UFableSaveSubsystem::CharacterHasAnySavedSlots(const FFableCharacterProfile
 	return false;
 }
 
-FGuid UFableSaveSubsystem::CreateCharacter(const FString& CharacterName, const FString& RaceId, EFableGender Gender)
+FGuid UFableSaveSubsystem::CreateCharacter(const FString& CharacterName, const FString& RaceId, EFableGender Gender, const TMap<FName, float>& BodyMorphs, float HeightScale, FLinearColor SkinColor, FLinearColor HairColor, FLinearColor EyeColor, const FString& HairStyle, const FString& BeardStyle)
 {
 	FFableCharacterProfile Profile;
 	Profile.CharacterId = FGuid::NewGuid();
@@ -131,10 +132,17 @@ FGuid UFableSaveSubsystem::CreateCharacter(const FString& CharacterName, const F
 		Profile.RaceId = TEXT("human");
 	}
 	Profile.Gender = Gender;
+	Profile.BodyMorphs = BodyMorphs;
+	Profile.HeightScale = HeightScale;
+	Profile.SkinColor = SkinColor;
+	Profile.HairColor = HairColor;
+	Profile.EyeColor = EyeColor;
+	Profile.HairStyle = HairStyle;
+	Profile.BeardStyle = BeardStyle;
+	FableAppearance::SanitizeAppearance(Profile);
 
 	EnsureCharacterSlots(Profile);
 	EnsureInventoryData(Profile);
-	EnsureActionBarsData(Profile);
 	if (Profile.InventorySlots.Num() >= 3)
 	{
 		Profile.InventorySlots[0] = TEXT("iron_sword");
@@ -142,6 +150,7 @@ FGuid UFableSaveSubsystem::CreateCharacter(const FString& CharacterName, const F
 		Profile.InventorySlots[2] = TEXT("health_potion");
 	}
 	Profile.LearnedSkills = { TEXT("basic_attack"), TEXT("heal_wave") };
+	EnsureActionBarsData(Profile);
 
 	CharacterProfiles.Add(MoveTemp(Profile));
 	ActiveCharacterId = CharacterProfiles.Last().CharacterId;
@@ -207,6 +216,13 @@ bool UFableSaveSubsystem::SaveCharacterToSlot(const FGuid& CharacterId, int32 Sl
 	SaveGame->CharacterName = Profile.CharacterName;
 	SaveGame->RaceId = Profile.RaceId;
 	SaveGame->Gender = Profile.Gender;
+	SaveGame->BodyMorphs = Profile.BodyMorphs;
+	SaveGame->HeightScale = Profile.HeightScale;
+	SaveGame->SkinColor = Profile.SkinColor;
+	SaveGame->HairColor = Profile.HairColor;
+	SaveGame->EyeColor = Profile.EyeColor;
+	SaveGame->HairStyle = Profile.HairStyle;
+	SaveGame->BeardStyle = Profile.BeardStyle;
 	SaveGame->SlotIndex = SlotIndex;
 	SaveGame->SavedAtUtc = FDateTime::UtcNow().ToIso8601();
 	SaveGame->MapName = MapName;
@@ -218,6 +234,7 @@ bool UFableSaveSubsystem::SaveCharacterToSlot(const FGuid& CharacterId, int32 Sl
 	SaveGame->InventoryItems = Profile.InventorySlots;
 	SaveGame->LearnedSkills = Profile.LearnedSkills;
 	SaveGame->ActionBars = Profile.ActionBars;
+	SaveGame->QuickWheelPages = Profile.QuickWheelPages;
 
 	const FString SlotName = MakeSlotName(CharacterId, SlotIndex);
 	if (!UGameplayStatics::SaveGameToSlot(SaveGame, SlotName, SaveUserIndex))
@@ -270,6 +287,13 @@ UFableCharacterSaveGame* UFableSaveSubsystem::LoadCharacterFromSlot(const FGuid&
 	Profile.CharacterName = SaveGame->CharacterName;
 	Profile.RaceId = SaveGame->RaceId;
 	Profile.Gender = SaveGame->Gender;
+	Profile.BodyMorphs = SaveGame->BodyMorphs;
+	Profile.HeightScale = SaveGame->HeightScale;
+	Profile.SkinColor = SaveGame->SkinColor;
+	Profile.HairColor = SaveGame->HairColor;
+	Profile.EyeColor = SaveGame->EyeColor;
+	Profile.HairStyle = SaveGame->HairStyle;
+	Profile.BeardStyle = SaveGame->BeardStyle;
 	Profile.CompanionNames = SaveGame->CompanionNames;
 	Profile.HealthPercent = SaveGame->HealthPercent;
 	Profile.ManaPercent = SaveGame->ManaPercent;
@@ -278,6 +302,7 @@ UFableCharacterSaveGame* UFableSaveSubsystem::LoadCharacterFromSlot(const FGuid&
 	Profile.InventorySlots = SaveGame->InventoryItems;
 	Profile.LearnedSkills = SaveGame->LearnedSkills;
 	Profile.ActionBars = SaveGame->ActionBars;
+	Profile.QuickWheelPages = SaveGame->QuickWheelPages;
 	EnsureInventoryData(Profile);
 	EnsureActionBarsData(Profile);
 
@@ -366,12 +391,19 @@ bool UFableSaveSubsystem::SetActiveInventory(const TArray<FString>& InInventoryS
 	}
 
 	FFableCharacterProfile& Profile = CharacterProfiles[CharacterIndex];
+	// Loot actors consume their items only after this succeeds. Keep failed saves
+	// from granting an item in memory while leaving the same loot in the world.
+	FFableCharacterProfile PreviousProfile = Profile;
 	Profile.InventorySlots = InInventorySlots;
 	Profile.EquippedItems = InEquippedSlots;
 	EnsureInventoryData(Profile);
-	const bool bSaved = SaveIndex();
+	if (!SaveIndex())
+	{
+		Profile = MoveTemp(PreviousProfile);
+		return false;
+	}
 	ActiveInventoryChanged.Broadcast(Profile.InventorySlots, Profile.EquippedItems);
-	return bSaved;
+	return true;
 }
 
 bool UFableSaveSubsystem::TryGetActiveLearnedSkills(TArray<FString>& OutLearnedSkills) const
@@ -413,6 +445,23 @@ bool UFableSaveSubsystem::SetActiveActionBars(const TArray<FFableActionBarData>&
 	FFableCharacterProfile& Profile = CharacterProfiles[CharacterIndex];
 	Profile.ActionBars = InActionBars;
 	EnsureActionBarsData(Profile);
+	return SaveIndex();
+}
+
+bool UFableSaveSubsystem::TryGetActiveQuickWheelPages(TArray<FFableQuickWheelPageData>& OutPages) const
+{
+	OutPages.Reset();
+	const int32 CharacterIndex = FindCharacterIndex(ActiveCharacterId);
+	if (CharacterIndex == INDEX_NONE) return false;
+	OutPages = CharacterProfiles[CharacterIndex].QuickWheelPages;
+	return true;
+}
+
+bool UFableSaveSubsystem::SetActiveQuickWheelPages(const TArray<FFableQuickWheelPageData>& InPages)
+{
+	const int32 CharacterIndex = FindCharacterIndex(ActiveCharacterId);
+	if (CharacterIndex == INDEX_NONE) return false;
+	CharacterProfiles[CharacterIndex].QuickWheelPages = InPages;
 	return SaveIndex();
 }
 
@@ -513,6 +562,33 @@ void UFableSaveSubsystem::EnsureCharacterSlots(FFableCharacterProfile& Profile) 
 
 void UFableSaveSubsystem::EnsureInventoryData(FFableCharacterProfile& Profile) const
 {
+	// Existing human saves keep their authored colors and proportions within the
+	// previous safety bounds. New characters pass the strict policy at creation.
+	Profile.RaceId = FableAppearance::NormalizeRace(Profile.RaceId);
+	if (Profile.RaceId != TEXT("human"))
+	{
+		FableAppearance::SanitizeAppearance(Profile);
+	}
+	if (!Profile.BodyMorphs.Contains(TEXT("FemaleBody")))
+	{
+		Profile.BodyMorphs.Add(TEXT("FemaleBody"), Profile.Gender == EFableGender::Female ? 1.0f : 0.0f);
+	}
+	auto SanitizeColor = [](FLinearColor& Color, float Maximum)
+	{
+		Color = FLinearColor(
+			FMath::IsFinite(Color.R) ? FMath::Clamp(Color.R,0.f,Maximum) : 1.f,
+			FMath::IsFinite(Color.G) ? FMath::Clamp(Color.G,0.f,Maximum) : 1.f,
+			FMath::IsFinite(Color.B) ? FMath::Clamp(Color.B,0.f,Maximum) : 1.f,1.f);
+	};
+	SanitizeColor(Profile.SkinColor,1.5f);
+	SanitizeColor(Profile.HairColor,1.f);
+	SanitizeColor(Profile.EyeColor,1.f);
+	Profile.HeightScale = FMath::IsFinite(Profile.HeightScale) ? FMath::Clamp(Profile.HeightScale, 0.7f, 1.2f) : 1.0f;
+	for (TPair<FName, float>& Morph : Profile.BodyMorphs)
+	{
+		const bool PositiveOnly = Morph.Key == TEXT("FemaleBody") || Morph.Key == TEXT("BodyFat") || Morph.Key == TEXT("Muscle") || Morph.Key == TEXT("Bust");
+		Morph.Value = FMath::IsFinite(Morph.Value) ? FMath::Clamp(Morph.Value, PositiveOnly ? 0.f : -1.f, 1.f) : 0.f;
+	}
 	// Migrate legacy 6-slot equipment layout:
 	// [Weapon, Head, Chest, Hands, Legs, Feet]
 	// to new equipment layout:
@@ -552,6 +628,47 @@ void UFableSaveSubsystem::EnsureInventoryData(FFableCharacterProfile& Profile) c
 
 void UFableSaveSubsystem::EnsureActionBarsData(FFableCharacterProfile& Profile) const
 {
+	if (Profile.QuickWheelPages.Num() == 0)
+	{
+		FFableQuickWheelPageData CombatPage;
+		CombatPage.PageName = TEXT("Combat");
+		CombatPage.Slots.SetNum(8);
+		if (Profile.LearnedSkills.Num() > 0) CombatPage.Slots[0] = { TEXT("skill:") + Profile.LearnedSkills[0], Profile.LearnedSkills[0] };
+		if (Profile.LearnedSkills.Num() > 1) CombatPage.Slots[1] = { TEXT("skill:") + Profile.LearnedSkills[1], Profile.LearnedSkills[1] };
+		Profile.QuickWheelPages.Add(MoveTemp(CombatPage));
+	}
+	else if (Profile.LearnedSkills.Num() > 0)
+	{
+		bool bHasAssignedWheelEntry = false;
+		for (const FFableQuickWheelPageData& Page : Profile.QuickWheelPages)
+		{
+			for (const FFableActionSlotData& Slot : Page.Slots)
+			{
+				if (!Slot.EntryId.IsEmpty())
+				{
+					bHasAssignedWheelEntry = true;
+					break;
+				}
+			}
+			if (bHasAssignedWheelEntry) break;
+		}
+		if (!bHasAssignedWheelEntry)
+		{
+			Profile.QuickWheelPages[0].PageName = Profile.QuickWheelPages[0].PageName.IsEmpty()
+				? TEXT("Combat") : Profile.QuickWheelPages[0].PageName;
+			Profile.QuickWheelPages[0].Slots.SetNum(8);
+			for (int32 Index = 0; Index < FMath::Min(2, Profile.LearnedSkills.Num()); ++Index)
+			{
+				Profile.QuickWheelPages[0].Slots[Index] = {
+					TEXT("skill:") + Profile.LearnedSkills[Index], Profile.LearnedSkills[Index] };
+			}
+		}
+	}
+	for (FFableQuickWheelPageData& Page : Profile.QuickWheelPages)
+	{
+		Page.Slots.SetNum(8);
+	}
+
 	auto EnsureSlotCount = [](FFableActionBarData& Bar)
 	{
 		Bar.Columns = FMath::Max(1, Bar.Columns);

@@ -1,0 +1,23 @@
+{
+  "body": {
+    "bones_match": true,
+    "parents_match": true,
+    "bones_count": 89,
+    "original_bones_count": 89
+  },
+  "shirt": {
+    "bones_match": true,
+    "parents_match": true,
+    "bones_count": 89,
+    "original_bones_count": 89
+  },
+  "screenshots_requested": [
+    "body-run",
+    "shirt-run",
+    "shirt-run-opposite"
+  ],
+  "body_positions": [
+    0.25,
+    0.25
+  ]
+}

@@ -30,7 +30,7 @@ public:
 	bool HasAnySavedGames() const;
 	bool CharacterHasAnySavedSlots(const FFableCharacterProfile& Profile) const;
 
-	FGuid CreateCharacter(const FString& CharacterName, const FString& RaceId, EFableGender Gender);
+	FGuid CreateCharacter(const FString& CharacterName, const FString& RaceId, EFableGender Gender, const TMap<FName, float>& BodyMorphs = {}, float HeightScale = 1.0f, FLinearColor SkinColor = FLinearColor::White, FLinearColor HairColor = FLinearColor::White, FLinearColor EyeColor = FLinearColor::White, const FString& HairStyle = TEXT("none"), const FString& BeardStyle = TEXT("none"));
 	bool DeleteCharacter(const FGuid& CharacterId);
 
 	bool SaveCharacterToSlot(const FGuid& CharacterId, int32 SlotIndex, const FString& MapName);
@@ -46,6 +46,8 @@ public:
 	bool TryGetActiveLearnedSkills(TArray<FString>& OutLearnedSkills) const;
 	bool TryGetActiveActionBars(TArray<FFableActionBarData>& OutActionBars) const;
 	bool SetActiveActionBars(const TArray<FFableActionBarData>& InActionBars);
+	bool TryGetActiveQuickWheelPages(TArray<FFableQuickWheelPageData>& OutPages) const;
+	bool SetActiveQuickWheelPages(const TArray<FFableQuickWheelPageData>& InPages);
 
 	FGuid GetActiveCharacterId() const;
 	int32 GetActiveSlotIndex() const;

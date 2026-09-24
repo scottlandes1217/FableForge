@@ -21,11 +21,16 @@ public class FableForge : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
+			"ImageWrapper",
 			"Json",
 			"JsonUtilities"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] { "ImageCore" });
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "RenderCore" });
+		}
 
 		PublicIncludePaths.AddRange(new string[] {
 			"FableForge",

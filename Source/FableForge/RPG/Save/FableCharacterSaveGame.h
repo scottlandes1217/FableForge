@@ -24,6 +24,27 @@ public:
 	EFableGender Gender = EFableGender::Male;
 
 	UPROPERTY()
+	TMap<FName, float> BodyMorphs;
+
+	UPROPERTY()
+	float HeightScale = 1.0f;
+
+	UPROPERTY()
+	FLinearColor SkinColor = FLinearColor::White;
+
+	UPROPERTY()
+	FLinearColor HairColor = FLinearColor::White;
+
+	UPROPERTY()
+	FLinearColor EyeColor = FLinearColor::White;
+
+	UPROPERTY()
+	FString HairStyle = TEXT("none");
+
+	UPROPERTY()
+	FString BeardStyle = TEXT("none");
+
+	UPROPERTY()
 	int32 SlotIndex = 0;
 
 	UPROPERTY()
@@ -58,4 +79,7 @@ public:
 
 	UPROPERTY()
 	TArray<FFableActionBarData> ActionBars;
+
+	UPROPERTY()
+	TArray<FFableQuickWheelPageData> QuickWheelPages;
 };

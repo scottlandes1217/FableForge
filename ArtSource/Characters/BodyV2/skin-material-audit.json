@@ -1,0 +1,15 @@
+{
+  "material": "/Game/Characters/PlayableCharacter/Materials/Base_Dark_Mat.Base_Dark_Mat",
+  "properties": {
+    "shading_model": "<MaterialShadingModel.MSM_DEFAULT_LIT: 1>",
+    "blend_mode": "<BlendMode.BLEND_OPAQUE: 0>",
+    "two_sided": "False",
+    "use_material_attributes": "False"
+  },
+  "expressions": [
+    {
+      "type": "MaterialExpressionTextureSample",
+      "texture": "<Object '/Game/Characters/PlayableCharacter/Textures/Base/Base_Dark.Base_Dark' (0x3dec9cf00) Class 'Texture2D'>"
+    }
+  ]
+}

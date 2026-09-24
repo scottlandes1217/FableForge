@@ -1,0 +1,48 @@
+{
+  "male": {
+    "bones": 89,
+    "skeleton_matches": true,
+    "sections": [
+      0,
+      1
+    ],
+    "materials": [
+      "/Game/Items/Armor/FittedTunic/Linen_Ochre.Linen_Ochre",
+      "/Game/Items/Armor/FittedTunic/Woven_Trim.Woven_Trim"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "ShoulderWidth",
+      "WaistWidth",
+      "HipWidth",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "Bust",
+      "TorsoLength"
+    ]
+  },
+  "female": {
+    "bones": 89,
+    "skeleton_matches": true,
+    "sections": [
+      0,
+      1
+    ],
+    "materials": [
+      "/Game/Items/Armor/FittedTunic/Linen_Ochre.Linen_Ochre",
+      "/Game/Items/Armor/FittedTunic/Woven_Trim.Woven_Trim"
+    ],
+    "morphs": [
+      "BodyBuild",
+      "ShoulderWidth",
+      "WaistWidth",
+      "HipWidth",
+      "FemaleBody",
+      "BodyFat",
+      "Muscle",
+      "Bust",
+      "TorsoLength"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "mesh": "male_peasant_legs_v2",
+    "maximum_reference_position_difference_cm": 0.0
+  },
+  {
+    "mesh": "male_peasant_feet_v2",
+    "maximum_reference_position_difference_cm": 0.0
+  },
+  {
+    "mesh": "female_peasant_legs_v2",
+    "maximum_reference_position_difference_cm": 0.0
+  },
+  {
+    "mesh": "female_peasant_feet_v2",
+    "maximum_reference_position_difference_cm": 0.0
+  }
+]

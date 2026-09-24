@@ -1,0 +1,33 @@
+{
+  "baseline": {
+    "original": {
+      "arms": {
+        "max_edge_stretch": 5.084327499179229,
+        "p99": 1.741252383160671,
+        "edges_over_3x": 5
+      },
+      "hips": {
+        "max_edge_stretch": 3.0644836549307635,
+        "p99": 1.7817239708024992,
+        "edges_over_3x": 1
+      }
+    }
+  },
+  "best": {
+    "radius": 0.06,
+    "zradius": 0.06,
+    "strength": 0.5,
+    "metrics": {
+      "arms": {
+        "max_edge_stretch": 5.084327499179229,
+        "p99": 1.741252383160671,
+        "edges_over_3x": 5
+      },
+      "hips": {
+        "max_edge_stretch": 2.683796469819702,
+        "p99": 1.7696234611137314,
+        "edges_over_3x": 0
+      }
+    }
+  }
+}

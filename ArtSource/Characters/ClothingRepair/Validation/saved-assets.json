@@ -1,0 +1,24 @@
+{
+  "body": {
+    "path": "/Game/Characters/PlayableCharacter/Meshes/basecharacter",
+    "bones": 89,
+    "skeleton": "/Game/Characters/PlayableCharacter/Meshes/SK_Mannequin.SK_Mannequin",
+    "materials": [
+      "/Game/Characters/PlayableCharacter/Meshes/MI_Hair_1_002.MI_Hair_1_002",
+      "/Game/Characters/PlayableCharacter/Materials/Base_Eye_Brown_Mat.Base_Eye_Brown_Mat",
+      "/Game/Characters/PlayableCharacter/Materials/Base_Dark_Mat.Base_Dark_Mat"
+    ],
+    "physics_asset": "/Game/Characters/PlayableCharacter/Meshes/basecharacter_PhysicsAsset.basecharacter_PhysicsAsset",
+    "import_source": "/Users/scottlandes/Projects/FableForge/ArtSource/Characters/ClothingRepair/body-fixed.fbx"
+  },
+  "shirt": {
+    "path": "/Game/Items/Armor/Skeletal_Meshes/shirt",
+    "bones": 89,
+    "skeleton": "/Game/Items/Armor/Skeletons/shirt_Skeleton.shirt_Skeleton",
+    "materials": [
+      "/Game/Items/Armor/Materials/Material_002.Material_002"
+    ],
+    "physics_asset": "/Game/Items/Armor/Physics_Assets/shirt_PhysicsAsset.shirt_PhysicsAsset",
+    "import_source": "/Users/scottlandes/Projects/FableForge/ArtSource/Characters/ClothingRepair/shirt-fixed.fbx"
+  }
+}

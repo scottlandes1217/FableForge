@@ -8,6 +8,8 @@
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/ScaleBox.h"
+#include "Components/ScaleBoxSlot.h"
 #include "Components/TextBlock.h"
 #include "FableForgePlayerController.h"
 #include "FableForge.h"
@@ -15,16 +17,37 @@
 #include "RPG/UI/FableInventoryDragDropOperation.h"
 #include "RPG/UI/FablePartyHudWidget.h"
 #include "Styling/SlateBrush.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "Engine/Texture2D.h"
+#include "RPG/UI/FableItemIconLibrary.h"
+#include "Rendering/DrawElements.h"
 
 namespace
 {
-	const FLinearColor UiSlotOutline(0.42f, 0.42f, 0.42f, 0.95f);
-	const FLinearColor UiSlotOutlineEquipment(0.62f, 0.53f, 0.30f, 0.98f);
-	const FLinearColor UiSlotBackground(0.015f, 0.015f, 0.015f, 0.98f);
-	const FLinearColor UiSlotBackgroundEquipment(0.022f, 0.022f, 0.022f, 1.0f);
-	const FLinearColor UiSlotText(0.95f, 0.95f, 0.95f, 1.0f);
-	const FLinearColor UiSlotTextMuted(0.46f, 0.46f, 0.46f, 1.0f);
+	const FLinearColor UiSlotOutline(0.27f, 0.24f, 0.17f, 0.95f);
+	const FLinearColor UiSlotOutlineEquipment(0.67f, 0.49f, 0.23f, 0.98f);
+	const FLinearColor UiSlotBackground(0.66f, 0.54f, 0.36f, 1.0f);
+	const FLinearColor UiSlotBackgroundEquipment(0.61f, 0.48f, 0.30f, 1.0f);
+	const FLinearColor UiInventoryTransparent(0.0f, 0.0f, 0.0f, 0.0f);
+	const FLinearColor UiSlotText(0.92f, 0.86f, 0.73f, 1.0f);
+	const FLinearColor UiSlotTextMuted(0.12f, 0.065f, 0.028f, 1.0f);
 	const FLinearColor UiCooldownOverlay(0.0f, 0.0f, 0.0f, 0.62f);
+
+	FLinearColor SlotOutlineColor(const bool bEquipmentSlot, const bool bActionSlot)
+	{
+		// Inventory cells deliberately keep a transparent interior, but retain a
+		// clear square frame so the hit target is visible against the parchment.
+		return bEquipmentSlot ? UiSlotOutlineEquipment : (bActionSlot ? UiInventoryTransparent : UiSlotOutline);
+	}
+
+	FSlateBrush SlotOutlineBrush(const bool bEquipmentSlot, const bool bActionSlot, const FLinearColor& OutlineColor)
+	{
+		return FSlateRoundedBoxBrush(
+			UiInventoryTransparent,
+			0.0f,
+			OutlineColor,
+			bActionSlot ? 0.0f : 1.5f);
+	}
 
 	FString FormatCooldownText(const float Seconds)
 	{
@@ -44,21 +67,35 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 	{
 		return Super::RebuildWidget();
 	}
+	const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
 
 	RootBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SlotBorder"));
 	RootBorder->SetPadding(FMargin(1.5f));
-	RootBorder->SetBrushColor(bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline);
+	RootBorder->SetBrush(SlotOutlineBrush(bEquipmentSlot, bActionSlot, SlotOutlineColor(bEquipmentSlot, bActionSlot)));
 
 	InnerBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SlotInner"));
-	InnerBorder->SetPadding(FMargin(3.0f));
-	InnerBorder->SetBrushColor(bEquipmentSlot ? UiSlotBackgroundEquipment : UiSlotBackground);
+	InnerBorder->SetPadding(FMargin(bEquipmentSlot ? 6.0f : 3.0f));
+	InnerBorder->SetBrushColor(bActionSlot ? FLinearColor(0.028f, 0.020f, 0.013f, 1.f)
+			: (bEquipmentSlot ? UiInventoryTransparent : UiSlotBackground));
+	if (!bEquipmentSlot && !bActionSlot)
+	{
+		InnerBorder->SetBrushColor(UiInventoryTransparent);
+	}
 	RootBorder->SetContent(InnerBorder);
 
 	ContentOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("SlotOverlay"));
 	InnerBorder->SetContent(ContentOverlay);
 
+	IconScaleBox = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass(), TEXT("SlotIconScaleBox"));
+	IconScaleBox->SetStretch(EStretch::ScaleToFit);
 	IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("SlotIcon"));
-	if (UOverlaySlot* IconSlot = ContentOverlay->AddChildToOverlay(IconImage))
+	IconScaleBox->SetContent(IconImage);
+	if (UScaleBoxSlot* IconScaleSlot = Cast<UScaleBoxSlot>(IconImage->Slot))
+	{
+		IconScaleSlot->SetHorizontalAlignment(HAlign_Center);
+		IconScaleSlot->SetVerticalAlignment(VAlign_Center);
+	}
+	if (UOverlaySlot* IconSlot = ContentOverlay->AddChildToOverlay(IconScaleBox))
 	{
 		IconSlot->SetHorizontalAlignment(HAlign_Fill);
 		IconSlot->SetVerticalAlignment(VAlign_Fill);
@@ -66,7 +103,7 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 	}
 
 	LabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SlotText"));
-	LabelText->SetAutoWrapText(false);
+	LabelText->SetAutoWrapText(true);
 	LabelText->SetJustification(ETextJustify::Center);
 	if (UOverlaySlot* LabelSlot = ContentOverlay->AddChildToOverlay(LabelText))
 	{
@@ -93,6 +130,7 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 		CooldownTextSlot->SetPadding(FMargin(2.0f));
 	}
 
+	bCooldownVisualInitialized = false;
 	WidgetTree->RootWidget = RootBorder;
 	RefreshVisual();
 	return Super::RebuildWidget();
@@ -101,6 +139,71 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 void UFableInventorySlotWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+}
+
+int32 UFableInventorySlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+	const int32 RetLayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements,
+		LayerId, InWidgetStyle, bParentEnabled);
+	if (!bJournalGridCell || JournalGridColumnCount <= 0 || JournalGridRowCount <= 0)
+	{
+		return RetLayerId;
+	}
+
+	const FVector2D LocalSize = AllottedGeometry.GetLocalSize();
+	const float HalfPixel = 0.5f;
+	const int32 GridLayer = RetLayerId + 1;
+
+	auto DrawLine = [&](const FVector2D& Start, const FVector2D& End, const FLinearColor& Color, float Thickness)
+	{
+		TArray<FVector2D> Points;
+		Points.Reserve(2);
+		Points.Add(Start);
+		Points.Add(End);
+		FSlateDrawElement::MakeLines(OutDrawElements, GridLayer, AllottedGeometry.ToPaintGeometry(), Points,
+			ESlateDrawEffect::None, Color, true, Thickness);
+	};
+
+	const FLinearColor GridColor = bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline;
+	// Every cell owns only its left/top edges. The final column/row add the
+	// outer right/bottom edges, so shared boundaries are painted once.
+	DrawLine(FVector2D(HalfPixel, 0.0f), FVector2D(HalfPixel, LocalSize.Y), GridColor, 1.0f);
+	DrawLine(FVector2D(0.0f, HalfPixel), FVector2D(LocalSize.X, HalfPixel), GridColor, 1.0f);
+	if (JournalGridColumn == JournalGridColumnCount - 1)
+	{
+		DrawLine(FVector2D(LocalSize.X - HalfPixel, 0.0f), FVector2D(LocalSize.X - HalfPixel, LocalSize.Y), GridColor, 1.0f);
+	}
+	if (JournalGridRow == JournalGridRowCount - 1)
+	{
+		DrawLine(FVector2D(0.0f, LocalSize.Y - HalfPixel), FVector2D(LocalSize.X, LocalSize.Y - HalfPixel), GridColor, 1.0f);
+	}
+
+	if (bControllerSelected || bControllerPicked)
+	{
+		const FLinearColor SelectionColor = bControllerPicked
+			? FLinearColor(0.25f, 0.48f, 0.55f, 1.0f)
+			: FLinearColor(0.48f, 0.19f, 0.035f, 1.0f);
+		DrawLine(FVector2D(1.5f, 1.5f), FVector2D(LocalSize.X - 1.5f, 1.5f), SelectionColor, 3.0f);
+		DrawLine(FVector2D(1.5f, LocalSize.Y - 1.5f), FVector2D(LocalSize.X - 1.5f, LocalSize.Y - 1.5f), SelectionColor, 3.0f);
+		DrawLine(FVector2D(1.5f, 1.5f), FVector2D(1.5f, LocalSize.Y - 1.5f), SelectionColor, 3.0f);
+		DrawLine(FVector2D(LocalSize.X - 1.5f, 1.5f), FVector2D(LocalSize.X - 1.5f, LocalSize.Y - 1.5f), SelectionColor, 3.0f);
+	}
+
+	return GridLayer;
+}
+
+void UFableInventorySlotWidget::SetJournalGridCell(int32 InColumn, int32 InRow, int32 InColumnCount, int32 InRowCount)
+{
+	bJournalGridCell = InColumnCount > 0 && InRowCount > 0
+		&& InColumn >= 0 && InColumn < InColumnCount
+		&& InRow >= 0 && InRow < InRowCount;
+	JournalGridColumn = InColumn;
+	JournalGridRow = InRow;
+	JournalGridColumnCount = InColumnCount;
+	JournalGridRowCount = InRowCount;
+	RefreshVisual();
 }
 
 void UFableInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -116,22 +219,19 @@ void UFableInventorySlotWidget::NativeTick(const FGeometry& MyGeometry, float In
 		SetRenderScale(FVector2D(1.0f + (Pulse * 0.08f)));
 		if (RootBorder != nullptr)
 		{
-			const FLinearColor BaseColor = bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline;
-			RootBorder->SetBrushColor(FMath::Lerp(BaseColor, FLinearColor(0.95f, 0.9f, 0.45f, 1.0f), Pulse));
-		}
-	}
-	else
-	{
-		SetRenderScale(FVector2D(1.0f, 1.0f));
-		if (RootBorder != nullptr)
-		{
-			RootBorder->SetBrushColor(bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline);
+			const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
+			const FLinearColor BaseColor = SlotOutlineColor(bEquipmentSlot, bActionSlot);
+			RootBorder->SetBrush(SlotOutlineBrush(bEquipmentSlot, bActionSlot,
+				FMath::Lerp(BaseColor, FLinearColor(0.95f, 0.9f, 0.45f, 1.0f), Pulse)));
 		}
 	}
 }
 
 FReply UFableInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	// Always recover a source slot before starting a new drag. This also repairs
+	// stale state left by a rejected equipment target in older Slate paths.
+	ResetDragVisual();
 	bDragDetectedThisPress = false;
 	bActionClickTriggeredThisPress = false;
 	(void)InGeometry;
@@ -196,7 +296,7 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeome
 
 	if (bTemporarilyDragHidden)
 	{
-		SetVisibility(ESlateVisibility::Visible);
+		SetRenderOpacity(1.0f);
 		bTemporarilyDragHidden = false;
 	}
 
@@ -265,6 +365,12 @@ FReply UFableInventorySlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeome
 		}
 	}
 
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && !ItemPayloadId.IsEmpty())
+	{
+		OnSlotRightClicked.Broadcast(SlotId, ItemPayloadId);
+		return FReply::Handled();
+	}
+
 	return Super::NativeOnMouseButtonUp(InGeometry, InMouseEvent);
 }
 
@@ -330,7 +436,17 @@ void UFableInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry
 		return;
 	}
 
-	UTextBlock* DragText = NewObject<UTextBlock>(DragOperation);
+	if (ItemIconResource != nullptr)
+	{
+		UImage* DragIcon = NewObject<UImage>(DragOperation);
+		FSlateBrush Brush;
+		Brush.SetResourceObject(ItemIconResource);
+		Brush.ImageSize = FVector2D(56.0f, 56.0f);
+		DragIcon->SetBrush(Brush);
+		DragIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
+		DragOperation->DefaultDragVisual = DragIcon;
+	}
+	UTextBlock* DragText = ItemIconResource == nullptr ? NewObject<UTextBlock>(DragOperation) : nullptr;
 	if (DragText != nullptr)
 	{
 		DragText->SetText(FText::FromString(ItemLabel));
@@ -347,7 +463,9 @@ void UFableInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry
 	DragOperation->PayloadLabel = ItemLabel;
 	DragOperation->Pivot = EDragPivot::CenterCenter;
 	OutOperation = DragOperation;
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	// Keep the source hit-testable while dragging. Some rejected equipment drops
+	// do not send a cancellation event, which used to leave the source stuck.
+	SetRenderOpacity(0.35f);
 	bTemporarilyDragHidden = true;
 	UE_LOG(LogFableForge, Log, TEXT("Drag started slot=%s payload=%s label=%s"), *SlotId.ToString(), *ItemPayloadId, *ItemLabel);
 }
@@ -385,7 +503,7 @@ void UFableInventorySlotWidget::NativeOnDragCancelled(const FDragDropEvent& InDr
 
 	if (bTemporarilyDragHidden)
 	{
-		SetVisibility(ESlateVisibility::Visible);
+		SetRenderOpacity(1.0f);
 		bTemporarilyDragHidden = false;
 	}
 }
@@ -394,7 +512,7 @@ bool UFableInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const 
 {
 	if (bTemporarilyDragHidden)
 	{
-		SetVisibility(ESlateVisibility::Visible);
+		SetRenderOpacity(1.0f);
 		bTemporarilyDragHidden = false;
 	}
 
@@ -413,6 +531,13 @@ bool UFableInventorySlotWidget::NativeOnDrop(const FGeometry& InGeometry, const 
 		*DragOperation->SourceSlotId.ToString(),
 		*DragOperation->PayloadId,
 		*DragOperation->PayloadLabel);
+	// A successful drop does not always dispatch NativeOnDragCancelled back to
+	// the source widget. Restore it here so the same item can be dragged again.
+	if (UFableInventorySlotWidget* SourceWidget = Cast<UFableInventorySlotWidget>(DragOperation->GetOuter()))
+	{
+		SourceWidget->SetRenderOpacity(1.0f);
+		SourceWidget->bTemporarilyDragHidden = false;
+	}
 	OnItemDrop.Broadcast(DragOperation->SourceSlotId, SlotId, DragOperation->PayloadId, DragOperation->PayloadLabel);
 	return true;
 }
@@ -422,6 +547,11 @@ void UFableInventorySlotWidget::InitializeSlot(FName InSlotId, const FString& In
 	SlotId = InSlotId;
 	EmptyDisplayName = InDisplayName;
 	bEquipmentSlot = bInEquipmentSlot;
+	bJournalGridCell = false;
+	JournalGridColumn = 0;
+	JournalGridRow = 0;
+	JournalGridColumnCount = 0;
+	JournalGridRowCount = 0;
 	RefreshVisual();
 }
 
@@ -429,7 +559,8 @@ void UFableInventorySlotWidget::SetItemLabel(const FString& InItemLabel)
 {
 	ItemPayloadId = InItemLabel;
 	ItemLabel = InItemLabel;
-	ItemIconResource = nullptr;
+	ItemIconResource = FableItemIcons::Get(InItemLabel);
+	SetToolTipText(FText::FromString(InItemLabel.IsEmpty() && bEquipmentSlot ? EmptyDisplayName : InItemLabel));
 	RefreshVisual();
 }
 
@@ -437,16 +568,17 @@ void UFableInventorySlotWidget::SetItemData(const FString& InPayloadId, const FS
 {
 	ItemPayloadId = InPayloadId;
 	ItemLabel = InItemLabel;
-	ItemIconResource = InIconResource;
+	ItemIconResource = InIconResource != nullptr ? InIconResource : FableItemIcons::Get(InPayloadId);
+	SetToolTipText(FText::FromString(InItemLabel.IsEmpty() && bEquipmentSlot ? EmptyDisplayName : InItemLabel));
 	RefreshVisual();
 }
 
 void UFableInventorySlotWidget::SetCooldownRemaining(float InRemainingSeconds)
 {
 	CooldownRemainingSeconds = FMath::Max(0.0f, InRemainingSeconds);
-	UE_LOG(LogFableForge, Verbose, TEXT("Slot cooldown set slot=%s payload=%s remaining=%.2f"),
-		*SlotId.ToString(), *ItemPayloadId, CooldownRemainingSeconds);
-	RefreshVisual();
+	// Only mutate the timer layer when its displayed tenth changes. Rebuilding the
+	// icon brush, font and label every frame invalidates every action-bar cell.
+	RefreshCooldownVisual();
 }
 
 void UFableInventorySlotWidget::PlayUseFeedback()
@@ -460,21 +592,60 @@ void UFableInventorySlotWidget::PlayUseFeedback()
 	}
 }
 
+void UFableInventorySlotWidget::ResetDragVisual()
+{
+	SetRenderOpacity(1.0f);
+	bTemporarilyDragHidden = false;
+}
+
 FName UFableInventorySlotWidget::GetSlotId() const
 {
 	return SlotId;
+}
+
+void UFableInventorySlotWidget::SetEmptyEquipmentBrush(const FSlateBrush& InBrush)
+{
+	EmptyEquipmentBrush = InBrush;
+	RefreshVisual();
+}
+
+void UFableInventorySlotWidget::SetControllerSelection(bool bSelected, bool bPicked)
+{
+	if (bControllerSelected == bSelected && bControllerPicked == bPicked) return;
+	bControllerSelected = bSelected;
+	bControllerPicked = bPicked;
+	RefreshVisual();
 }
 
 void UFableInventorySlotWidget::RefreshVisual()
 {
 	if (RootBorder != nullptr)
 	{
-		RootBorder->SetBrushColor(bEquipmentSlot ? UiSlotOutlineEquipment : UiSlotOutline);
+		const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
+		if (bJournalGridCell)
+		{
+			RootBorder->SetBrush(FSlateRoundedBoxBrush(UiInventoryTransparent, 0.0f, UiInventoryTransparent, 0.0f));
+		}
+		else
+		{
+			RootBorder->SetBrush(SlotOutlineBrush(bEquipmentSlot, bActionSlot, SlotOutlineColor(bEquipmentSlot, bActionSlot)));
+			if (bControllerSelected || bControllerPicked)
+			{
+				RootBorder->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.65f, 0.40f, 0.12f, 0.10f), 0.f,
+					bControllerPicked ? FLinearColor(0.25f, 0.48f, 0.55f, 1.f) : FLinearColor(0.48f, 0.19f, 0.035f, 1.f), 3.f));
+			}
+		}
 	}
 
 	if (InnerBorder != nullptr)
 	{
-		InnerBorder->SetBrushColor(bEquipmentSlot ? UiSlotBackgroundEquipment : UiSlotBackground);
+		const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
+		InnerBorder->SetBrushColor(bActionSlot ? FLinearColor(0.028f, 0.020f, 0.013f, 1.f)
+			: (bEquipmentSlot ? UiInventoryTransparent : UiSlotBackground));
+		if (!bEquipmentSlot && !bActionSlot)
+		{
+			InnerBorder->SetBrushColor(UiInventoryTransparent);
+		}
 	}
 
 	if (LabelText == nullptr)
@@ -488,22 +659,38 @@ void UFableInventorySlotWidget::RefreshVisual()
 		{
 			FSlateBrush IconBrush;
 			IconBrush.SetResourceObject(ItemIconResource);
-			IconBrush.ImageSize = FVector2D(64.0f, 64.0f);
+			if (const UTexture2D* IconTexture = Cast<UTexture2D>(ItemIconResource))
+			{
+				IconBrush.ImageSize = FVector2D(IconTexture->GetSizeX(), IconTexture->GetSizeY());
+			}
+			else
+			{
+				IconBrush.ImageSize = FVector2D(70.0f, 70.0f);
+			}
 			IconImage->SetBrush(IconBrush);
+			IconImage->SetColorAndOpacity(FLinearColor::White);
+			IconImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		else if (bEquipmentSlot && ItemPayloadId.IsEmpty() && EmptyEquipmentBrush.GetResourceObject() != nullptr)
+		{
+			IconImage->SetBrush(EmptyEquipmentBrush);
+			IconImage->SetColorAndOpacity(FLinearColor(0.45f, 0.28f, 0.12f, 0.48f));
 			IconImage->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
 		else
 		{
 			IconImage->SetBrush(FSlateBrush());
+			IconImage->SetColorAndOpacity(FLinearColor::White);
 			IconImage->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 
 	if (ItemLabel.IsEmpty())
 	{
-		LabelText->SetText(FText::FromString(EmptyDisplayName));
+		bCooldownVisualInitialized = false;
+		LabelText->SetText(FText::FromString(EmptyDisplayName.Replace(TEXT(" Hand"), TEXT("\nHand"))));
 		LabelText->SetColorAndOpacity(FSlateColor(UiSlotTextMuted));
-		LabelText->SetVisibility(ESlateVisibility::HitTestInvisible);
+		LabelText->SetVisibility(bEquipmentSlot ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 		FSlateFontInfo FontInfo = LabelText->GetFont();
 		FontInfo.Size = EmptyDisplayName.IsEmpty() ? 10 : 13;
 		LabelText->SetFont(FontInfo);
@@ -525,7 +712,17 @@ void UFableInventorySlotWidget::RefreshVisual()
 	FontInfo.Size = ItemLabel.Len() <= 3 ? 30 : 15;
 	LabelText->SetFont(FontInfo);
 
-	const bool bShowCooldown = CooldownRemainingSeconds > 0.0f && SlotId.ToString().StartsWith(TEXT("action_"));
+	RefreshCooldownVisual();
+}
+
+void UFableInventorySlotWidget::RefreshCooldownVisual()
+{
+	const FString DisplayText = !ItemLabel.IsEmpty() && CooldownRemainingSeconds > 0.0f && SlotId.ToString().StartsWith(TEXT("action_"))
+		? FormatCooldownText(CooldownRemainingSeconds) : FString();
+	if (DisplayText == LastCooldownDisplay && bCooldownVisualInitialized) { return; }
+	LastCooldownDisplay = DisplayText;
+	bCooldownVisualInitialized = true;
+	const bool bShowCooldown = !DisplayText.IsEmpty();
 	if (CooldownOverlay != nullptr)
 	{
 		CooldownOverlay->SetVisibility(bShowCooldown ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
@@ -534,7 +731,7 @@ void UFableInventorySlotWidget::RefreshVisual()
 	{
 		if (bShowCooldown)
 		{
-			CooldownText->SetText(FText::FromString(FormatCooldownText(CooldownRemainingSeconds)));
+			CooldownText->SetText(FText::FromString(DisplayText));
 			CooldownText->SetVisibility(ESlateVisibility::HitTestInvisible);
 			FSlateFontInfo CooldownFont = CooldownText->GetFont();
 			CooldownFont.Size = 18;

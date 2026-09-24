@@ -24,5 +24,10 @@ Saved/
 *.tmp
 *.log
 
+# Local Python caches and Blender backup copies
+__pycache__/
+*.py[cod]
+*.blend[0-9]
+
 # Large generated lighting/build data (often exceeds GitHub file limits)
 *_BuiltData.uasset
