@@ -44,9 +44,10 @@ void UFableWheelAssignmentWidget::Open(const TArray<FFableQuickWheelPageData>& I
 		Page.Slots.SetNum(8);
 	}
 	PageIndex = 0;
-	SelectedSlot = 0;
+	SelectedSlot = INDEX_NONE;
 	SelectedAvailable = 0;
-	bAvailablePayloadLocked = false;
+	bControllerInputActive = false;
+	bRightStickInputDirty = false;
 	RightStickValue = FVector2D::ZeroVector;
 	bOpen = true;
 	SetVisibility(ESlateVisibility::Visible);
@@ -72,8 +73,10 @@ void UFableWheelAssignmentWidget::SetSelectedAvailablePayload(const FString& Pay
 		return;
 	}
 	SelectedAvailable = PreferredIndex;
-	bAvailablePayloadLocked = true;
-	RebuildContent();
+	if (SelectedPayloadText != nullptr)
+	{
+		SelectedPayloadText->SetText(FText::FromString(AvailableLabels.IsValidIndex(SelectedAvailable) ? AvailableLabels[SelectedAvailable] : TEXT("Select a wheel socket")));
+	}
 }
 
 void UFableWheelAssignmentWidget::MoveSelection(int32 Delta)
@@ -82,7 +85,7 @@ void UFableWheelAssignmentWidget::MoveSelection(int32 Delta)
 	{
 		return;
 	}
-	SelectedSlot = (SelectedSlot + Delta) % 8;
+	SelectedSlot = SelectedSlot == INDEX_NONE ? (Delta < 0 ? 7 : 0) : (SelectedSlot + Delta) % 8;
 	if (SelectedSlot < 0)
 	{
 		SelectedSlot += 8;
@@ -96,7 +99,13 @@ void UFableWheelAssignmentWidget::MoveSelection(int32 Delta)
 
 void UFableWheelAssignmentWidget::ConfirmAssignment()
 {
-	if (!bOpen || !Pages.IsValidIndex(PageIndex) || !AvailablePayloads.IsValidIndex(SelectedAvailable))
+	if (bRightStickInputDirty && TimeWheelWidget)
+	{
+		bRightStickInputDirty = false;
+		TimeWheelWidget->SetSelectionFromStick(RightStickValue);
+		SyncWheelSelection();
+	}
+	if (!bOpen || SelectedSlot == INDEX_NONE || !Pages.IsValidIndex(PageIndex) || !AvailablePayloads.IsValidIndex(SelectedAvailable))
 	{
 		return;
 	}
@@ -105,6 +114,7 @@ void UFableWheelAssignmentWidget::ConfirmAssignment()
 	FFableActionSlotData& Slot = Pages[PageIndex].Slots[SelectedSlot];
 	Slot.EntryId = AvailablePayloads[SelectedAvailable];
 	Slot.EntryLabel = AvailableLabels.IsValidIndex(SelectedAvailable) ? AvailableLabels[SelectedAvailable] : Slot.EntryId;
+	UE_LOG(LogTemp, Display, TEXT("WHEEL_ASSIGN page=%d socket=%d payload=%s"), PageIndex, SelectedSlot, *Slot.EntryId);
 	OnPagesChanged.Broadcast(Pages);
 	Close();
 	OnClosed.Broadcast();
@@ -128,14 +138,25 @@ FReply UFableWheelAssignmentWidget::NativeOnPreviewKeyDown(const FGeometry& InGe
 	}
 
 	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::Left || Key == EKeys::Gamepad_DPad_Left)
+	if (Key.IsGamepadKey()) bControllerInputActive = true;
+	if (Key == EKeys::Left)
 	{
 		MoveSelection(-1);
 		return FReply::Handled();
 	}
-	if (Key == EKeys::Right || Key == EKeys::Gamepad_DPad_Right)
+	if (Key == EKeys::Right)
 	{
 		MoveSelection(1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_DPad_Left)
+	{
+		if (!InKeyEvent.IsRepeat()) ChangePage(-1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_DPad_Right)
+	{
+		if (!InKeyEvent.IsRepeat()) ChangePage(1);
 		return FReply::Handled();
 	}
 	if (Key == EKeys::Up || Key == EKeys::Gamepad_DPad_Up)
@@ -158,6 +179,11 @@ FReply UFableWheelAssignmentWidget::NativeOnPreviewKeyDown(const FGeometry& InGe
 		if (!InKeyEvent.IsRepeat()) ChangePage(1);
 		return FReply::Handled();
 	}
+	if (Key == EKeys::Gamepad_FaceButton_Top)
+	{
+		if (!InKeyEvent.IsRepeat()) AddPage();
+		return FReply::Handled();
+	}
 	if (Key == EKeys::Enter || Key == EKeys::Gamepad_FaceButton_Bottom)
 	{
 		if (!InKeyEvent.IsRepeat()) ConfirmAssignment();
@@ -177,6 +203,24 @@ FReply UFableWheelAssignmentWidget::NativeOnKeyDown(const FGeometry& InGeometry,
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
+void UFableWheelAssignmentWidget::NativeTick(const FGeometry& InGeometry, float InDeltaTime)
+{
+	Super::NativeTick(InGeometry, InDeltaTime);
+	(void)InDeltaTime;
+	if (!bOpen || TimeWheelWidget == nullptr || !bRightStickInputDirty)
+	{
+		return;
+	}
+
+	// X and Y arrive as separate callbacks. Apply their combined value once per
+	// tick so a diagonal stick does not briefly select an intermediate octant.
+	bRightStickInputDirty = false;
+	const int32 PreviousSlot = SelectedSlot;
+	TimeWheelWidget->SetSelectionFromStick(RightStickValue);
+	SyncWheelSelection();
+	if (PreviousSlot != SelectedSlot) UE_LOG(LogTemp, Display, TEXT("WHEEL_STICK x=%.2f y=%.2f socket=%d"), RightStickValue.X, RightStickValue.Y, SelectedSlot);
+}
+
 FReply UFableWheelAssignmentWidget::NativeOnAnalogValueChanged(const FGeometry& InGeometry,
 	const FAnalogInputEvent& InAnalogInputEvent)
 {
@@ -192,6 +236,8 @@ FReply UFableWheelAssignmentWidget::NativeOnAnalogValueChanged(const FGeometry& 
 	}
 	else if (Key == EKeys::Gamepad_RightY)
 	{
+		// Platform/Slate Y is up-positive. UI-only assignment bypasses the game
+		// viewport's Y conversion, so convert to screen-space here exactly once.
 		RightStickValue.Y = -InAnalogInputEvent.GetAnalogValue();
 	}
 	else
@@ -199,8 +245,11 @@ FReply UFableWheelAssignmentWidget::NativeOnAnalogValueChanged(const FGeometry& 
 		return Super::NativeOnAnalogValueChanged(InGeometry, InAnalogInputEvent);
 	}
 
-	TimeWheelWidget->SetSelectionFromStick(RightStickValue);
-	SyncWheelSelection();
+	if (RightStickValue.SizeSquared() >= FMath::Square(0.24f))
+	{
+		bControllerInputActive = true;
+	}
+	bRightStickInputDirty = true;
 	return FReply::Handled();
 }
 
@@ -209,6 +258,12 @@ FReply UFableWheelAssignmentWidget::NativeOnMouseMove(const FGeometry& InGeometr
 	if (!bOpen || TimeWheelWidget == nullptr)
 	{
 		return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
+	}
+	if (bControllerInputActive)
+	{
+		// Virtual/warped mouse motion is still delivered while a controller is
+		// active. It must not override the controller's selected socket.
+		return FReply::Handled();
 	}
 
 	const FGeometry& WheelGeometry = TimeWheelWidget->GetCachedGeometry();
@@ -229,6 +284,9 @@ FReply UFableWheelAssignmentWidget::NativeOnMouseButtonDown(const FGeometry& InG
 	{
 		return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 	}
+	bControllerInputActive = false;
+	RightStickValue = FVector2D::ZeroVector;
+	bRightStickInputDirty = false;
 	const int32 ClickedSocket = FindSocketAtPointer(InGeometry, InMouseEvent);
 	if (ClickedSocket != INDEX_NONE)
 	{
@@ -314,7 +372,7 @@ int32 UFableWheelAssignmentWidget::FindSocketAtPointer(const FGeometry& InGeomet
 	const FVector2D Center = WheelGeometry.GetLocalSize() * 0.5f;
 	for (int32 SocketIndex = 0; SocketIndex < 8; ++SocketIndex)
 	{
-		if (FVector2D::Distance(LocalPosition, Center + UFableTimeWheelWidget::GetSocketPosition(SocketIndex)) <= 55.0f)
+		if (FVector2D::Distance(LocalPosition, Center + UFableTimeWheelWidget::GetSocketPosition(SocketIndex)) <= 48.0f)
 		{
 			return SocketIndex;
 		}
@@ -333,6 +391,23 @@ void UFableWheelAssignmentWidget::ChangePage(int32 Delta)
 	{
 		PageIndex += Pages.Num();
 	}
-	SelectedSlot = 0;
+	SelectedSlot = INDEX_NONE;
+	RebuildContent();
+}
+
+void UFableWheelAssignmentWidget::AddPage()
+{
+	if (!bOpen)
+	{
+		return;
+	}
+
+	FFableQuickWheelPageData NewPage;
+	NewPage.PageName = FString::Printf(TEXT("Page %d"), Pages.Num() + 1);
+	NewPage.Slots.SetNum(8);
+	Pages.Add(MoveTemp(NewPage));
+	PageIndex = Pages.Num() - 1;
+	SelectedSlot = INDEX_NONE;
+	OnPagesChanged.Broadcast(Pages);
 	RebuildContent();
 }

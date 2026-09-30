@@ -17,6 +17,7 @@
 #include "FableForge.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
@@ -87,6 +88,10 @@ AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectIniti
  : Super(ObjectInitializer.SetDefaultSubobjectClass<UFableWeaponPoseMeshComponent>(ACharacter::MeshComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
+	// Keep the camera blend responsive while the controller pauses gameplay for
+	// targeting. This does not alter pause state or opt character animation out
+	// of the engine's pause handling.
+	PrimaryActorTick.bTickEvenWhenPaused = true;
 	EquipmentVisualComponents.SetNum(UFableSaveSubsystem::EquipmentSlotsPerCharacter);
 
 	// Set size for collision capsule
@@ -127,12 +132,14 @@ AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectIniti
 	CameraBoom->bUseCameraLagSubstepping = true;
 	CameraBoom->CameraLagMaxDistance = 60.0f;
 	CameraBoom->CameraRotationLagSpeed = 0.0f;
+	CameraBoom->PrimaryComponentTick.bTickEvenWhenPaused = true;
 
 	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 	FollowCamera->SetRelativeRotation(FRotator(CameraPitchOffsetDegrees, 0.0f, 0.0f));
+	FollowCamera->PrimaryComponentTick.bTickEvenWhenPaused = true;
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -144,6 +151,11 @@ void AFableForgeCharacter::BeginPlay()
 
 	if (CameraBoom != nullptr)
 	{
+		// Center third-person framing even for Blueprint instances serialized with the
+		// former over-the-shoulder lateral offset. Preserve Blueprint vertical/distance
+		// tuning; first-person uses its separate socket offset below.
+		IdleCameraSocketOffset.Y = 0.0f;
+		MovingCameraSocketOffset.Y = 0.0f;
 		CameraBoom->TargetArmLength = IdleCameraArmLength;
 		CameraBoom->SocketOffset = IdleCameraSocketOffset;
 	}
@@ -155,6 +167,8 @@ void AFableForgeCharacter::BeginPlay()
 		FollowCamera->Activate(true);
 		FollowCamera->SetRelativeRotation(FRotator(CameraPitchOffsetDegrees, 0.0f, 0.0f));
 	}
+
+	UpdateFirstPersonPresentation();
 
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -188,9 +202,31 @@ void AFableForgeCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AFableForgeCharacter::Tick(float DeltaSeconds)
 {
-	Super::Tick(DeltaSeconds);
+	const UWorld* World = GetWorld();
+	// The actor tick is enabled during pause only to finish the camera blend;
+	// keep ACharacter's normal tick path paused so movement and animation do not
+	// resume while a targeting gesture owns the game pause.
+	if (World == nullptr || !World->IsPaused())
+	{
+		Super::Tick(DeltaSeconds);
+	}
 
-	UpdateShoulderCamera(DeltaSeconds);
+	float CameraDeltaSeconds = DeltaSeconds;
+	if (World != nullptr)
+	{
+		const double RealTimeSeconds = World->GetRealTimeSeconds();
+		if (LastCameraUpdateRealTimeSeconds >= 0.0)
+		{
+			CameraDeltaSeconds = FMath::Clamp(
+				static_cast<float>(RealTimeSeconds - LastCameraUpdateRealTimeSeconds),
+				0.0f,
+				0.1f);
+		}
+		LastCameraUpdateRealTimeSeconds = RealTimeSeconds;
+	}
+
+	UpdateShoulderCamera(CameraDeltaSeconds);
+	UpdateFirstPersonPresentation();
 }
 
 void AFableForgeCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -199,7 +235,7 @@ void AFableForgeCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFableForgeCharacter::DoJumpStart);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
 		// Moving
@@ -218,7 +254,7 @@ void AFableForgeCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 void AFableForgeCharacter::Move(const FInputActionValue& Value)
 {
 	if (const AFableForgePlayerController* ForgePlayerController = Cast<AFableForgePlayerController>(GetController()))
-		if (ForgePlayerController->IsWheelInputCaptured()) return;
+		if (ForgePlayerController->IsCharacterMovementCaptured()) return;
 
 	// input is a Vector2D
 	FVector2D MovementVector = Value.Get<FVector2D>();
@@ -252,7 +288,10 @@ void AFableForgeCharacter::Look(const FInputActionValue& Value)
 	{
 		if (ForgePlayerController->IsWheelInputCaptured())
 		{
-			ForgePlayerController->RouteRightStickToWheel(LookAxisVector);
+			// The controller's raw FF_RightStickX/Y bindings are authoritative while
+			// a wheel/gesture owns the stick. Do not feed the Enhanced Input action
+			// into the wheel as well; its Y convention differs and can double-apply
+			// or jump the cursor.
 			return;
 		}
 	}
@@ -308,12 +347,12 @@ void AFableForgeCharacter::UpdateShoulderCamera(float DeltaSeconds)
 	// loop fights camera-relative stick movement and can spin the player after a jump.
 	const bool bShouldFollow = false;
 	float TargetArmLength = bFirstPersonView ? FirstPersonCameraArmLength : IdleCameraArmLength;
-	if (bAdjustArmLengthWithMovement)
+	if (!bFirstPersonView && bAdjustArmLengthWithMovement)
 	{
 		TargetArmLength = bShouldFollow ? MovingCameraArmLength : IdleCameraArmLength;
 	}
 	FVector TargetSocketOffset = bFirstPersonView ? FirstPersonCameraSocketOffset : IdleCameraSocketOffset;
-	if (bAdjustSocketOffsetWithMovement)
+	if (!bFirstPersonView && bAdjustSocketOffsetWithMovement)
 	{
 		TargetSocketOffset = bShouldFollow ? MovingCameraSocketOffset : IdleCameraSocketOffset;
 	}
@@ -359,9 +398,72 @@ void AFableForgeCharacter::UpdateShoulderCamera(float DeltaSeconds)
 	bWasAutoFollowActive = bShouldFollow;
 }
 
+void AFableForgeCharacter::UpdateFirstPersonPresentation()
+{
+	if (CameraBoom == nullptr)
+	{
+		return;
+	}
+
+	if (bFirstPersonView && !bFirstPersonCameraSettingsApplied)
+	{
+		bCameraLagBeforeFirstPerson = CameraBoom->bEnableCameraLag;
+		bCameraRotationLagBeforeFirstPerson = CameraBoom->bEnableCameraRotationLag;
+		CameraBoom->bEnableCameraLag = false;
+		CameraBoom->bEnableCameraRotationLag = false;
+		bFirstPersonCameraSettingsApplied = true;
+	}
+	else if (!bFirstPersonView && bFirstPersonCameraSettingsApplied)
+	{
+		CameraBoom->bEnableCameraLag = bCameraLagBeforeFirstPerson;
+		CameraBoom->bEnableCameraRotationLag = bCameraRotationLagBeforeFirstPerson;
+		bFirstPersonCameraSettingsApplied = false;
+	}
+
+	// Use the interpolated arm length rather than the requested target. This keeps
+	// the mesh visible during the blend, then removes it before the camera enters
+	// the head. The same threshold is used on the way out so restoration cannot
+	// flash the body into the first-person camera.
+	const bool bShouldHideOwnerGeometry = bFirstPersonView
+		? CameraBoom->TargetArmLength <= FirstPersonVisibilityHideArmLength
+		: bFirstPersonOwnerVisibilityHidden && CameraBoom->TargetArmLength < FirstPersonVisibilityHideArmLength;
+	if (bShouldHideOwnerGeometry != bFirstPersonOwnerVisibilityHidden)
+	{
+		SetFirstPersonOwnerVisibility(bShouldHideOwnerGeometry);
+	}
+}
+
+void AFableForgeCharacter::SetFirstPersonOwnerVisibility(bool bHide)
+{
+	bFirstPersonOwnerVisibilityHidden = bHide;
+
+	// OwnerNoSee affects only this player's view. It does not remove the actor
+	// from the world, shadow pass, or other viewers such as portrait captures.
+	if (GetMesh() != nullptr)
+	{
+		GetMesh()->SetOwnerNoSee(bHide);
+	}
+	if (AppearanceHair != nullptr)
+	{
+		AppearanceHair->SetOwnerNoSee(bHide);
+	}
+	if (AppearanceBeard != nullptr)
+	{
+		AppearanceBeard->SetOwnerNoSee(bHide);
+	}
+	for (USceneComponent* Component : EquipmentVisualComponents)
+	{
+		if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(Component))
+		{
+			PrimitiveComponent->SetOwnerNoSee(bHide);
+		}
+	}
+}
+
 void AFableForgeCharacter::ToggleFirstPersonView()
 {
 	bFirstPersonView = !bFirstPersonView;
+	UpdateFirstPersonPresentation();
 	UE_LOG(LogFableForge, Log, TEXT("Camera view changed: %s"), bFirstPersonView ? TEXT("First Person") : TEXT("Shoulder"));
 }
 
@@ -416,8 +518,17 @@ void AFableForgeCharacter::DoLook(float Yaw, float Pitch)
 
 void AFableForgeCharacter::DoJumpStart()
 {
+	if (AFableForgePlayerController* ForgePC = Cast<AFableForgePlayerController>(GetController()))
+	{
+		if (!ForgePC->TryStartGameplayJump())
+		{
+			UE_LOG(LogFableForge, Display, TEXT("JUMP_INPUT suppressed UI/target confirmation"));
+			return;
+		}
+	}
 	// signal the character to jump
 	Jump();
+	UE_LOG(LogFableForge, Display, TEXT("JUMP_INPUT accepted gameplay jump"));
 }
 
 void AFableForgeCharacter::DoJumpEnd()
@@ -561,6 +672,7 @@ void AFableForgeCharacter::ApplyEquipmentVisuals(const TArray<FString>& InEquipp
 	{
 		UpdateBodyMaterialVisibility(InEquippedSlots);
 	}
+	SetFirstPersonOwnerVisibility(bFirstPersonOwnerVisibilityHidden);
 }
 
 void AFableForgeCharacter::ClearEquipmentVisual(int32 SlotIndex)

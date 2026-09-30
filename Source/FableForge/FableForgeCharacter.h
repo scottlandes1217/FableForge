@@ -83,11 +83,11 @@ protected:
 
 	/** Camera shoulder offset while moving */
 	UPROPERTY(EditAnywhere, Category="Camera|Shoulder Follow")
-	FVector MovingCameraSocketOffset = FVector(0.0f, 70.0f, 80.0f);
+	FVector MovingCameraSocketOffset = FVector(0.0f, 0.0f, 80.0f);
 
 	/** Camera socket offset while idle */
 	UPROPERTY(EditAnywhere, Category="Camera|Shoulder Follow")
-	FVector IdleCameraSocketOffset = FVector(0.0f, 70.0f, 80.0f);
+	FVector IdleCameraSocketOffset = FVector(0.0f, 0.0f, 80.0f);
 
 	/** Camera interpolation speed for distance and turn-to-follow */
 	UPROPERTY(EditAnywhere, Category="Camera|Shoulder Follow", meta=(ClampMin=0.1, ClampMax=30.0))
@@ -140,6 +140,16 @@ protected:
 	float FirstPersonCameraArmLength = 0.0f;
 	FVector FirstPersonCameraSocketOffset = FVector(0.0f, 0.0f, 72.0f);
 
+	/** Hide owner-only character geometry once the first-person camera is close enough to enter it. */
+	UPROPERTY(EditAnywhere, Category="Camera|First Person", meta=(ClampMin=0.0, ClampMax=300.0, Units="cm"))
+	float FirstPersonVisibilityHideArmLength = 110.0f;
+
+	bool bFirstPersonOwnerVisibilityHidden = false;
+	bool bFirstPersonCameraSettingsApplied = false;
+	bool bCameraLagBeforeFirstPerson = true;
+	bool bCameraRotationLagBeforeFirstPerson = false;
+	double LastCameraUpdateRealTimeSeconds = -1.0;
+
 public:
 
 	/** Constructor */
@@ -170,6 +180,10 @@ protected:
 
 	/** Updates camera follow/shoulder behavior */
 	void UpdateShoulderCamera(float DeltaSeconds);
+
+	/** Applies reversible local-view camera and mesh presentation changes. */
+	void UpdateFirstPersonPresentation();
+	void SetFirstPersonOwnerVisibility(bool bHide);
 
 	/** Returns true if movement input or velocity indicates the character is actively moving */
 	bool IsMovementActive() const;

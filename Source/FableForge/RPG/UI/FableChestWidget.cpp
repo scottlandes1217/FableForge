@@ -26,13 +26,14 @@
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "FableForge.h"
 #include "RPG/UI/FableItemIconLibrary.h"
-#include "RPG/UI/FableBookStyle.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/StrongObjectPtr.h"
+#include "InputCoreTypes.h"
+#include "Input/Reply.h"
 
 namespace
 {
@@ -122,6 +123,8 @@ void UFableChestWidget::OpenForChest(AFFChestInteractable* InChest, AFableForgeP
 		PanelCanvasSlot->SetAutoSize(false);
 	}
 	RefreshItemRows();
+	ResetControllerSelection();
+	FocusControllerSelection();
 
 	UE_LOG(LogFableForge, Log, TEXT("Chest UI opened. ActiveChest=%s Visibility=%d"),
 		*GetNameSafe(ActiveChest),
@@ -130,6 +133,8 @@ void UFableChestWidget::OpenForChest(AFFChestInteractable* InChest, AFableForgeP
 
 void UFableChestWidget::CloseChest()
 {
+	ControllerSelectionIndex = INDEX_NONE;
+	RefreshControllerSelectionVisual();
 	ActiveChest = nullptr;
 	CachedController = nullptr;
 	SetVisibility(ESlateVisibility::Collapsed);
@@ -140,6 +145,136 @@ bool UFableChestWidget::IsChestOpen() const
 	return ActiveChest != nullptr && GetVisibility() != ESlateVisibility::Collapsed;
 }
 
+FReply UFableChestWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
+{
+	if (!IsChestOpen()) return Super::NativeOnPreviewKeyDown(Geometry, Event);
+
+	const FKey Key = Event.GetKey();
+	if (Key == EKeys::Gamepad_DPad_Left || Key == EKeys::Gamepad_DPad_Up)
+	{
+		if (!Event.IsRepeat()) MoveControllerSelection(-1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_DPad_Right || Key == EKeys::Gamepad_DPad_Down)
+	{
+		if (!Event.IsRepeat()) MoveControllerSelection(1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_FaceButton_Bottom)
+	{
+		if (!Event.IsRepeat()) ActivateControllerSelection();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_FaceButton_Top)
+	{
+		if (!Event.IsRepeat()) TakeAllItems();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_FaceButton_Right || Key == EKeys::Escape)
+	{
+		if (!Event.IsRepeat() && CachedController != nullptr) CachedController->CloseChest();
+		return FReply::Handled();
+	}
+	if (Key.IsGamepadKey())
+	{
+		// The chest is a modal controller surface. Consume unhandled gamepad
+		// buttons here so shoulders/triggers/thumbstick-click cannot reach the
+		// gameplay controller when viewport focus is restored or delayed.
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnPreviewKeyDown(Geometry, Event);
+}
+
+FReply UFableChestWidget::NativeOnAnalogValueChanged(const FGeometry& Geometry, const FAnalogInputEvent& Event)
+{
+	if (IsChestOpen() && Event.GetKey().IsGamepadKey())
+	{
+		return FReply::Handled();
+	}
+	return Super::NativeOnAnalogValueChanged(Geometry, Event);
+}
+
+void UFableChestWidget::MoveControllerSelection(int32 Direction)
+{
+	if (!IsChestOpen() || Direction == 0) return;
+
+	const int32 TargetCount = ControllerItemButtons.Num();
+	if (TargetCount == 0)
+	{
+		ControllerSelectionIndex = INDEX_NONE;
+		return;
+	}
+	const int32 PreviousIndex = ControllerSelectionIndex;
+	ControllerSelectionIndex = FMath::Clamp(ControllerSelectionIndex + (Direction < 0 ? -1 : 1), 0, TargetCount - 1);
+	if (ControllerSelectionIndex != PreviousIndex)
+	{
+		UE_LOG(LogFableForge, Display, TEXT("CHEST controller_focus index=%d target_count=%d"), ControllerSelectionIndex, TargetCount);
+		FocusControllerSelection();
+	}
+}
+
+void UFableChestWidget::ActivateControllerSelection()
+{
+	if (!IsChestOpen()) return;
+
+	if (ControllerItemButtons.IsValidIndex(ControllerSelectionIndex))
+	{
+		if (ControllerItemButtons[ControllerSelectionIndex] != nullptr)
+		{
+			ControllerItemButtons[ControllerSelectionIndex]->OnActionClicked.Broadcast(ControllerItemButtons[ControllerSelectionIndex]->ActionId);
+		}
+		else
+		{
+			UE_LOG(LogFableForge, Warning, TEXT("CHEST controller_activate rejected invalid_item index=%d"), ControllerSelectionIndex);
+		}
+		return;
+	}
+	UE_LOG(LogFableForge, Warning, TEXT("CHEST controller_activate rejected invalid_item index=%d"), ControllerSelectionIndex);
+}
+
+void UFableChestWidget::FocusControllerSelection()
+{
+	if (!IsChestOpen()) return;
+
+	UWidget* Target = nullptr;
+	if (ControllerSelectionIndex < ControllerItemButtons.Num()) Target = ControllerItemButtons[ControllerSelectionIndex];
+	else Target = nullptr;
+
+	if (Target != nullptr)
+	{
+		Target->SetKeyboardFocus();
+		RefreshControllerSelectionVisual();
+		UE_LOG(LogFableForge, Display, TEXT("CHEST controller_focus_target index=%d name=%s"), ControllerSelectionIndex, *GetNameSafe(Target));
+	}
+}
+
+void UFableChestWidget::ResetControllerSelection()
+{
+	ControllerSelectionIndex = ControllerItemButtons.Num() > 0 ? 0 : INDEX_NONE;
+	RefreshControllerSelectionVisual();
+}
+
+void UFableChestWidget::RefreshControllerSelectionVisual()
+{
+	for (UBorder* Indicator : ControllerItemSelectionIndicators)
+	{
+		if (Indicator != nullptr)
+		{
+			Indicator->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+	UBorder* SelectedIndicator = nullptr;
+	if (ControllerItemSelectionIndicators.IsValidIndex(ControllerSelectionIndex))
+	{
+		SelectedIndicator = ControllerItemSelectionIndicators[ControllerSelectionIndex];
+	}
+	if (SelectedIndicator != nullptr)
+	{
+		SelectedIndicator->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+}
+
 void UFableChestWidget::RebuildContent()
 {
 	if (WidgetTree == nullptr)
@@ -148,6 +283,7 @@ void UFableChestWidget::RebuildContent()
 	}
 
 	WidgetTree->RootWidget = nullptr;
+	ControllerItemSelectionIndicators.Reset();
 
 	RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ChestRootCanvas"));
 	WidgetTree->RootWidget = RootCanvas;
@@ -187,23 +323,6 @@ void UFableChestWidget::RebuildContent()
 		ContentSlot->SetOffsets(FMargin(0.0f));
 	}
 
-	HeaderText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ChestHeader"));
-	HeaderText->SetText(FText::FromString(TEXT("Chest")));
-	HeaderText->SetJustification(ETextJustify::Center);
-	HeaderText->SetColorAndOpacity(FSlateColor(FLinearColor(0.98f, 0.84f, 0.48f)));
-	{
-		FSlateFontInfo HeaderFont = HeaderText->GetFont();
-		HeaderFont.Size = 20;
-		HeaderText->SetFont(HeaderFont);
-	}
-	if (UCanvasPanelSlot* HeaderSlot = PanelLayout->AddChildToCanvas(HeaderText))
-	{
-		HeaderSlot->SetAnchors(FAnchors(0.5f, 0.09f));
-		HeaderSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-		HeaderSlot->SetAutoSize(true);
-		HeaderSlot->SetPosition(FVector2D(0.0f, -3.0f));
-	}
-
 	ItemGrid = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ItemGrid"));
 	ItemGrid->SetInnerSlotPadding(FVector2D(8.0f, 8.0f));
 	ItemGrid->SetHorizontalAlignment(HAlign_Center);
@@ -227,48 +346,16 @@ void UFableChestWidget::RebuildContent()
 		ActionRowSlot->SetPosition(FVector2D(0.0f, 5.0f));
 	}
 
-	UFableActionButton* TakeAllButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("TakeAllButton"));
-	TakeAllButton->InitializeAction(TEXT("take_all"));
-	FableBookStyle::ApplyButton(TakeAllButton, false);
-	TakeAllButton->OnActionClicked.AddDynamic(this, &UFableChestWidget::HandleTakeAllAction);
-	USizeBox* TakeAllSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("TakeAllSize"));
-	TakeAllSize->SetWidthOverride(136.0f);
-	TakeAllSize->SetHeightOverride(30.0f);
-	TakeAllSize->SetContent(TakeAllButton);
-	if (UHorizontalBoxSlot* TakeAllSlot = ActionRow->AddChildToHorizontalBox(TakeAllSize))
+	UTextBlock* ControlsHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ControlsHint"));
+	ControlsHint->SetText(FText::FromString(TEXT("△  Take All     ○  Close")));
+	ControlsHint->SetJustification(ETextJustify::Center);
+	ControlsHint->SetColorAndOpacity(FSlateColor(FLinearColor(0.82f, 0.68f, 0.48f, 0.72f)));
 	{
-		TakeAllSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+		FSlateFontInfo HintFont = ControlsHint->GetFont();
+		HintFont.Size = 13;
+		ControlsHint->SetFont(HintFont);
 	}
-
-	UTextBlock* TakeAllLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TakeAllLabel"));
-	TakeAllLabel->SetText(FText::FromString(TEXT("Take All")));
-	{
-		FSlateFontInfo LabelFont = TakeAllLabel->GetFont();
-		LabelFont.Size = 14;
-		TakeAllLabel->SetFont(LabelFont);
-	}
-	TakeAllLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.16f, 0.07f, 0.025f)));
-	TakeAllButton->AddChild(TakeAllLabel);
-
-	UFableActionButton* CloseButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("CloseButton"));
-	CloseButton->InitializeAction(TEXT("close"));
-	FableBookStyle::ApplyButton(CloseButton, true);
-	CloseButton->OnActionClicked.AddDynamic(this, &UFableChestWidget::HandleCloseAction);
-	USizeBox* CloseSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("CloseSize"));
-	CloseSize->SetWidthOverride(112.0f);
-	CloseSize->SetHeightOverride(30.0f);
-	CloseSize->SetContent(CloseButton);
-	ActionRow->AddChildToHorizontalBox(CloseSize);
-
-	UTextBlock* CloseLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("CloseLabel"));
-	CloseLabel->SetText(FText::FromString(TEXT("Close")));
-	{
-		FSlateFontInfo LabelFont = CloseLabel->GetFont();
-		LabelFont.Size = 14;
-		CloseLabel->SetFont(LabelFont);
-	}
-	CloseLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.98f, 0.88f, 0.68f)));
-	CloseButton->AddChild(CloseLabel);
+	ActionRow->AddChildToHorizontalBox(ControlsHint);
 
 	SetVisibility(ESlateVisibility::Collapsed);
 }
@@ -281,24 +368,14 @@ void UFableChestWidget::RefreshItemRows()
 	}
 
 	ItemGrid->ClearChildren();
+	ControllerItemButtons.Reset();
+	ControllerItemSelectionIndicators.Reset();
 
-	if (ActiveChest == nullptr)
-	{
-		if (HeaderText != nullptr)
-		{
-			HeaderText->SetText(FText::FromString(TEXT("Chest")));
-		}
-		return;
-	}
+	if (ActiveChest == nullptr) return;
 
 	EnsureItemDefinitionsLoaded();
 
 	const TArray<FFChestItemEntry>& Items = ActiveChest->GetChestItems();
-	if (HeaderText != nullptr)
-	{
-		HeaderText->SetText(FText::FromString(ActiveChest->GetChestDisplayName()));
-	}
-
 	if (Items.IsEmpty())
 	{
 		UTextBlock* EmptyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -310,11 +387,17 @@ void UFableChestWidget::RefreshItemRows()
 	for (int32 Index = 0; Index < Items.Num(); ++Index)
 	{
 		const FFChestItemEntry& ItemEntry = Items[Index];
+		if (ItemEntry.ItemId.IsEmpty() || ItemEntry.Quantity <= 0)
+		{
+			UE_LOG(LogFableForge, Warning, TEXT("CHEST skipped invalid item row index=%d item=%s quantity=%d"), Index, *ItemEntry.ItemId, ItemEntry.Quantity);
+			continue;
+		}
 
 		UFableActionButton* TileButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
 		TileButton->InitializeAction(FName(*FString::Printf(TEXT("take_%d"), Index)));
 		TileButton->SetToolTipText(FText::FromString(GetDisplayNameForItem(ItemEntry.ItemId)));
 		TileButton->OnActionClicked.AddDynamic(this, &UFableChestWidget::HandleTakeAction);
+		ControllerItemButtons.Add(TileButton);
 		TileButton->SetBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
 		TileButton->SetColorAndOpacity(FLinearColor::White);
 		{
@@ -345,7 +428,16 @@ void UFableChestWidget::RefreshItemRows()
 		TileSurface->SetBrushColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
 		TileSurface->SetPadding(FMargin(0));
 		TileBorder->SetContent(TileSurface);
-		TileSizeBox->SetContent(TileBorder);
+		UOverlay* TileOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+		TileOverlay->AddChildToOverlay(TileBorder);
+		UBorder* SelectionIndicator = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		SelectionIndicator->SetBrush(FSlateRoundedBoxBrush(
+			FLinearColor(0.98f, 0.84f, 0.48f, 0.18f), 4.0f,
+			FLinearColor(0.98f, 0.84f, 0.48f, 1.0f), 2.0f));
+		SelectionIndicator->SetVisibility(ESlateVisibility::Collapsed);
+		TileOverlay->AddChildToOverlay(SelectionIndicator);
+		ControllerItemSelectionIndicators.Add(SelectionIndicator);
+		TileSizeBox->SetContent(TileOverlay);
 
 		UOverlay* TileContent = WidgetTree->ConstructWidget<UOverlay>();
 		TileSurface->SetContent(TileContent);
@@ -513,6 +605,13 @@ void UFableChestWidget::HandleTakeAction(FName ActionId)
 	ActionString.RemoveFromStart(TEXT("take_"));
 
 	const int32 ItemIndex = FCString::Atoi(*ActionString);
+	if (!ActiveChest->GetChestItems().IsValidIndex(ItemIndex)
+		|| ActiveChest->GetChestItems()[ItemIndex].ItemId.IsEmpty()
+		|| ActiveChest->GetChestItems()[ItemIndex].Quantity <= 0)
+	{
+		UE_LOG(LogFableForge, Warning, TEXT("CHEST take rejected invalid_item index=%d"), ItemIndex);
+		return;
+	}
 	ActiveChest->TakeOneAtIndex(ItemIndex, CachedController);
 
 	if (ActiveChest != nullptr && ActiveChest->GetChestItems().IsEmpty())
@@ -529,12 +628,19 @@ void UFableChestWidget::HandleTakeAction(FName ActionId)
 	}
 
 	RefreshItemRows();
+	ResetControllerSelection();
+	FocusControllerSelection();
 }
 
 void UFableChestWidget::HandleTakeAllAction(FName ActionId)
 {
 	if (ActiveChest == nullptr || CachedController == nullptr)
 	{
+		return;
+	}
+	if (ActiveChest->GetChestItems().IsEmpty())
+	{
+		UE_LOG(LogFableForge, Display, TEXT("CHEST take_all rejected empty"));
 		return;
 	}
 
@@ -554,6 +660,13 @@ void UFableChestWidget::HandleTakeAllAction(FName ActionId)
 	}
 
 	RefreshItemRows();
+	ResetControllerSelection();
+	FocusControllerSelection();
+}
+
+void UFableChestWidget::TakeAllItems()
+{
+	HandleTakeAllAction(TEXT("take_all"));
 }
 
 void UFableChestWidget::HandleCloseAction(FName ActionId)

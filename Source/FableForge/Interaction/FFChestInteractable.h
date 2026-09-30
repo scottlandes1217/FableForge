@@ -45,6 +45,6 @@ protected:
 	FString ChestDisplayName = TEXT("Chest");
 
 private:
-	bool TryAddItemToInventory(APlayerController* LootingController, const FString& ItemId) const;
+	bool TryAddItemToInventory(APlayerController* LootingController, const FString& ItemId, int32 Quantity = 1) const;
 	void CleanupEmptyEntries();
 };

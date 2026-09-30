@@ -14,9 +14,12 @@ class UFableTransparentViewport : public UViewport
  GENERATED_BODY()
 public:
  virtual void ReleaseSlateResources(bool bReleaseChildren) override;
+ /** Configure before TakeWidget. Render above display resolution for small portraits. */
+ void SetResolutionScale(float Scale) { ResolutionScale = FMath::Clamp(Scale, 1.f, 3.f); }
 protected:
  virtual TSharedRef<SWidget> RebuildWidget() override;
  virtual void SynchronizeProperties() override;
 private:
  TSharedPtr<SWidget> Compositor;
+ float ResolutionScale = 1.f;
 };

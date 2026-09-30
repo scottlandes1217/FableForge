@@ -102,6 +102,17 @@ void UFablePartyHudWidget::NativeDestruct()
 void UFablePartyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (auto* Controller = Cast<AFableForgePlayerController>(GetOwningPlayer()); Controller && PlayerCosmicBar)
+	{
+		const float Maximum = FMath::Max(1.f, Controller->GetMaxCosmicEnergy());
+		PlayerCosmicBar->SetPercent(Controller->GetCosmicEnergy()/Maximum);
+		const int32 Display = FMath::CeilToInt(Controller->GetCosmicEnergy());
+		if (Display != LastCosmicDisplay && PlayerCosmicLabel)
+		{
+			PlayerCosmicLabel->SetText(FText::FromString(FString::Printf(TEXT("Cosmic  %d / %d"),Display,FMath::RoundToInt(Maximum))));
+			LastCosmicDisplay = Display;
+		}
+	}
 	PortraitRefreshTime += InDeltaTime;
 	if (PortraitRefreshTime >= .25f)
 	{
@@ -148,6 +159,25 @@ void UFablePartyHudWidget::CloseModal()
 	PendingDeleteActionBarId.Invalidate();
 	PendingLoadCharacterId.Invalidate();
 	RebuildModal();
+}
+
+void UFablePartyHudWidget::SetInteractionFocus(bool bVisible, bool bFocused)
+{
+	bInteractionVisible = bVisible;
+	bInteractionFocused = bFocused;
+	UpdateInteractionFocusVisuals();
+}
+
+void UFablePartyHudWidget::UpdateInteractionFocusVisuals()
+{
+	if (InteractionReticle == nullptr || InteractionHint == nullptr)
+	{
+		return;
+	}
+
+	// Focus is communicated only through the world's object outline.
+	InteractionReticle->SetVisibility(ESlateVisibility::Collapsed);
+	InteractionHint->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void UFablePartyHudWidget::SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget)
@@ -408,65 +438,38 @@ void UFablePartyHudWidget::Rebuild()
 		PartySlot->SetAnchors(FAnchors(0.0f, 0.0f));
 		PartySlot->SetAlignment(FVector2D(0.0f, 0.0f));
 		PartySlot->SetPosition(FVector2D(0.0f, 0.0f));
-		PartySlot->SetSize(FVector2D(350.0f, 340.0f));
+		PartySlot->SetSize(FVector2D(520.0f, 240.0f));
 	}
 
 	PartyMembersBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("PartyMembers"));
 	PartyPanel->SetContent(PartyMembersBox);
 
-	UFableActionButton* SettingsButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("SettingsButton"));
-	SettingsButton->InitializeAction(ToggleSettingsAction);
-	SettingsButton->OnActionClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionClicked);
-	static TStrongObjectPtr<UTexture2D> SettingsTexture;
-	if (!SettingsTexture.IsValid()) SettingsTexture.Reset(FImageUtils::ImportFileAsTexture2D(
-		FPaths::ProjectContentDir() / TEXT("Slate/Textures/SettingsEmblem.png")));
-	FSlateBrush SettingsBrush;
-	SettingsBrush.SetResourceObject(SettingsTexture.Get());
-	SettingsBrush.ImageSize = FVector2D(64, 64);
-	SettingsBrush.DrawAs = ESlateBrushDrawType::Image;
-	FButtonStyle SettingsStyle;
-	SettingsStyle.SetNormal(SettingsBrush);
-	SettingsBrush.TintColor = FLinearColor(1.15f, 1.1f, 1.f);
-	SettingsStyle.SetHovered(SettingsBrush);
-	SettingsBrush.TintColor = FLinearColor(.72f, .68f, .60f);
-	SettingsStyle.SetPressed(SettingsBrush);
-	SettingsButton->SetStyle(SettingsStyle);
-	SettingsButton->SetToolTipText(FText::FromString(TEXT("Settings")));
-
-	if (UCanvasPanelSlot* SettingsButtonSlot = Root->AddChildToCanvas(SettingsButton))
+	// Settings and journal icons were removed from the gameplay HUD. The existing
+	// modal actions remain available to other callers while the journal owns entry.
+	InteractionReticle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InteractionReticle"));
+	InteractionReticle->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 22));
+	InteractionReticle->SetColorAndOpacity(FSlateColor(FLinearColor(0.93f, 0.88f, 0.73f, 0.85f)));
+	InteractionReticle->SetJustification(ETextJustify::Center);
+	if (UCanvasPanelSlot* ReticleSlot = Root->AddChildToCanvas(InteractionReticle))
 	{
-		SettingsButtonSlot->SetAnchors(FAnchors(1.0f, 0.0f));
-		SettingsButtonSlot->SetAlignment(FVector2D(1.0f, 0.0f));
-		SettingsButtonSlot->SetPosition(FVector2D(-12.0f, 10.0f));
-		SettingsButtonSlot->SetSize(FVector2D(64.0f, 64.0f));
+		ReticleSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+		ReticleSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+		ReticleSlot->SetPosition(FVector2D(0.0f, -3.0f));
+		ReticleSlot->SetSize(FVector2D(28.0f, 28.0f));
 	}
-
-	UFableActionButton* CharacterButton = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass(), TEXT("CharacterButton"));
-	CharacterButton->InitializeAction(OpenCharacterMenuAction);
-	CharacterButton->OnActionClicked.AddDynamic(this, &UFablePartyHudWidget::HandleActionClicked);
-	static TStrongObjectPtr<UTexture2D> JournalTexture;
-	if (!JournalTexture.IsValid())
-		JournalTexture.Reset(FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir() / TEXT("Slate/Textures/JournalUpright.png")));
-	FSlateBrush BookBrush;
-	BookBrush.SetResourceObject(JournalTexture.Get());
-	BookBrush.ImageSize = FVector2D(104.f, 104.f);
-	BookBrush.DrawAs = ESlateBrushDrawType::Image;
-	FButtonStyle BookStyle;
-	BookStyle.SetNormal(BookBrush);
-	BookBrush.TintColor = FLinearColor(1.18f, 1.13f, 1.04f);
-	BookStyle.SetHovered(BookBrush);
-	BookBrush.TintColor = FLinearColor(0.72f, 0.70f, 0.65f);
-	BookStyle.SetPressed(BookBrush);
-	CharacterButton->SetStyle(BookStyle);
-	CharacterButton->SetToolTipText(FText::FromString(TEXT("Character (I)")));
-
-	if (UCanvasPanelSlot* CharacterButtonSlot = Root->AddChildToCanvas(CharacterButton))
+	InteractionHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InteractionHint"));
+	InteractionHint->SetText(FText::FromString(TEXT("△  Interact")));
+	InteractionHint->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	InteractionHint->SetColorAndOpacity(FSlateColor(UiTextColor));
+	InteractionHint->SetJustification(ETextJustify::Center);
+	if (UCanvasPanelSlot* HintSlot = Root->AddChildToCanvas(InteractionHint))
 	{
-		CharacterButtonSlot->SetAnchors(FAnchors(1.0f, 1.0f));
-		CharacterButtonSlot->SetAlignment(FVector2D(1.0f, 1.0f));
-		CharacterButtonSlot->SetPosition(FVector2D(-16.0f, -16.0f));
-		CharacterButtonSlot->SetSize(FVector2D(88.0f, 100.0f));
+		HintSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+		HintSlot->SetAlignment(FVector2D(0.5f, 0.0f));
+		HintSlot->SetPosition(FVector2D(0.0f, 14.0f));
+		HintSlot->SetSize(FVector2D(130.0f, 20.0f));
 	}
+	UpdateInteractionFocusVisuals();
 
 	ModalBackdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ModalBackdrop"));
 	ModalBackdrop->SetBrushColor(UiBackdropColor);
@@ -537,9 +540,12 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		if (!CardTexture.IsValid()) CardTexture.Reset(FImageUtils::ImportFileAsTexture2D(
 			FPaths::ProjectContentDir() / TEXT("Slate/Textures/PortraitFrame.png")));
 		USizeBox* CardBounds = WidgetTree->ConstructWidget<USizeBox>();
-		CardBounds->SetWidthOverride(350.f);
-		CardBounds->SetHeightOverride(138.f);
-		UBorder* Card = Frame(FLinearColor::White, FMargin(20.f, 33.f, 20.f, 28.f));
+		CardBounds->SetWidthOverride(500.f);
+		CardBounds->SetHeightOverride(190.f);
+		// The frame PNG includes transparent ornament space. Its usable leather
+		// opening is roughly y=46..150 at this 500x190 size, not the full image.
+		// Place the entire 96px content row inside that opening with a safe inset.
+		UBorder* Card = Frame(FLinearColor::White, FMargin(32.f, 50.f, 32.f, 44.f));
 		CardBounds->SetContent(Card);
 		FSlateBrush CardBrush;
 		CardBrush.SetResourceObject(CardTexture.Get());
@@ -552,19 +558,17 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		CardContent->AddChildToVerticalBox(CardRow);
 
 		USizeBox* PortraitSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		PortraitSizeBox->SetWidthOverride(72.f);
-		PortraitSizeBox->SetHeightOverride(77.f);
+		PortraitSizeBox->SetWidthOverride(96.f);
+		PortraitSizeBox->SetHeightOverride(96.f);
 		if (UHorizontalBoxSlot* PortraitSlot = CardRow->AddChildToHorizontalBox(PortraitSizeBox))
 		{
-			PortraitSlot->SetPadding(FMargin(0, 0, 12, 0));
+			PortraitSlot->SetPadding(FMargin(0, 0, 16, 0));
 			PortraitSlot->SetVerticalAlignment(VAlign_Center);
 		}
-		UBorder* PortraitMetal = Frame(FLinearColor(0.30f, 0.20f, 0.10f, 1), FMargin(1));
-		PortraitSizeBox->SetContent(PortraitMetal);
-		UBorder* PortraitRecess = Frame(FLinearColor(0.018f, 0.014f, 0.010f, 1), FMargin(0));
-		PortraitMetal->SetContent(PortraitRecess);
 		UOverlay* PortraitOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
-		PortraitRecess->SetContent(PortraitOverlay);
+		// The card texture is the HUD's decorative frame. Do not add a second
+		// metal/recess border around the character portrait itself.
+		PortraitSizeBox->SetContent(PortraitOverlay);
 		UImage* PortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		PortraitOverlay->AddChildToOverlay(PortraitImage);
 		UTextBlock* PortraitText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -579,11 +583,12 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		if (bPlayerCard)
 		{
 			PortraitViewport = WidgetTree->ConstructWidget<UFableTransparentViewport>();
+			PortraitViewport->SetResolutionScale(2.f);
 			PortraitViewport->TakeWidget();
 			PortraitViewport->SetEnableAdvancedFeatures(false);
 			PortraitViewport->SetBackgroundColor(FLinearColor::Black);
-			PortraitViewport->SetLightIntensity(.22f);
-			PortraitViewport->SetSkyIntensity(.12f);
+			PortraitViewport->SetLightIntensity(.65f);
+			PortraitViewport->SetSkyIntensity(.50f);
 			PortraitViewport->SetVisibility(ESlateVisibility::HitTestInvisible);
 			UOverlaySlot* StudioSlot = PortraitOverlay->AddChildToOverlay(PortraitViewport);
 			StudioSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -602,20 +607,20 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		NameText->SetText(FText::FromString(Name));
 		NameText->SetColorAndOpacity(FSlateColor(UiTextColor));
-		NameText->SetFont(FableBookStyle::Font(16, true));
+		NameText->SetFont(FableBookStyle::Font(18, true));
 		NameText->SetJustification(ETextJustify::Center);
 		NameText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
 		NameText->SetShadowOffset(FVector2D(0, 1));
 		NameText->SetShadowColorAndOpacity(FLinearColor::Black);
 		USizeBox* NameBounds = WidgetTree->ConstructWidget<USizeBox>();
-		NameBounds->SetHeightOverride(22.f);
+		NameBounds->SetHeightOverride(21.f);
 		NameBounds->SetContent(NameText);
 		UVerticalBoxSlot* NameSlot = InfoColumn->AddChildToVerticalBox(NameBounds);
 		NameSlot->SetHorizontalAlignment(HAlign_Fill);
 		NameSlot->SetPadding(FMargin(0, 0, 0, 3));
 		if (bPlayerCard) PlayerNameText = NameText;
 
-		auto AddStatBar = [&](const TCHAR* Label, float Percent, const FLinearColor& FillColor, TObjectPtr<UProgressBar>* OutPlayerBarRef, bool bSmall = false)
+		auto AddStatBar = [&](const TCHAR* Label, float Percent, const FLinearColor& FillColor, TObjectPtr<UProgressBar>* OutPlayerBarRef, bool bSmall = false, TObjectPtr<UTextBlock>* OutLabel = nullptr)
 		{
 			USizeBox* BarSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			BarSizeBox->SetHeightOverride(bSmall ? 3.f : 19.f);
@@ -653,6 +658,7 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 				UOverlaySlot* LabelSlot = BarOverlay->AddChildToOverlay(BarLabel);
 				LabelSlot->SetHorizontalAlignment(HAlign_Center);
 				LabelSlot->SetVerticalAlignment(VAlign_Center);
+				if (OutLabel) *OutLabel = BarLabel;
 			}
 			if (OutPlayerBarRef) *OutPlayerBarRef = Bar;
 		};
@@ -660,6 +666,8 @@ void UFablePartyHudWidget::RebuildPartyMembers(const FFableCharacterProfile& Act
 		if (bPlayerCard)
 		{
 			AddStatBar(*PointsLabel(ManaPct, MaxMana), MaxMana > 0 ? ManaPct : 0.f, UiManaColor, &PlayerManaBar);
+			AddStatBar(TEXT("Cosmic"), 1.f, FLinearColor(.42f,.20f,.72f), &PlayerCosmicBar, false, &PlayerCosmicLabel);
+			LastCosmicDisplay = INDEX_NONE;
 			AddStatBar(TEXT(""), ExperiencePct, UiExperienceColor, &PlayerExperienceBar, true);
 		}
 	};
@@ -724,6 +732,9 @@ void UFablePartyHudWidget::UpdatePlayerPortrait()
 	USkeletalMeshComponent* Body = NewObject<USkeletalMeshComponent>(PortraitSubject);
 	PortraitSubject->SetRootComponent(Body);
 	Body->SetSkeletalMesh(Source->GetSkeletalMeshAsset());
+	// The gameplay mesh's imported basis differs from the standalone menu
+	// preview. Keep the established HUD orientation until a runtime bone-axis
+	// capture proves this transform can be removed.
 	Body->SetRelativeRotation(FRotator(0, -90, 0));
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Body->RegisterComponent();
@@ -733,18 +744,29 @@ void UFablePartyHudWidget::UpdatePlayerPortrait()
 		To->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		To->SetCastShadow(false);
 		if (USkeletalMeshComponent* Skinned = Cast<USkeletalMeshComponent>(To))
+		{
+			// The 96px portrait viewport otherwise permits an inexpensive lower
+			// LOD than the live actor, which reads as blocky in the face/armor.
+			Skinned->SetForcedLOD(1);
 			for (const auto& Morph : Profile.BodyMorphs)
 				if (Profile.Gender != EFableGender::Female || Morph.Key != TEXT("FemaleBody"))
 					Skinned->SetMorphTarget(Morph.Key, Morph.Value);
+		}
 	};
 	CopyAppearance(Source, Body);
-	if (UAnimSequence* Idle = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/PlayableCharacter/Anims/Unarmed/MM_Idle.MM_Idle")))
+	if (UAnimSequence* Idle = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/PlayableCharacter/Anims/Unarmed/MM_Idle.MM_Idle"));
+		Idle && Idle->GetSkeleton() && Idle->GetSkeleton()->IsCompatibleMesh(Body->GetSkeletalMeshAsset()))
 	{
-		Body->PlayAnimation(Idle, false);
+		// Freeze a valid gameplay idle pose for a clean, repeatable portrait. An
+		// incompatible animation would leave the copied mesh in a distorted pose.
+		Body->PlayAnimation(Idle, true);
 		Body->TickAnimation(0.f, false);
 		Body->RefreshBoneTransforms();
+		Body->UpdateBounds();
 		Body->bPauseAnims = true;
 	}
+	TArray<UMeshComponent*> PortraitMeshes;
+	PortraitMeshes.Add(Body);
 	int32 CopiedAttachments = 0;
 	for (UMeshComponent* From : Attachments)
 	{
@@ -769,17 +791,61 @@ void UFablePartyHudWidget::UpdatePlayerPortrait()
 		if (!Copy) continue;
 		Copy->SetRelativeTransform(From->GetRelativeTransform());
 		CopyAppearance(From, Copy);
+		Copy->UpdateBounds();
+		PortraitMeshes.Add(Copy);
 		++CopiedAttachments;
 	}
-	// A chest-up crop leaves room for hair/head-size variations and visible armor.
+	// Derive the crop from the posed source bounds and copied attachments. Using the
+	// combined bounds keeps helmets/hats in frame while the measured head-to-chest
+	// span makes the actual face the focal point instead of a small full-body bust.
 	const float HeadScale = 1.f + .30f * Profile.BodyMorphs.FindRef(TEXT("HeadSize"));
-	const FVector Focus = Body->GetSocketLocation(TEXT("head")) + FVector(0, 0, -5.f);
-	const FVector Camera = Focus + FVector(40.f * HeadScale, -3.f, 1.f);
+	FBox FramingBox(ForceInit);
+	for (UMeshComponent* Mesh : PortraitMeshes)
+	{
+		if (Mesh != nullptr)
+		{
+			FramingBox += Mesh->Bounds.GetBox();
+		}
+	}
+	const float BoundsMinZ = FramingBox.IsValid ? FramingBox.Min.Z : Body->Bounds.Origin.Z - Body->Bounds.BoxExtent.Z;
+	const float BoundsMaxZ = FramingBox.IsValid ? FramingBox.Max.Z : Body->Bounds.Origin.Z + Body->Bounds.BoxExtent.Z;
+	const float BoundsHeight = FMath::Max(1.0f, BoundsMaxZ - BoundsMinZ);
+	const int32 HeadBoneIndex = Body->GetBoneIndex(TEXT("head"));
+	FVector Head = HeadBoneIndex != INDEX_NONE
+		? Body->GetBoneLocation(TEXT("head"), EBoneSpaces::WorldSpace)
+		: FVector::ZeroVector;
+	// A preview mesh can report its head socket before the copied pose has fully
+	// refreshed. Fall back to the post-pose bounds rather than aiming at the actor
+	// origin, which produces a full-body silhouette in the portrait card.
+	if (HeadBoneIndex == INDEX_NONE || !FMath::IsFinite(Head.Z) || Head.Z < BoundsMinZ || Head.Z > BoundsMaxZ)
+	{
+		Head = FVector(Body->Bounds.Origin.X, Body->Bounds.Origin.Y, BoundsMinZ + BoundsHeight * 0.88f);
+	}
+	// Include shoulders and a little chest, but stop well above the waist.
+	const float PortraitBottomZ = FMath::Max(BoundsMinZ, Head.Z - BoundsHeight * 0.15f);
+	const float PortraitTopZ = BoundsMaxZ;
+	const float PortraitHeight = FMath::Max(1.0f, PortraitTopZ - PortraitBottomZ);
+	// Use a level, front-on camera. The previous small Y/Z offsets made the
+	// portrait read as a three-quarter/looking-down shot and the short distance
+	// clipped hats and shoulder armor against the inner frame.
+	const FVector Focus = FVector(Head.X, Head.Y, PortraitBottomZ + PortraitHeight * 0.50f);
+	const float FramingSpan = PortraitHeight * HeadScale;
+	const float CameraDistance = FMath::Clamp(FramingSpan * .75f, 32.f, 80.f);
+	const FVector Camera = Focus + FVector(CameraDistance, 0.f, 0.f);
 	PortraitViewport->SetViewLocation(Camera);
-	PortraitViewport->SetViewRotation((Focus - Camera).Rotation());
+	PortraitViewport->SetViewRotation(FRotator(0.f, 180.f, 0.f));
+	UE_LOG(LogFableForge, Log, TEXT("Portrait framing mesh=%s headBone=%d boundsMinZ=%.1f boundsMaxZ=%.1f head=%s focus=%s portraitHeight=%.1f cameraDistance=%.1f"),
+		*GetNameSafe(Source->GetSkeletalMeshAsset()),
+		HeadBoneIndex,
+		BoundsMinZ,
+		BoundsMaxZ,
+		*Head.ToString(),
+		*Focus.ToString(),
+		PortraitHeight,
+		CameraDistance);
 	UPointLightComponent* Key = NewObject<UPointLightComponent>(PortraitSubject);
 	Key->SetIntensityUnits(ELightUnits::Lumens);
-	Key->SetIntensity(22.f);
+	Key->SetIntensity(80.f);
 	Key->SetAttenuationRadius(520.f);
 	Key->SetSourceRadius(90.f);
 	Key->SetSoftSourceRadius(120.f);
@@ -1082,8 +1148,6 @@ void UFablePartyHudWidget::RebuildModal()
 		TitleText->SetText(FText::FromString(TEXT("Settings")));
 		AddModalButton(ModalBox, TEXT("Save Game"), OpenSaveAction);
 		AddModalButton(ModalBox, TEXT("Load Game"), OpenLoadAction);
-		AddModalButton(ModalBox, TEXT("Add Horizontal Action Bar"), AddHorizontalActionBarAction);
-		AddModalButton(ModalBox, TEXT("Add Vertical Action Bar"), AddVerticalActionBarAction);
 		AddModalButton(ModalBox, TEXT("Quit to Main Menu"), QuitToMainMenuAction);
 		return;
 	}

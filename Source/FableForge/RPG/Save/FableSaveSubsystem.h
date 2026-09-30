@@ -42,8 +42,18 @@ public:
 	void GetSaveSlots(const FGuid& CharacterId, TArray<FFableSaveSlotMeta>& OutSlots) const;
 	void SetCompanionsForCharacter(const FGuid& CharacterId, const TArray<FString>& CompanionNames);
 	bool TryGetActiveInventory(TArray<FString>& OutInventorySlots, TArray<FString>& OutEquippedSlots) const;
+	bool TryGetActiveInventoryQuantities(TArray<int32>& OutInventoryQuantities) const;
 	bool SetActiveInventory(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots);
+	bool SetActiveInventory(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots, const TArray<int32>& InInventoryQuantities);
+	int32 AddActiveInventoryItem(const FString& ItemId, int32 Quantity = 1);
+	bool IsItemStackable(const FString& ItemId) const;
+	/** Consumes one exact active inventory slot after applying a supported consumable effect. */
+	bool ConsumeActiveInventoryItem(int32 InventorySlot);
+	/** Restores active profile health by a normalized fraction without consuming inventory. */
+	bool RestoreActiveHealth(float HealthFraction);
 	bool TryGetActiveLearnedSkills(TArray<FString>& OutLearnedSkills) const;
+	FString GetActiveCosmicSkillId() const;
+	bool SetActiveCosmicSkillId(const FString& SkillId);
 	bool TryGetActiveActionBars(TArray<FFableActionBarData>& OutActionBars) const;
 	bool SetActiveActionBars(const TArray<FFableActionBarData>& InActionBars);
 	bool TryGetActiveQuickWheelPages(TArray<FFableQuickWheelPageData>& OutPages) const;
@@ -61,6 +71,7 @@ private:
 	int32 FindCharacterIndex(const FGuid& CharacterId) const;
 	void EnsureCharacterSlots(FFableCharacterProfile& Profile) const;
 	void EnsureInventoryData(FFableCharacterProfile& Profile) const;
+	void EnsureStarterSkills(FFableCharacterProfile& Profile) const;
 	void EnsureActionBarsData(FFableCharacterProfile& Profile) const;
 	FString MakeSlotName(const FGuid& CharacterId, int32 SlotIndex) const;
 	FString MakeGuidToken(const FGuid& CharacterId) const;

@@ -72,7 +72,13 @@ public:
 	TArray<FString> InventoryItems;
 
 	UPROPERTY()
+	TArray<int32> InventoryQuantities;
+
+	UPROPERTY()
 	TArray<FString> LearnedSkills;
+
+	UPROPERTY()
+	FString EquippedCosmicSkillId = TEXT("slow_time");
 
 	UPROPERTY()
 	TArray<FString> BuildQueue;

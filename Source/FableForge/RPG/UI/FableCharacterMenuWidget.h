@@ -58,6 +58,8 @@ private:
 	void Rebuild();
 	void RebuildTabContent();
 	void BuildInventoryTab();
+	void BuildSettingsTab();
+	void RefreshSettingsSelection();
 	void BuildSimpleInfoTab(const FString& Header, const FString& Body);
 	void LoadInventoryFromSave();
 	void LoadSkillDefinitionsFromDataTable();
@@ -78,6 +80,16 @@ private:
 	void QueueTabContentRebuild();
 	void PerformQueuedTabContentRebuild();
 	void RefreshControllerSelection();
+	void InspectSelectedItem();
+	void OpenItemActions();
+	void CloseItemActions();
+	void RebuildItemActions();
+	void RefreshItemActionSelection();
+	bool HasItemModal() const;
+	FString SelectedInventoryItem(bool& bEquipment, int32& Index) const;
+	UFUNCTION() void RestoreJournalFocus();
+	UFUNCTION() void HandleInventorySlotHovered(FName SlotId, const FString& PayloadId);
+	UFUNCTION() void HandleInventorySlotContext(FName SlotId, const FString& PayloadId);
 
 	UFUNCTION()
 	void HandleInventorySlotDropped(FName FromSlotId, FName ToSlotId, const FString& PayloadId, const FString& PayloadLabel);
@@ -98,19 +110,37 @@ private:
 private:
 	FName ActiveTab = TEXT("inventory");
 	FName ActiveInventoryCategory = TEXT("cat_all");
-	FName ActiveSkillCategory = TEXT("skillcat_all");
+	FName ActiveSkillCategory = TEXT("skillcat_fire");
 	bool bInventoryLoaded = false;
 	bool bItemDefinitionsLoaded = false;
 	bool bSkillDefinitionsLoaded = false;
 	bool bTabContentRebuildQueued = false;
 	TArray<FString> InventorySlots;
+	TArray<int32> InventoryQuantities;
 	TArray<FString> EquippedSlots;
 	FString ActiveSkillDetailsId;
 	FString ContextSkillId;
 	bool bSkillContextVisible = false;
 	FString InventorySaveWarning;
+	FName SettingsPage;
+	FString SettingsStatus;
+	int32 SettingsSelection = 0;
+	TArray<FName> SettingsActions;
+	TMap<FName, int32> SettingsSlots;
+	FGuid SettingsLoadCharacter;
+	UPROPERTY(Transient) TArray<TObjectPtr<class UFableActionButton>> SettingsButtons;
+	UPROPERTY(Transient) TObjectPtr<class UScrollBox> SettingsScroll;
 	FName ControllerSlotId;
 	FName ControllerPickedSlot;
+	FName ItemActionSource;
+	FString ItemActionIdentity;
+	FString ItemActionStatus;
+	bool bConfirmItemDrop = false;
+	int32 ItemActionSelection = 0;
+	TArray<FName> ItemActionIds;
+	UPROPERTY(Transient) TObjectPtr<UBorder> ItemActionsLayer;
+	UPROPERTY(Transient) TArray<TObjectPtr<UFableActionButton>> ItemActionButtons;
+	UPROPERTY(Transient) TObjectPtr<class UFableItemInspectWidget> ItemInspect;
 	bool bControllerSelectionVisible = false;
 	TArray<int32> ControllerVisibleInventory;
 	TArray<FName> OrderedSkillCategories;

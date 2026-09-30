@@ -56,7 +56,14 @@ enum class EFableSkillCategory : uint8
 	Shield,
 	Support,
 	Movement,
-	Utility
+	Utility,
+	// Elemental/time schools are appended to preserve serialized values of the
+	// original journal categories. These are the canonical starter school tabs.
+	Fire,
+	Water,
+	Earth,
+	Air,
+	TimeManipulation
 };
 
 UENUM(BlueprintType)
@@ -406,3 +413,106 @@ struct FFableSkillDiscoveryRuleTableRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Notes")
 	FString Notes;
 };
+
+struct FFableStarterSkillDefinition
+{
+	const TCHAR* SkillId = TEXT("");
+	EFableSkillCategory School = EFableSkillCategory::Basic;
+};
+
+/** Shared starter-school registry for save seeding, runtime fallback, and UI tabs. */
+namespace FableSkillCatalog
+{
+	inline const TArray<FFableStarterSkillDefinition>& GetStarterSkills()
+	{
+		static const TArray<FFableStarterSkillDefinition> StarterSkills = {
+			{ TEXT("fireball"), EFableSkillCategory::Fire },
+			{ TEXT("fire_tornado"), EFableSkillCategory::Fire },
+			{ TEXT("heal_wave"), EFableSkillCategory::Water },
+			{ TEXT("stone_spike"), EFableSkillCategory::Earth },
+			{ TEXT("gust"), EFableSkillCategory::Air },
+			{ TEXT("time_step"), EFableSkillCategory::TimeManipulation },
+			{ TEXT("slow_time"), EFableSkillCategory::TimeManipulation }
+		};
+		return StarterSkills;
+	}
+
+	inline const TCHAR* GetStarterSkillId(EFableSkillCategory School)
+	{
+		for (const FFableStarterSkillDefinition& Starter : GetStarterSkills())
+		{
+			if (Starter.School == School) return Starter.SkillId;
+		}
+		return TEXT("");
+	}
+
+	inline bool IsStarterSkillId(const FString& SkillId)
+	{
+		for (const FFableStarterSkillDefinition& Starter : GetStarterSkills())
+		{
+			if (SkillId.Equals(Starter.SkillId, ESearchCase::IgnoreCase)) return true;
+		}
+		return false;
+	}
+
+	inline bool IsAssignableSkillId(const FString& SkillId)
+	{
+		return !SkillId.Equals(TEXT("basic_attack"), ESearchCase::IgnoreCase);
+	}
+
+	/** Builds a starter definition when an editor-generated DataTable is absent. */
+	inline bool TryGetStarterSkillDefinition(const FString& SkillId, FFableSkillDefinitionTableRow& OutDefinition)
+	{
+		OutDefinition = FFableSkillDefinitionTableRow();
+		if (SkillId.Equals(TEXT("fireball"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("fireball"); OutDefinition.DisplayName = TEXT("Fireball"); OutDefinition.Summary = TEXT("Explosive fire projectile");
+			OutDefinition.Description = TEXT("Hurls a fire projectile that damages the impact area."); OutDefinition.Category = EFableSkillCategory::Fire;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::TargetUnit; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 1200.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst"); OutDefinition.TagsCsv = TEXT("fire|projectile|spell");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("fire_tornado"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("fire_tornado"); OutDefinition.DisplayName = TEXT("Fire Tornado"); OutDefinition.Summary = TEXT("A spiraling vortex of flame");
+			OutDefinition.Description = TEXT("Shapes fire into a vortex at the aimed ground point."); OutDefinition.Category = EFableSkillCategory::Fire;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 1000.f; OutDefinition.RadiusUnits = 360.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst|eff_burn_dot|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("fire|wind|spell");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("heal_wave"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("heal_wave"); OutDefinition.DisplayName = TEXT("Heal Wave"); OutDefinition.Summary = TEXT("Starter healing pulse");
+			OutDefinition.Description = TEXT("Restores health in a small area around the target point."); OutDefinition.Category = EFableSkillCategory::Water;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 500.f; OutDefinition.RadiusUnits = 220.f; OutDefinition.EffectIdsCsv = TEXT("eff_heal_wave_pulse"); OutDefinition.TagsCsv = TEXT("water|heal|support");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("stone_spike"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("stone_spike"); OutDefinition.DisplayName = TEXT("Stone Spike"); OutDefinition.Summary = TEXT("Earth spike from ground");
+			OutDefinition.Description = TEXT("Raises a damaging spike from the selected ground point."); OutDefinition.Category = EFableSkillCategory::Earth;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 900.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_stone_spike_upthrust"); OutDefinition.TagsCsv = TEXT("earth|ground|spell");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("gust"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("gust"); OutDefinition.DisplayName = TEXT("Gust"); OutDefinition.Summary = TEXT("Directional wind burst");
+			OutDefinition.Description = TEXT("Pushes nearby enemies and objects away from the target point."); OutDefinition.Category = EFableSkillCategory::Air;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 850.f; OutDefinition.RadiusUnits = 260.f; OutDefinition.EffectIdsCsv = TEXT("eff_gust_push|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("air|wind|control");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("time_step"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("time_step"); OutDefinition.DisplayName = TEXT("Time Step"); OutDefinition.Summary = TEXT("Teleport to a chosen destination");
+			OutDefinition.Description = TEXT("Equip with L1, then press L3 to choose a destination up to 6.5 m away. Move the cursor with the right stick. Press X to teleport, or Circle to cancel."); OutDefinition.Category = EFableSkillCategory::TimeManipulation;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 650.f; OutDefinition.EffectIdsCsv = TEXT("eff_time_step_move"); OutDefinition.TagsCsv = TEXT("time|movement|utility");
+			return true;
+		}
+		if (SkillId.Equals(TEXT("slow_time"), ESearchCase::IgnoreCase))
+		{
+			OutDefinition.SkillId = TEXT("slow_time"); OutDefinition.DisplayName = TEXT("Slow Time"); OutDefinition.Summary = TEXT("Slow the world around you");
+			OutDefinition.Description = TEXT("Select this power in the L1 wheel to equip it. Press L3 to toggle slow time on or off. Drains Cosmic while active."); OutDefinition.Category = EFableSkillCategory::TimeManipulation;
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Self; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 0.f; OutDefinition.RadiusUnits = 0.f; OutDefinition.TagsCsv = TEXT("cosmic|time|toggle|drain");
+			return true;
+		}
+		return false;
+	}
+}

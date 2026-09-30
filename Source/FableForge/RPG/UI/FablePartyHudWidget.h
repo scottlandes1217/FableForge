@@ -11,7 +11,7 @@ class UCanvasPanel;
 class UImage;
 class UProgressBar;
 class UTextBlock;
-class UViewport;
+class UFableTransparentViewport;
 class USkeletalMeshComponent;
 class UVerticalBox;
 class UFableActionBarWidget;
@@ -31,6 +31,9 @@ public:
 
 	bool IsModalOpen() const;
 	void CloseModal();
+	/** Updates the central interaction reticle and focused-only interaction hint. */
+	UFUNCTION(BlueprintCallable, Category="HUD")
+	void SetInteractionFocus(bool bVisible, bool bFocused);
 	void RefreshFromSaveData();
 	void SetCharacterMenuWidget(UFableCharacterMenuWidget* InCharacterMenuWidget);
 	bool TryAssignActionAtScreenPosition(const FVector2D& ScreenPosition, FName FromSlotId, const FString& PayloadId, const FString& PayloadLabel);
@@ -88,6 +91,7 @@ private:
 	void HandleActionBarRemoveRequested(FGuid BarId);
 
 	void UpdatePlayerPortrait();
+	void UpdateInteractionFocusVisuals();
 
 private:
 	EModalState ModalState = EModalState::None;
@@ -101,6 +105,12 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> PlayerNameText;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> InteractionReticle;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> InteractionHint;
+
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> PartyMembersBox;
@@ -113,6 +123,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UProgressBar> PlayerManaBar;
+	UPROPERTY(Transient) TObjectPtr<UProgressBar> PlayerCosmicBar;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> PlayerCosmicLabel;
+	int32 LastCosmicDisplay = INDEX_NONE;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UProgressBar> PlayerExperienceBar;
@@ -127,7 +140,7 @@ private:
 	TObjectPtr<UFableCharacterMenuWidget> CharacterMenuWidget;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UViewport> PortraitViewport;
+	TObjectPtr<UFableTransparentViewport> PortraitViewport;
 
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> PortraitSubject;
@@ -135,6 +148,8 @@ private:
 	uint32 PortraitSignature = 0;
 	bool bPortraitInitialized = false;
 	float PortraitRefreshTime = 0.f;
+	bool bInteractionVisible = true;
+	bool bInteractionFocused = false;
 
 	TArray<FFableActionBarData> ActionBars;
 	TMap<FString, FString> ItemTypeLookup;

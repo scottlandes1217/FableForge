@@ -17,6 +17,7 @@
 #include "RPG/UI/FableInventoryDragDropOperation.h"
 #include "RPG/UI/FablePartyHudWidget.h"
 #include "Styling/SlateBrush.h"
+#include "Styling/CoreStyle.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Texture2D.h"
 #include "RPG/UI/FableItemIconLibrary.h"
@@ -130,6 +131,18 @@ TSharedRef<SWidget> UFableInventorySlotWidget::RebuildWidget()
 		CooldownTextSlot->SetPadding(FMargin(2.0f));
 	}
 
+	QuantityText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("StackQuantity"));
+	FSlateFontInfo QuantityFont = FCoreStyle::GetDefaultFontStyle("Bold", 18);
+	QuantityFont.OutlineSettings.OutlineSize = 1;
+	QuantityFont.OutlineSettings.OutlineColor = FLinearColor(.13f, .075f, .025f, 1.f);
+	QuantityText->SetFont(QuantityFont);
+	QuantityText->SetColorAndOpacity(FLinearColor(1.f, .94f, .77f, 1.f));
+	if (UOverlaySlot* QuantitySlot = ContentOverlay->AddChildToOverlay(QuantityText))
+	{
+		QuantitySlot->SetHorizontalAlignment(HAlign_Right);
+		QuantitySlot->SetVerticalAlignment(VAlign_Bottom);
+		QuantitySlot->SetPadding(FMargin(3.f, 0.f, 4.f, 2.f));
+	}
 	bCooldownVisualInitialized = false;
 	WidgetTree->RootWidget = RootBorder;
 	RefreshVisual();
@@ -581,6 +594,17 @@ void UFableInventorySlotWidget::SetCooldownRemaining(float InRemainingSeconds)
 	RefreshCooldownVisual();
 }
 
+void UFableInventorySlotWidget::SetItemQuantity(int32 InQuantity)
+{
+	ItemQuantity = FMath::Max(0, InQuantity);
+	if (QuantityText)
+	{
+		QuantityText->SetText(FText::AsNumber(ItemQuantity));
+		QuantityText->SetVisibility(!ItemPayloadId.IsEmpty() && ItemQuantity > 1
+			? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+}
+
 void UFableInventorySlotWidget::PlayUseFeedback()
 {
 	UseFeedbackTimeRemaining = 0.16f;
@@ -619,10 +643,17 @@ void UFableInventorySlotWidget::SetControllerSelection(bool bSelected, bool bPic
 
 void UFableInventorySlotWidget::RefreshVisual()
 {
+	SetItemQuantity(ItemQuantity);
 	if (RootBorder != nullptr)
 	{
 		const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
-		if (bJournalGridCell)
+		if (SlotId.ToString().StartsWith(TEXT("skill_")))
+		{
+			// Circular spell artwork owns its silhouette; inventory frames do not.
+			RootBorder->SetBrush(FSlateRoundedBoxBrush(UiInventoryTransparent, 0.f, UiInventoryTransparent, 0.f));
+			RootBorder->SetPadding(FMargin(0.f));
+		}
+		else if (bJournalGridCell)
 		{
 			RootBorder->SetBrush(FSlateRoundedBoxBrush(UiInventoryTransparent, 0.0f, UiInventoryTransparent, 0.0f));
 		}
@@ -639,6 +670,7 @@ void UFableInventorySlotWidget::RefreshVisual()
 
 	if (InnerBorder != nullptr)
 	{
+		if (SlotId.ToString().StartsWith(TEXT("skill_"))) InnerBorder->SetPadding(FMargin(0.f));
 		const bool bActionSlot = SlotId.ToString().StartsWith(TEXT("action_"));
 		InnerBorder->SetBrushColor(bActionSlot ? FLinearColor(0.028f, 0.020f, 0.013f, 1.f)
 			: (bEquipmentSlot ? UiInventoryTransparent : UiSlotBackground));

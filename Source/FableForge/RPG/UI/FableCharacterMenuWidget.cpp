@@ -37,7 +37,13 @@
 #include "RPG/UI/FableBookSurface.h"
 #include "RPG/UI/FableInventorySlotWidget.h"
 #include "RPG/UI/FableWheelAssignmentWidget.h"
+#include "RPG/UI/FableItemInspectWidget.h"
+#include "RPG/UI/FableItemIconLibrary.h"
+#include "Interaction/FFItemInteractable.h"
+#include "GameFramework/Pawn.h"
 #include "TimerManager.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace
 {
@@ -109,10 +115,88 @@ namespace
 		return Texture;
 	}
 
+	UTexture2D* JournalArt(const FString& Name)
+	{
+		static TMap<FString, TStrongObjectPtr<UTexture2D>> Cache;
+		if (const auto* Found = Cache.Find(Name)) return Found->Get();
+		UTexture2D* Texture = LoadEquipmentIcon(FPaths::ProjectContentDir() / TEXT("Slate/Textures/Journal") / (Name + TEXT(".png")));
+		if (Texture) Cache.Add(Name, TStrongObjectPtr<UTexture2D>(Texture));
+		return Texture;
+	}
+
+	void StyleJournalTab(UButton* Button, bool bSelected, bool bPrimary)
+	{
+		FSlateBrush Brush;
+		if (bPrimary && JournalArt(TEXT("TabPaper")))
+		{
+			Brush.SetResourceObject(JournalArt(TEXT("TabPaper")));
+			Brush.ImageSize = FVector2D(180.f, 60.f);
+			Brush.TintColor = bSelected ? FLinearColor(.92f, .68f, .35f) : FLinearColor::White;
+		}
+		else Brush = FSlateRoundedBoxBrush(bSelected ? FLinearColor(.44f, .25f, .08f, .16f) : FLinearColor::Transparent, 2.f,
+			bSelected ? FLinearColor(.30f, .15f, .04f, .6f) : FLinearColor::Transparent, 1.f);
+		FButtonStyle Style;
+		Style.SetNormal(Brush);
+		Brush.TintColor = FLinearColor(1.1f, 1.04f, .92f); Style.SetHovered(Brush);
+		Brush.TintColor = FLinearColor(.82f, .73f, .58f); Style.SetPressed(Brush);
+		Style.SetNormalPadding(FMargin(0.f)); Style.SetPressedPadding(FMargin(0.f));
+		Button->SetStyle(Style); Button->SetBackgroundColor(FLinearColor::White);
+	}
+
+	FSlateFontInfo JournalBookmarkFont(int32 Size)
+	{
+		// The packaged game owns this copy; the root integration task supplies it
+		// under Content/Slate/Fonts rather than reaching into Editor content.
+		const FString FontPath = FPaths::ProjectContentDir() / TEXT("Slate/Fonts/FontAwesome.ttf");
+		return FPaths::FileExists(FontPath)
+			? FSlateFontInfo(FontPath, Size)
+			: FSlateFontInfo();
+	}
+
+	void StyleJournalBookmark(UButton* Button, bool bSelected, const FLinearColor& LeatherColor)
+	{
+		const FLinearColor BorderColor = bSelected ? FLinearColor(.83f, .61f, .25f, 1.f) : FLinearColor(.30f, .19f, .08f, .85f);
+		const FLinearColor FillColor = bSelected
+			? FLinearColor(FMath::Min(LeatherColor.R * 1.18f, 1.f), FMath::Min(LeatherColor.G * 1.18f, 1.f), FMath::Min(LeatherColor.B * 1.18f, 1.f), 1.f)
+			: LeatherColor;
+		FButtonStyle Style;
+		Style.SetNormal(FSlateRoundedBoxBrush(FillColor, 9.f, BorderColor, bSelected ? 2.f : 1.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor(FillColor.R * 1.12f, FillColor.G * 1.12f, FillColor.B * 1.12f, 1.f), 9.f, FLinearColor(.92f, .73f, .38f, 1.f), 2.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(FLinearColor(FillColor.R * .88f, FillColor.G * .88f, FillColor.B * .88f, 1.f), 9.f, BorderColor, 2.f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Button->SetStyle(Style);
+		Button->SetBackgroundColor(FLinearColor::White);
+	}
+
+	void AddBookmarkHint(UWidgetTree* Tree, UVerticalBox* Stack, const TCHAR* Label)
+	{
+		UTextBlock* Hint = Tree->ConstructWidget<UTextBlock>();
+		Hint->SetText(FText::FromString(Label));
+		Hint->SetFont(FableBookStyle::Font(11, true));
+		Hint->SetColorAndOpacity(FLinearColor(.88f, .76f, .51f, 1.f));
+		Hint->SetJustification(ETextJustify::Center);
+		if (UVerticalBoxSlot* Slot = Stack->AddChildToVerticalBox(Hint))
+		{
+			Slot->SetHorizontalAlignment(HAlign_Center);
+			Slot->SetPadding(FMargin(0.f, 3.f));
+		}
+	}
+
+	FLinearColor JournalBookmarkLeather(FName ActionId)
+	{
+		if (ActionId == TEXT("tab_inventory")) return FLinearColor(.57f, .36f, .12f, 1.f);
+		if (ActionId == TEXT("tab_skills")) return FLinearColor(.10f, .40f, .39f, 1.f);
+		if (ActionId == TEXT("tab_companions")) return FLinearColor(.42f, .12f, .16f, 1.f);
+		if (ActionId == TEXT("tab_build")) return FLinearColor(.17f, .28f, .49f, 1.f);
+		return FLinearColor(.31f, .19f, .43f, 1.f);
+	}
+
 	const FName InventoryAction = TEXT("tab_inventory");
 	const FName SkillsAction = TEXT("tab_skills");
 	const FName CompanionsAction = TEXT("tab_companions");
 	const FName BuildAction = TEXT("tab_build");
+	const FName SettingsAction = TEXT("tab_settings");
 	const FName CloseMenuAction = TEXT("close_menu");
 	const FName CancelSkillContextAction = TEXT("cancel_skill_context");
 
@@ -189,7 +273,7 @@ namespace
 			return CategoryArmorAction;
 		}
 
-		if (Type == TEXT("consumable"))
+		if (Type == TEXT("consumable") || Type == TEXT("befriending"))
 		{
 			return CategoryConsumablesAction;
 		}
@@ -433,13 +517,71 @@ namespace
 		case EFableSkillCategory::Support: return TEXT("Support");
 		case EFableSkillCategory::Movement: return TEXT("Movement");
 		case EFableSkillCategory::Utility: return TEXT("Utility");
+		case EFableSkillCategory::Fire: return TEXT("Fire");
+		case EFableSkillCategory::Water: return TEXT("Water");
+		case EFableSkillCategory::Earth: return TEXT("Earth");
+		case EFableSkillCategory::Air: return TEXT("Air");
+		case EFableSkillCategory::TimeManipulation: return TEXT("Cosmic");
 		default: return TEXT("Unknown");
 		}
 	}
 
 	FName SkillCategoryActionFromEnum(EFableSkillCategory Category)
 	{
-		return *FString::Printf(TEXT("%s%s"), SkillCategoryActionPrefix, *EnumToString(Category).ToLower());
+		return *FString::Printf(TEXT("%s%s"), SkillCategoryActionPrefix, *EnumToString(Category).ToLower().Replace(TEXT(" "), TEXT("_")));
+	}
+
+	UTexture2D* SkillSchoolArt(EFableSkillCategory Category)
+	{
+		return JournalArt(Category == EFableSkillCategory::TimeManipulation ? TEXT("Time") : EnumToString(Category));
+	}
+
+	struct FSkillGestureHint
+	{
+		FString DPadInstruction;
+		FString Instruction;
+		bool bCircular = false;
+	};
+
+	bool TryGetSkillGestureHint(const FString& SkillId, FSkillGestureHint& OutHint)
+	{
+		if (SkillId.Equals(TEXT("fire_tornado"), ESearchCase::IgnoreCase))
+		{
+			OutHint.DPadInstruction = TEXT("Hold D-pad Right (Fire)");
+			OutHint.Instruction = TEXT("Rotate the Right Stick in a full circle while held out; release is not needed.");
+			OutHint.bCircular = true;
+			return true;
+		}
+
+		if (SkillId.Equals(TEXT("fireball"), ESearchCase::IgnoreCase))
+		{
+			OutHint.DPadInstruction = TEXT("Hold D-pad Right (Fire)");
+			OutHint.Instruction = TEXT("Flick the Right Stick outward, then return it to center; release is not needed.");
+			return true;
+		}
+
+		if (SkillId.Equals(TEXT("heal_wave"), ESearchCase::IgnoreCase))
+		{
+			OutHint.DPadInstruction = TEXT("Hold D-pad Left (Water)");
+			OutHint.Instruction = TEXT("Flick the Right Stick outward, then return it to center; release is not needed.");
+			return true;
+		}
+
+		if (SkillId.Equals(TEXT("stone_spike"), ESearchCase::IgnoreCase))
+		{
+			OutHint.DPadInstruction = TEXT("Hold D-pad Down (Earth)");
+			OutHint.Instruction = TEXT("Flick the Right Stick outward, then return it to center; release is not needed.");
+			return true;
+		}
+
+		if (SkillId.Equals(TEXT("gust"), ESearchCase::IgnoreCase))
+		{
+			OutHint.DPadInstruction = TEXT("Hold D-pad Up (Air)");
+			OutHint.Instruction = TEXT("Flick the Right Stick outward, then return it to center; release is not needed.");
+			return true;
+		}
+
+		return false;
 	}
 
 	bool TryParseSkillCategoryAction(FName ActionId, FName& OutCategoryAction)
@@ -487,6 +629,8 @@ void UFableCharacterMenuWidget::Open()
 
 void UFableCharacterMenuWidget::Close()
 {
+	CloseItemActions();
+	if (ItemInspect) ItemInspect->Close();
 	bSkillContextVisible = false;
 	ContextSkillId.Reset();
 	ControllerPickedSlot = NAME_None;
@@ -498,6 +642,16 @@ FReply UFableCharacterMenuWidget::NativeOnPreviewKeyDown(const FGeometry& Geomet
 {
 	if (!IsOpen() || EmbeddedQuickWheel) return Super::NativeOnPreviewKeyDown(Geometry, Event);
 	const FKey Key = Event.GetKey();
+	if (ItemInspect && ItemInspect->IsOpen()) return Super::NativeOnPreviewKeyDown(Geometry, Event);
+	if (ItemActionsLayer)
+	{
+		if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Up) { ItemActionSelection = FMath::Max(0, ItemActionSelection-1); RefreshItemActionSelection(); }
+		else if (Key == EKeys::Gamepad_DPad_Down || Key == EKeys::Down) { ItemActionSelection = FMath::Min(ItemActionIds.Num()-1, ItemActionSelection+1); RefreshItemActionSelection(); }
+		else if ((Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter) && !Event.IsRepeat()) { if (ItemActionIds.IsValidIndex(ItemActionSelection)) HandleActionClicked(ItemActionIds[ItemActionSelection]); }
+		else if (Key == EKeys::Gamepad_FaceButton_Right || Key == EKeys::Escape) CloseItemActions();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Gamepad_FaceButton_Left) { if (!Event.IsRepeat()) InspectSelectedItem(); return FReply::Handled(); }
 	if (Key == EKeys::Gamepad_DPad_Left) MoveControllerSelection(-1, 0);
 	else if (Key == EKeys::Gamepad_DPad_Right) MoveControllerSelection(1, 0);
 	else if (Key == EKeys::Gamepad_DPad_Up) MoveControllerSelection(0, -1);
@@ -512,8 +666,8 @@ FReply UFableCharacterMenuWidget::NativeOnPreviewKeyDown(const FGeometry& Geomet
 
 void UFableCharacterMenuWidget::CycleMainTab(int32 Direction)
 {
-	if (!IsOpen() || EmbeddedQuickWheel) return;
-	const TArray<FName> Tabs = {InventoryAction, SkillsAction, CompanionsAction, BuildAction};
+	if (!IsOpen() || EmbeddedQuickWheel || HasItemModal()) return;
+	const TArray<FName> Tabs = {InventoryAction, SkillsAction, CompanionsAction, BuildAction, SettingsAction};
 	const FName Current(*FString::Printf(TEXT("tab_%s"), *ActiveTab.ToString()));
 	const int32 Index = FMath::Max(0, Tabs.IndexOfByKey(Current));
 	ControllerPickedSlot = NAME_None;
@@ -524,7 +678,7 @@ void UFableCharacterMenuWidget::CycleMainTab(int32 Direction)
 
 void UFableCharacterMenuWidget::CycleCategoryTab(int32 Direction)
 {
-	if (!IsOpen() || EmbeddedQuickWheel) return;
+	if (!IsOpen() || EmbeddedQuickWheel || HasItemModal()) return;
 	if (bSkillContextVisible) HandleActionClicked(CancelSkillContextAction);
 	const TArray<FName> Categories = ActiveTab == TEXT("inventory")
 		? TArray<FName>{CategoryAllAction, CategoryArmorAction, CategoryWeaponsAction, CategoryConsumablesAction, CategoryMiscAction, CategoryKeyItemsAction}
@@ -542,6 +696,13 @@ void UFableCharacterMenuWidget::CycleCategoryTab(int32 Direction)
 void UFableCharacterMenuWidget::HandleControllerCancel()
 {
 	if (!IsOpen() || EmbeddedQuickWheel) return;
+	if (ItemInspect && ItemInspect->IsOpen()) { ItemInspect->Close(); return; }
+	if (ItemActionsLayer) { CloseItemActions(); return; }
+	if (ActiveTab == TEXT("settings") && !SettingsPage.IsNone())
+	{
+		SettingsPage = NAME_None; SettingsSelection = 0; SettingsStatus.Reset();
+		QueueTabContentRebuild(); return;
+	}
 	if (!ControllerPickedSlot.IsNone())
 	{
 		ControllerPickedSlot = NAME_None;
@@ -569,9 +730,14 @@ void UFableCharacterMenuWidget::RefreshControllerSelection()
 
 void UFableCharacterMenuWidget::MoveControllerSelection(int32 X, int32 Y)
 {
-	if (!IsOpen() || EmbeddedQuickWheel) return;
+	if (!IsOpen() || EmbeddedQuickWheel || HasItemModal()) return;
 	if (bSkillContextVisible) HandleActionClicked(CancelSkillContextAction);
 	bControllerSelectionVisible = true;
+	if (ActiveTab == TEXT("settings"))
+	{
+		SettingsSelection = FMath::Clamp(SettingsSelection + (Y != 0 ? Y : X), 0, FMath::Max(0, SettingsActions.Num()-1));
+		RefreshSettingsSelection(); return;
+	}
 	if (ActiveTab == TEXT("skills"))
 	{
 		TArray<FString> Visible;
@@ -580,6 +746,7 @@ void UFableCharacterMenuWidget::MoveControllerSelection(int32 X, int32 Y)
 		if (Visible.IsEmpty()) return;
 		const int32 Current = FMath::Max(0, Visible.IndexOfByKey(ActiveSkillDetailsId));
 		ActiveSkillDetailsId = Visible[FMath::Clamp(Current + (Y != 0 ? Y : X), 0, Visible.Num() - 1)];
+		UE_LOG(LogFableForge, Display, TEXT("SKILL_NAV selected=%s visible=%d details=%s"), *ActiveSkillDetailsId, Visible.Num(), *GetNameSafe(SkillDetailsContent));
 		RefreshSkillsPresentation();
 		if (SkillsScroll) SkillsScroll->ScrollWidgetIntoView(SkillRows.FindRef(ActiveSkillDetailsId), false);
 		return;
@@ -612,7 +779,12 @@ void UFableCharacterMenuWidget::MoveControllerSelection(int32 X, int32 Y)
 
 void UFableCharacterMenuWidget::ActivateControllerSelection()
 {
-	if (!IsOpen() || EmbeddedQuickWheel) return;
+	if (!IsOpen() || EmbeddedQuickWheel || HasItemModal()) return;
+	if (ActiveTab == TEXT("settings"))
+	{
+		if (SettingsActions.IsValidIndex(SettingsSelection)) HandleActionClicked(SettingsActions[SettingsSelection]);
+		return;
+	}
 	bControllerSelectionVisible = true;
 	if (ActiveTab == TEXT("skills"))
 	{
@@ -624,12 +796,7 @@ void UFableCharacterMenuWidget::ActivateControllerSelection()
 	RefreshControllerSelection();
 	if (ControllerPickedSlot.IsNone())
 	{
-		bool bEquip; int32 Index;
-		if (ResolveSlotAddress(ControllerSlotId, bEquip, Index))
-		{
-			const TArray<FString>& Items = bEquip ? EquippedSlots : InventorySlots;
-			if (Items.IsValidIndex(Index) && !Items[Index].IsEmpty()) ControllerPickedSlot = ControllerSlotId;
-		}
+		OpenItemActions();
 	}
 	else
 	{
@@ -652,6 +819,148 @@ void UFableCharacterMenuWidget::ActivateControllerSelection()
 		}
 	}
 	RefreshControllerSelection();
+}
+
+bool UFableCharacterMenuWidget::HasItemModal() const
+{
+	return ItemActionsLayer || (ItemInspect && ItemInspect->IsOpen());
+}
+
+FString UFableCharacterMenuWidget::SelectedInventoryItem(bool& bEquipment, int32& Index) const
+{
+	if (!ResolveSlotAddress(ControllerSlotId, bEquipment, Index)) return FString();
+	const auto& Slots = bEquipment ? EquippedSlots : InventorySlots;
+	return Slots.IsValidIndex(Index) ? Slots[Index] : FString();
+}
+
+void UFableCharacterMenuWidget::RestoreJournalFocus()
+{
+	if (IsOpen() && GetOwningPlayer()) SetUserFocus(GetOwningPlayer());
+}
+
+void UFableCharacterMenuWidget::HandleInventorySlotHovered(FName SlotId, const FString& PayloadId)
+{
+	if (!HasItemModal() && ControllerPickedSlot.IsNone()) ControllerSlotId = SlotId;
+}
+
+void UFableCharacterMenuWidget::HandleInventorySlotContext(FName SlotId, const FString& PayloadId)
+{
+	if (HasItemModal() || !ControllerPickedSlot.IsNone()) return;
+	ControllerSlotId = SlotId; bControllerSelectionVisible = true; OpenItemActions();
+}
+
+void UFableCharacterMenuWidget::InspectSelectedItem()
+{
+	if (ActiveTab != TEXT("inventory") || HasItemModal()) return;
+	RefreshControllerSelection();
+	bool bEquipment = false; int32 Index = INDEX_NONE;
+	const FString ItemId = SelectedInventoryItem(bEquipment, Index);
+	if (ItemId.IsEmpty()) return;
+	const FFableUiItemDefinition* Definition = ItemDefinitions.Find(ItemId);
+	TArray<TPair<FString, FString>> Details;
+	FString Type = ResolveItemCategory(ItemId).ToString(); Type.RemoveFromStart(TEXT("cat_"));
+	Details.Emplace(TEXT("Type"), HumanizeToken(Type));
+	Details.Emplace(TEXT("Location"), bEquipment && EquipmentSlotNames.IsValidIndex(Index) ? EquipmentSlotNames[Index] : TEXT("Backpack"));
+	Details.Emplace(TEXT("Quantity"), FString::FromInt(!bEquipment && InventoryQuantities.IsValidIndex(Index) ? InventoryQuantities[Index] : 1));
+	if (Definition)
+	{
+		Details.Emplace(TEXT("Stackable"), Definition->bStackable ? TEXT("Yes") : TEXT("No"));
+		Details.Emplace(TEXT("Equipable"), Definition->bEquipable ? TEXT("Yes") : TEXT("No"));
+		if (EquipmentSlotNames.IsValidIndex(Definition->EquipmentSlot)) Details.Emplace(TEXT("Equipment slot"), EquipmentSlotNames[Definition->EquipmentSlot]);
+	}
+	if (ItemId == TEXT("health_potion")) Details.Emplace(TEXT("Use"), TEXT("Drink to restore 25% of maximum health."));
+	else if (ItemId == TEXT("mana_potion")) Details.Emplace(TEXT("Use"), TEXT("Drink to restore 25% of maximum mana."));
+	else if (ItemId == TEXT("meat") || ItemId == TEXT("honey") || ItemId == TEXT("berries")) Details.Emplace(TEXT("Use"), TEXT("Eat to restore 10% of maximum health."));
+	if (!ItemInspect)
+	{
+		ItemInspect = CreateWidget<UFableItemInspectWidget>(GetOwningPlayer());
+		ItemInspect->OnClosed.AddDynamic(this, &UFableCharacterMenuWidget::RestoreJournalFocus);
+		UCanvasPanel* Root = Cast<UCanvasPanel>(WidgetTree->RootWidget);
+		if (UCanvasPanelSlot* Slot = Root->AddChildToCanvas(ItemInspect))
+		{
+			Slot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); Slot->SetOffsets(FMargin(0.f)); Slot->SetZOrder(30);
+		}
+	}
+	UTexture2D* Icon = GetItemIconForSlot(ItemId);
+	ItemInspect->Open(GetItemLabelForSlot(ItemId, bEquipment), Details, Icon ? Icon : FableItemIcons::Get(ItemId));
+	ItemInspect->SetUserFocus(GetOwningPlayer());
+	UE_LOG(LogFableForge, Display, TEXT("JOURNAL inspect=%s"), *ItemId);
+}
+
+void UFableCharacterMenuWidget::OpenItemActions()
+{
+	bool bEquipment = false; int32 Index = INDEX_NONE;
+	ItemActionIdentity = SelectedInventoryItem(bEquipment, Index);
+	if (ItemActionIdentity.IsEmpty()) return;
+	ItemActionSource = ControllerSlotId; ItemActionSelection = 0; bConfirmItemDrop = false; ItemActionStatus.Reset();
+	RebuildItemActions();
+}
+
+void UFableCharacterMenuWidget::CloseItemActions()
+{
+	if (ItemActionsLayer) ItemActionsLayer->RemoveFromParent();
+	ItemActionsLayer = nullptr; ItemActionButtons.Reset(); ItemActionIds.Reset(); bConfirmItemDrop = false;
+	RestoreJournalFocus();
+}
+
+void UFableCharacterMenuWidget::RefreshItemActionSelection()
+{
+	for (int32 I = 0; I < ItemActionButtons.Num(); ++I) StyleJournalTab(ItemActionButtons[I], I == ItemActionSelection, false);
+	UE_LOG(LogFableForge, Display, TEXT("JOURNAL item_action=%s"), ItemActionIds.IsValidIndex(ItemActionSelection) ? *ItemActionIds[ItemActionSelection].ToString() : TEXT("none"));
+}
+
+void UFableCharacterMenuWidget::RebuildItemActions()
+{
+	if (ItemActionsLayer) ItemActionsLayer->RemoveFromParent();
+	ItemActionButtons.Reset(); ItemActionIds.Reset();
+	ItemActionsLayer = WidgetTree->ConstructWidget<UBorder>();
+	ItemActionsLayer->SetBrushColor(FLinearColor(.02f,.01f,.005f,.76f)); ItemActionsLayer->SetPadding(FMargin(0.f));
+	ItemActionsLayer->SetHorizontalAlignment(HAlign_Center); ItemActionsLayer->SetVerticalAlignment(VAlign_Center);
+	UCanvasPanel* Root = Cast<UCanvasPanel>(WidgetTree->RootWidget);
+	UCanvasPanelSlot* ModalSlot = Root->AddChildToCanvas(ItemActionsLayer);
+	ModalSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); ModalSlot->SetOffsets(FMargin(0.f)); ModalSlot->SetZOrder(20);
+	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(500.f); ItemActionsLayer->SetContent(Size);
+	UBorder* Paper = WidgetTree->ConstructWidget<UBorder>();
+	Paper->SetBrush(FSlateRoundedBoxBrush(FLinearColor(.86f,.75f,.55f), 8.f, FLinearColor(.32f,.17f,.055f), 2.f));
+	Paper->SetPadding(FMargin(30.f,24.f)); Size->SetContent(Paper);
+	UVerticalBox* List = WidgetTree->ConstructWidget<UVerticalBox>(); Paper->SetContent(List);
+	auto AddText = [&](const FString& Value, int32 FontSize)
+	{
+		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(FText::FromString(Value));
+		Label->SetFont(FableBookStyle::Font(FontSize, FontSize>18)); Label->SetColorAndOpacity(UiTextColor); Label->SetAutoWrapText(true);
+		List->AddChildToVerticalBox(Label)->SetPadding(FMargin(4.f,0.f,4.f,14.f));
+	};
+	auto AddAction = [&](const FString& Label, FName Id)
+	{
+		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(); Button->InitializeAction(Id);
+		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
+		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(); Text->SetText(FText::FromString(Label));
+		Text->SetFont(FableBookStyle::Font(20)); Text->SetColorAndOpacity(UiTextColor); Button->AddChild(Text);
+		Cast<UButtonSlot>(Text->Slot)->SetPadding(FMargin(16.f,10.f));
+		List->AddChildToVerticalBox(Button)->SetPadding(FMargin(0.f,2.f)); ItemActionButtons.Add(Button); ItemActionIds.Add(Id);
+	};
+	AddText(GetItemLabelForSlot(ItemActionIdentity, false), 26);
+	if (!ItemActionStatus.IsEmpty()) AddText(ItemActionStatus, 16);
+	if (bConfirmItemDrop)
+	{
+		AddText(TEXT("Drop this item or entire stack nearby? You can pick it up again before leaving this game session. Ground drops are not saved."),16);
+		AddAction(TEXT("Drop Item / Stack"), TEXT("item_drop_confirm")); AddAction(TEXT("Cancel"), TEXT("item_cancel"));
+	}
+	else
+	{
+		AddAction(TEXT("Move"), TEXT("item_move"));
+		const bool bFood = ItemActionIdentity == TEXT("meat") || ItemActionIdentity == TEXT("honey") || ItemActionIdentity == TEXT("berries");
+		if (ResolveItemCategory(ItemActionIdentity) == CategoryConsumablesAction || bFood)
+		{
+			AddAction(bFood ? TEXT("Eat") : TEXT("Drink"), TEXT("item_consume"));
+			AddAction(TEXT("Assign to Slot"), TEXT("item_assign"));
+		}
+		else if (const auto* Definition = ItemDefinitions.Find(ItemActionIdentity); Definition && Definition->bEquipable)
+			AddAction(ItemActionSource.ToString().StartsWith(TEXT("equip_")) ? TEXT("Unequip") : TEXT("Equip"), TEXT("item_equip"));
+		AddAction(TEXT("Drop"), TEXT("item_drop"));
+	}
+	AddText(TEXT("Circle  ·  Close"), 14);
+	ItemActionSelection = FMath::Clamp(ItemActionSelection, 0, ItemActionIds.Num()-1); RefreshItemActionSelection(); RestoreJournalFocus();
 }
 
 void UFableCharacterMenuWidget::Toggle()
@@ -745,6 +1054,15 @@ void UFableCharacterMenuWidget::Rebuild()
 	Scale->SetContent(DesignSize);
 	UOverlay* BookLayers = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 	DesignSize->SetContent(BookLayers);
+	// Bookmarks are behind the cover, with only their icon ends protruding.
+	UVerticalBox* BookmarkStack = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("JournalBookmarkStack"));
+	BookmarkStack->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (UOverlaySlot* BookmarkSlot = BookLayers->AddChildToOverlay(BookmarkStack))
+	{
+		BookmarkSlot->SetHorizontalAlignment(HAlign_Left);
+		BookmarkSlot->SetVerticalAlignment(VAlign_Top);
+		BookmarkSlot->SetPadding(FMargin(8.f, 146.f, 0.f, 0.f));
+	}
 	UFableBookSurface* Book = WidgetTree->ConstructWidget<UFableBookSurface>(UFableBookSurface::StaticClass());
 	Book->SetOpenBook(true);
 	Book->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -752,76 +1070,65 @@ void UFableCharacterMenuWidget::Rebuild()
 	{
 		BookSlot->SetHorizontalAlignment(HAlign_Fill);
 		BookSlot->SetVerticalAlignment(VAlign_Fill);
+		BookSlot->SetPadding(FMargin(64.f, 0.f, 0.f, 0.f));
 	}
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Frame"));
 	Frame->SetBrushColor(UiPanelColor);
-	Frame->SetPadding(FMargin(104.0f, 72.0f, 104.0f, 86.0f));
+	// The bookmark stack projects from the left page edge, so reserve a little
+	// more inner width for the actual page content without shrinking the book.
+	Frame->SetPadding(FMargin(168.0f, 72.0f, 104.0f, 86.0f));
 	if (UOverlaySlot* FrameSlot = BookLayers->AddChildToOverlay(Frame))
 	{
 		FrameSlot->SetHorizontalAlignment(HAlign_Fill);
 		FrameSlot->SetVerticalAlignment(VAlign_Fill);
 	}
 
-	UVerticalBox* VBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("FrameVBox"));
-	VBox->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-	Frame->SetContent(VBox);
-
-	UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("TabRow"));
-	if (UVerticalBoxSlot* TabRowSlot = VBox->AddChildToVerticalBox(TabRow))
-	{
-		TabRowSlot->SetPadding(FMargin(20.0f, 4.0f, 20.0f, 12.0f));
-	}
-
-auto AddTabButton = [&](const FString& Label, FName ActionId, bool bSelected)
+	AddBookmarkHint(WidgetTree, BookmarkStack, TEXT("L2"));
+	auto AddBookmarkButton = [&](const TCHAR* Label, uint32 Glyph, FName ActionId, const FLinearColor& LeatherColor)
 	{
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
 		Button->InitializeAction(ActionId);
 		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
-		FableBookStyle::ApplyButton(Button);
-		Button->SetBackgroundColor(bSelected ? UiButtonSelectedColor : UiButtonColor);
+		Button->SetToolTipText(FText::FromString(Label));
+		Button->AccessibleBehavior = ESlateAccessibleBehavior::Custom;
+		Button->AccessibleText = FText::FromString(Label);
+		StyleJournalBookmark(Button, ActiveTab == FName(*ActionId.ToString().RightChop(4)), LeatherColor);
 
-		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		FSlateFontInfo TextBaseFont = FableBookStyle::Font(14, true);
-		TextBaseFont.Size = 14;
-		Text->SetFont(TextBaseFont);
-		Text->SetText(FText::FromString(Label));
-		Text->SetColorAndOpacity(FSlateColor(FLinearColor(.035f, .014f, .004f, 1.f)));
-		Text->SetJustification(ETextJustify::Center);
-		Button->AddChild(Text);
-		if (UButtonSlot* TextSlot = Cast<UButtonSlot>(Text->Slot))
+		UTextBlock* Icon = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Icon->SetFont(JournalBookmarkFont(27));
+		Icon->SetText(FText::FromString(FString::Chr(Glyph)));
+		Icon->SetColorAndOpacity(FLinearColor(.97f, .88f, .68f, 1.f));
+		Icon->SetJustification(ETextJustify::Center);
+		Button->AddChild(Icon);
+		if (UButtonSlot* IconSlot = Cast<UButtonSlot>(Icon->Slot))
 		{
-			TextSlot->SetHorizontalAlignment(HAlign_Center);
-			TextSlot->SetVerticalAlignment(VAlign_Center);
-			TextSlot->SetPadding(FMargin(6.0f, 10.0f));
+			IconSlot->SetHorizontalAlignment(HAlign_Left);
+			IconSlot->SetVerticalAlignment(VAlign_Center);
+			IconSlot->SetPadding(FMargin(17.f, 0.f, 0.f, 0.f));
 		}
 
 		USizeBox* TabSize = WidgetTree->ConstructWidget<USizeBox>();
-		TabSize->SetWidthOverride(116.f);
-		TabSize->SetHeightOverride(42.f);
+		TabSize->SetWidthOverride(96.f);
+		TabSize->SetHeightOverride(58.f);
 		TabSize->SetContent(Button);
-		if (UHorizontalBoxSlot* HorizontalSlot = TabRow->AddChildToHorizontalBox(TabSize))
+		if (UVerticalBoxSlot* VerticalSlot = BookmarkStack->AddChildToVerticalBox(TabSize))
 		{
-			HorizontalSlot->SetPadding(FMargin(0.0f, 0.0f, 4.0f, 0.0f));
+			VerticalSlot->SetHorizontalAlignment(HAlign_Left);
+			VerticalSlot->SetPadding(FMargin(0.f, 2.f));
 		}
-
 		MainTabButtons.Add(ActionId, Button);
 	};
 
-	AddJournalHint(WidgetTree, TabRow, TEXT("L2"));
-	AddTabButton(TEXT("Inventory"), InventoryAction, ActiveTab == TEXT("inventory"));
-	AddTabButton(TEXT("Skills"), SkillsAction, ActiveTab == TEXT("skills"));
-	AddTabButton(TEXT("Companions"), CompanionsAction, ActiveTab == TEXT("companions"));
-	AddTabButton(TEXT("Build"), BuildAction, ActiveTab == TEXT("build"));
-	AddJournalHint(WidgetTree, TabRow, TEXT("R2"));
+	AddBookmarkButton(TEXT("Inventory"), 0xf290, InventoryAction, JournalBookmarkLeather(InventoryAction));
+	AddBookmarkButton(TEXT("Skills"), 0xf0d0, SkillsAction, JournalBookmarkLeather(SkillsAction));
+	AddBookmarkButton(TEXT("Companions"), 0xf0c0, CompanionsAction, JournalBookmarkLeather(CompanionsAction));
+	AddBookmarkButton(TEXT("Build"), 0xf0e3, BuildAction, JournalBookmarkLeather(BuildAction));
+	AddBookmarkButton(TEXT("Settings"), 0xf013, SettingsAction, JournalBookmarkLeather(SettingsAction));
+	AddBookmarkHint(WidgetTree, BookmarkStack, TEXT("R2"));
 
-	USpacer* TabRightSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass(), TEXT("TabRightSpacer"));
-	if (UHorizontalBoxSlot* TabSpacerSlot = TabRow->AddChildToHorizontalBox(TabRightSpacer))
-	{
-		FSlateChildSize FillSize;
-		FillSize.SizeRule = ESlateSizeRule::Fill;
-		FillSize.Value = 1.0f;
-		TabSpacerSlot->SetSize(FillSize);
-	}
+	UVerticalBox* VBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("FrameVBox"));
+	VBox->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	Frame->SetContent(VBox);
 
 
 	ContentRoot = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("TabContent"));
@@ -845,8 +1152,7 @@ void UFableCharacterMenuWidget::RefreshMainTabButtonStyles()
 		{
 			if (UFableActionButton* Button = ButtonPtr->Get())
 			{
-				FableBookStyle::ApplyButton(Button);
-				Button->SetBackgroundColor(bSelected ? UiButtonSelectedColor : UiButtonColor);
+				StyleJournalBookmark(Button, bSelected, JournalBookmarkLeather(ActionId));
 			}
 		}
 	};
@@ -855,6 +1161,7 @@ void UFableCharacterMenuWidget::RefreshMainTabButtonStyles()
 	UpdateButton(SkillsAction, ActiveTab == TEXT("skills"));
 	UpdateButton(CompanionsAction, ActiveTab == TEXT("companions"));
 	UpdateButton(BuildAction, ActiveTab == TEXT("build"));
+	UpdateButton(SettingsAction, ActiveTab == TEXT("settings"));
 }
 
 void UFableCharacterMenuWidget::QueueTabContentRebuild()
@@ -912,8 +1219,76 @@ void UFableCharacterMenuWidget::RebuildTabContent()
 		BuildSimpleInfoTab(TEXT("Companions"), TEXT("No companions recruited yet."));
 		return;
 	}
+	if (ActiveTab == TEXT("settings")) { BuildSettingsTab(); return; }
 
 	BuildSimpleInfoTab(TEXT("Build"), TEXT("No structures queued."));
+}
+
+void UFableCharacterMenuWidget::RefreshSettingsSelection()
+{
+	for (int32 I = 0; I < SettingsButtons.Num(); ++I)
+		if (SettingsButtons[I]) SettingsButtons[I]->SetBackgroundColor(I == SettingsSelection ? UiButtonSelectedColor : UiButtonColor);
+	if (SettingsScroll && SettingsButtons.IsValidIndex(SettingsSelection)) SettingsScroll->ScrollWidgetIntoView(SettingsButtons[SettingsSelection], false);
+}
+
+void UFableCharacterMenuWidget::BuildSettingsTab()
+{
+	SettingsActions.Reset(); SettingsButtons.Reset(); SettingsSlots.Reset();
+	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+	SettingsScroll = Scroll;
+	Scroll->SetClipping(EWidgetClipping::ClipToBoundsAlways);
+	UVerticalBoxSlot* ScrollSlot = ContentRoot->AddChildToVerticalBox(Scroll);
+	FSlateChildSize Fill; Fill.SizeRule = ESlateSizeRule::Fill; ScrollSlot->SetSize(Fill);
+	USizeBox* Width = WidgetTree->ConstructWidget<USizeBox>(); Width->SetWidthOverride(490.f);
+	Cast<UScrollBoxSlot>(Scroll->AddChild(Width))->SetHorizontalAlignment(HAlign_Left);
+	UVerticalBox* List = WidgetTree->ConstructWidget<UVerticalBox>(); Width->SetContent(List);
+	auto Text = [&](const FString& Value, int32 Size)
+	{
+		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(FText::FromString(Value));
+		Label->SetFont(FableBookStyle::Font(Size, Size >= 18)); Label->SetColorAndOpacity(UiTextColor);
+		Label->SetAutoWrapText(true); List->AddChildToVerticalBox(Label)->SetPadding(FMargin(8.f, 8.f, 8.f, 12.f));
+	};
+	auto Button = [&](const FString& Label, FName Action)
+	{
+		UFableActionButton* Item = WidgetTree->ConstructWidget<UFableActionButton>();
+		Item->InitializeAction(Action); Item->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
+		FableBookStyle::ApplyButton(Item);
+		UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(); Title->SetText(FText::FromString(Label));
+		Title->SetFont(FableBookStyle::Font(16, true)); Title->SetColorAndOpacity(UiTextColor);
+		Item->AddChild(Title); Cast<UButtonSlot>(Title->Slot)->SetPadding(FMargin(14.f, 10.f));
+		List->AddChildToVerticalBox(Item)->SetPadding(FMargin(8.f, 0.f, 8.f, 10.f));
+		SettingsActions.Add(Action); SettingsButtons.Add(Item);
+	};
+	Text(SettingsPage == TEXT("save") ? TEXT("Save Game") : SettingsPage == TEXT("load") ? TEXT("Load Game") : TEXT("Settings"), 22);
+	if (!SettingsStatus.IsEmpty()) Text(SettingsStatus, 14);
+	UFableSaveSubsystem* Saves = GetGameInstance()->GetSubsystem<UFableSaveSubsystem>();
+	if (!Saves) { Text(TEXT("Save system unavailable."), 14); return; }
+	if (SettingsPage.IsNone())
+	{
+		Button(TEXT("Save Game"), TEXT("settings_save"));
+		Button(TEXT("Load Game"), TEXT("settings_load"));
+		Button(TEXT("Quit to Main Menu"), TEXT("settings_quit"));
+	}
+	else if (SettingsPage == TEXT("save") || SettingsPage == TEXT("load"))
+	{
+		TArray<FFableSaveSlotMeta> Slots;
+		Saves->GetSaveSlots(SettingsPage == TEXT("save") ? Saves->GetActiveCharacterId() : SettingsLoadCharacter, Slots);
+		for (const auto& Slot : Slots)
+		{
+			const FName Action(*FString::Printf(TEXT("settings_slot_%d"), Slot.SlotIndex));
+			SettingsSlots.Add(Action, Slot.SlotIndex);
+			Button(FString::Printf(TEXT("Slot %d  —  %s"), Slot.SlotIndex + 1, Slot.bHasSave ? TEXT("Saved game") : TEXT("Empty")), Action);
+		}
+		if (SettingsActions.IsEmpty()) Text(TEXT("No saved slots."), 14);
+	}
+	else if (SettingsPage == TEXT("quit"))
+	{
+		Text(TEXT("Return to the main menu? Save your game first if you want to keep your current progress."), 16);
+		Button(TEXT("Return to Main Menu"), TEXT("settings_quit_confirm"));
+	}
+	if (!SettingsPage.IsNone()) Button(TEXT("Back"), TEXT("settings_back"));
+	SettingsSelection = FMath::Clamp(SettingsSelection, 0, FMath::Max(0, SettingsActions.Num()-1));
+	RefreshSettingsSelection();
 }
 
 void UFableCharacterMenuWidget::BuildInventoryTab()
@@ -932,8 +1307,7 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
 		Button->InitializeAction(CategoryAction);
 		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
-		FableBookStyle::ApplyButton(Button);
-		Button->SetBackgroundColor(ActiveInventoryCategory == CategoryAction ? UiButtonSelectedColor : UiButtonColor);
+		StyleJournalTab(Button, ActiveInventoryCategory == CategoryAction, true);
 		InventoryCategoryButtons.Add(CategoryAction,Button);
 
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -944,14 +1318,14 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		Text->SetColorAndOpacity(FSlateColor(FLinearColor(.035f, .014f, .004f, 1.f)));
 		Text->SetJustification(ETextJustify::Center);
 		FSlateFontInfo FontInfo = FableBookStyle::Font(14, true);
-		FontInfo.Size = 15;
+		FontInfo.Size = 13;
 		Text->SetFont(FontInfo);
 		Button->AddChild(Text);
 		if (UButtonSlot* TextSlot = Cast<UButtonSlot>(Text->Slot))
 		{
 			TextSlot->SetHorizontalAlignment(HAlign_Center);
 			TextSlot->SetVerticalAlignment(VAlign_Center);
-			TextSlot->SetPadding(FMargin(10.0f, 8.0f));
+			TextSlot->SetPadding(FMargin(8.0f, 6.0f));
 		}
 
 		if (UHorizontalBoxSlot* HorizontalSlot = CategoryRow->AddChildToHorizontalBox(Button))
@@ -968,9 +1342,6 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 	AddCategoryButton(TEXT("All"), CategoryAllAction);
 	AddCategoryButton(TEXT("Armor"), CategoryArmorAction);
 	AddCategoryButton(TEXT("Weapons"), CategoryWeaponsAction);
-	USpacer* CategoryGutter = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
-	CategoryGutter->SetSize(FVector2D(64.0f, 1.0f));
-	CategoryRow->AddChildToHorizontalBox(CategoryGutter);
 	AddCategoryButton(TEXT("Consumables"), CategoryConsumablesAction);
 	AddCategoryButton(TEXT("Misc"), CategoryMiscAction);
 	AddCategoryButton(TEXT("Key Items"), CategoryKeyItemsAction);
@@ -1010,22 +1381,6 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 
 	UVerticalBox* LeftSectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("InventorySectionVBox"));
 	InventorySection->SetContent(LeftSectionBox);
-	int32 OccupiedSlots = 0;
-	for (const FString& Item : InventorySlots)
-	{
-		OccupiedSlots += !Item.IsEmpty() ? 1 : 0;
-	}
-	UTextBlock* BagHeading = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	InventoryHeading=BagHeading;
-	BagHeading->SetText(FText::FromString(FString::Printf(TEXT("Inventory     %d / %d"), OccupiedSlots, InventorySlots.Num())));
-	BagHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
-	FSlateFontInfo SectionFont = FableBookStyle::Font(18, true);
-	SectionFont.Size = 18;
-	BagHeading->SetFont(SectionFont);
-	if (UVerticalBoxSlot* HeadingSlot = LeftSectionBox->AddChildToVerticalBox(BagHeading))
-	{
-		HeadingSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
-	}
 
 
 	USizeBox* InventoryGridScrollSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("InventoryGridScrollSize"));
@@ -1065,7 +1420,11 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		UFableInventorySlotWidget* SlotWidget = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
 		SlotWidget->InitializeSlot(SlotId, TEXT(""), false);
 		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, false), GetItemIconForSlot(ItemId));
+		SlotWidget->SetItemQuantity(InventoryQuantities.IsValidIndex(SlotIndex) ? InventoryQuantities[SlotIndex] : 1);
 		SlotWidget->OnItemDrop.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotDropped);
+		SlotWidget->OnSlotClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotContext);
+		SlotWidget->OnSlotHovered.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotHovered);
+		SlotWidget->OnSlotRightClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotContext);
 
 		USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 		SlotSizeBox->SetWidthOverride(88.0f);
@@ -1110,15 +1469,6 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		ContentSlot->SetHorizontalAlignment(HAlign_Fill);
 		ContentSlot->SetVerticalAlignment(VAlign_Fill);
 	}
-	UTextBlock* EquipmentHeading = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	EquipmentHeading->SetText(FText::FromString(TEXT("Equipment")));
-	EquipmentHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
-	EquipmentHeading->SetFont(SectionFont);
-	if (UVerticalBoxSlot* HeadingSlot = RightSectionBox->AddChildToVerticalBox(EquipmentHeading))
-	{
-		HeadingSlot->SetHorizontalAlignment(HAlign_Center);
-		HeadingSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
-	}
 
 
 	USizeBox* EquipmentGridSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("EquipmentGridSize"));
@@ -1157,6 +1507,9 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		}
 		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, true), GetItemIconForSlot(ItemId));
 		SlotWidget->OnItemDrop.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotDropped);
+		SlotWidget->OnSlotClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotContext);
+		SlotWidget->OnSlotHovered.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotHovered);
+		SlotWidget->OnSlotRightClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleInventorySlotContext);
 
 		if (UCanvasPanelSlot* GridSlot = EquipmentCanvas->AddChildToCanvas(SlotWidget))
 		{
@@ -1223,6 +1576,7 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		SaveSubsystem->TryGetActiveLearnedSkills(LearnedSkills);
 	}
 
+	LearnedSkills.RemoveAll([](const FString& Id) { return !FableSkillCatalog::IsAssignableSkillId(Id); });
 	if (LearnedSkills.Num() == 0)
 	{
 		BuildSimpleInfoTab(TEXT("Skills"), TEXT("No learned skills yet."));
@@ -1234,60 +1588,52 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		ActiveSkillDetailsId = LearnedSkills[0];
 	}
 
-	TArray<EFableSkillCategory> AvailableCategories;
-	for (const FString& SkillId : LearnedSkills)
+	const TArray<EFableSkillCategory> AvailableCategories = { EFableSkillCategory::Fire, EFableSkillCategory::Water,
+		EFableSkillCategory::Earth, EFableSkillCategory::Air, EFableSkillCategory::TimeManipulation };
+
+	// Rebuilt tabs need fresh UObjects as well as fresh Slate children. Reusing
+	// explicit names can reconstruct a widget whose old Slate tree is still alive.
+	UHorizontalBox* SkillCategoryRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+
+	auto AddSkillCategoryButton = [&](EFableSkillCategory Category)
 	{
-		const FFableSkillDefinitionTableRow* SkillRow = FindSkillDefinition(SkillId);
-		if (SkillRow == nullptr)
-		{
-			continue;
-		}
-
-		AvailableCategories.AddUnique(SkillRow->Category);
-	}
-
-	UHorizontalBox* SkillCategoryRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("SkillCategoryRow"));
-
-auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
-	{
+		const FName CategoryAction = SkillCategoryActionFromEnum(Category);
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(UFableActionButton::StaticClass());
 		Button->InitializeAction(CategoryAction);
 		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
-		FableBookStyle::ApplyButton(Button);
-		Button->SetBackgroundColor(ActiveSkillCategory == CategoryAction ? UiButtonSelectedColor : UiButtonColor);
+		StyleJournalTab(Button, ActiveSkillCategory == CategoryAction, true);
 		SkillCategoryButtons.Add(CategoryAction,Button);
-
-		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		FSlateFontInfo TextBaseFont = FableBookStyle::Font(14, true);
-		TextBaseFont.Size = 14;
-		Text->SetFont(TextBaseFont);
-		Text->SetText(FText::FromString(Label));
-		Text->SetColorAndOpacity(FSlateColor(FLinearColor(.035f, .014f, .004f, 1.f)));
-		Text->SetJustification(ETextJustify::Center);
-		FSlateFontInfo FontInfo = FableBookStyle::Font(14, true);
-		FontInfo.Size = 13;
-		Text->SetFont(FontInfo);
-		Button->AddChild(Text);
-		if (UButtonSlot* TextSlot = Cast<UButtonSlot>(Text->Slot))
+		Button->SetToolTipText(FText::FromString(EnumToString(Category)));
+		UVerticalBox* Content = WidgetTree->ConstructWidget<UVerticalBox>();
+		Content->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Button->AddChild(Content); Cast<UButtonSlot>(Content->Slot)->SetPadding(FMargin(6.f, 16.f, 6.f, 14.f));
+		USizeBox* IconSize = WidgetTree->ConstructWidget<USizeBox>();
+		IconSize->SetWidthOverride(38.f); IconSize->SetHeightOverride(38.f);
+		UImage* Icon = WidgetTree->ConstructWidget<UImage>();
+		Icon->SetBrushFromTexture(SkillSchoolArt(Category));
+		UScaleBox* IconScale = WidgetTree->ConstructWidget<UScaleBox>();
+		IconScale->SetStretch(EStretch::ScaleToFit);
+		IconScale->SetStretchDirection(EStretchDirection::Both);
+		IconScale->SetContent(Icon);
+		IconSize->SetContent(IconScale);
+		Content->AddChildToVerticalBox(IconSize)->SetHorizontalAlignment(HAlign_Center);
+		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
+		Label->SetText(FText::FromString(EnumToString(Category)));
+		Label->SetFont(FableBookStyle::Font(12, true)); Label->SetColorAndOpacity(UiTextColor);
+		Label->SetJustification(ETextJustify::Center);
+		Content->AddChildToVerticalBox(Label);
+		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(88.f); Size->SetContent(Button);
+		if (UHorizontalBoxSlot* CategorySlot = SkillCategoryRow->AddChildToHorizontalBox(Size))
 		{
-			TextSlot->SetHorizontalAlignment(HAlign_Center);
-			TextSlot->SetVerticalAlignment(VAlign_Center);
-			TextSlot->SetPadding(FMargin(8.0f, 6.0f));
-		}
-
-		if (UHorizontalBoxSlot* HorizontalSlot = SkillCategoryRow->AddChildToHorizontalBox(Button))
-		{
-			HorizontalSlot->SetPadding(FMargin(0.0f, 0.0f, 6.0f, 0.0f));
+			CategorySlot->SetPadding(FMargin(0.f, 0.f, 4.f, 0.f));
 		}
 	};
 
 	OrderedSkillCategories.Reset();
 	AddJournalHint(WidgetTree, SkillCategoryRow, TEXT("L1"));
-	AddSkillCategoryButton(TEXT("All"), SkillCategoryAllAction);
-	OrderedSkillCategories.Add(SkillCategoryAllAction);
 	for (EFableSkillCategory Category : AvailableCategories)
 	{
-		AddSkillCategoryButton(EnumToString(Category), SkillCategoryActionFromEnum(Category));
+		AddSkillCategoryButton(Category);
 		OrderedSkillCategories.Add(SkillCategoryActionFromEnum(Category));
 	}
 	AddJournalHint(WidgetTree, SkillCategoryRow, TEXT("R1"));
@@ -1296,7 +1642,7 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 	const TArray<FString>& VisibleSkills=LearnedSkills;
 	DisplayedSkillOrder=LearnedSkills;
 
-	UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("SkillsMainRow"));
+	UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* MainRowSlot = ContentRoot->AddChildToVerticalBox(MainRow))
 	{
 		FSlateChildSize FillSize;
@@ -1305,8 +1651,8 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		MainRowSlot->SetSize(FillSize);
 	}
 
-	UBorder* SkillListSection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SkillsListSection"));
-	SkillListSection->SetBrushColor(UiSectionColor);
+	UBorder* SkillListSection = WidgetTree->ConstructWidget<UBorder>();
+	SkillListSection->SetBrushColor(FLinearColor::Transparent);
 	SkillListSection->SetPadding(FMargin(8.0f));
 	if (UHorizontalBoxSlot* ListSlot = MainRow->AddChildToHorizontalBox(SkillListSection))
 	{
@@ -1317,7 +1663,7 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		ListSlot->SetPadding(FMargin(0.0f, 0.0f, 32.0f, 0.0f));
 	}
 
-	UScrollBox* SkillsListScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("SkillsListScroll"));
+	UScrollBox* SkillsListScroll = WidgetTree->ConstructWidget<UScrollBox>();
 	SkillsScroll = SkillsListScroll;
 	UVerticalBox* SkillsLeftColumn = WidgetTree->ConstructWidget<UVerticalBox>();
 	SkillListSection->SetContent(SkillsLeftColumn);
@@ -1328,7 +1674,7 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		ScrollSlot->SetSize(FillSize);
 	}
 
-	UVerticalBox* SkillsListVBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SkillsListVBox"));
+	UVerticalBox* SkillsListVBox = WidgetTree->ConstructWidget<UVerticalBox>();
 	SkillsListScroll->AddChild(SkillsListVBox);
 
 	for (int32 SkillIndex = 0; SkillIndex < VisibleSkills.Num(); ++SkillIndex)
@@ -1341,9 +1687,9 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 			: BuildIconToken(SkillRow != nullptr && !SkillRow->DisplayName.IsEmpty() ? SkillRow->DisplayName : SkillId);
 
 		UBorder* RowBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		RowBorder->SetBrushColor(bSelected ? UiButtonSelectedColor : UiButtonColor);
+		RowBorder->SetBrush(FSlateRoundedBoxBrush(bSelected ? FLinearColor(.45f, .27f, .1f, .12f) : FLinearColor::Transparent, 3.f));
 		SkillRows.Add(SkillId,RowBorder);
-		RowBorder->SetPadding(FMargin(6.0f));
+		RowBorder->SetPadding(FMargin(8.0f, 14.f));
 		if (UVerticalBoxSlot* RowSlot = SkillsListVBox->AddChildToVerticalBox(RowBorder))
 		{
 			RowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
@@ -1355,21 +1701,20 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		const FName SlotId(*FString::Printf(TEXT("skill_%d"), SkillIndex));
 		UFableInventorySlotWidget* SkillSlot = WidgetTree->ConstructWidget<UFableInventorySlotWidget>(UFableInventorySlotWidget::StaticClass());
 		SkillSlot->InitializeSlot(SlotId, TEXT(""), false);
-		UTexture2D* SkillIcon = (SkillRow != nullptr && !SkillRow->SkillIconTexture.IsNull())
-			? SkillRow->SkillIconTexture.LoadSynchronous()
-			: nullptr;
+		UTexture2D* SkillIcon = SkillRow ? SkillSchoolArt(SkillRow->Category) : nullptr;
+		if (!SkillIcon && SkillRow && !SkillRow->SkillIconTexture.IsNull()) SkillIcon = SkillRow->SkillIconTexture.LoadSynchronous();
 		SkillSlot->SetItemData(FString::Printf(TEXT("skill:%s"), *SkillId), Token, SkillIcon);
 		SkillSlot->OnSlotHovered.AddDynamic(this, &UFableCharacterMenuWidget::HandleSkillSlotHovered);
 		SkillSlot->OnSlotClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleSkillSlotClicked);
 		SkillSlot->OnSlotRightClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleSkillSlotRightClicked);
 
 		USizeBox* SlotSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		SlotSizeBox->SetWidthOverride(60.0f);
-		SlotSizeBox->SetHeightOverride(60.0f);
+		SlotSizeBox->SetWidthOverride(76.0f);
+		SlotSizeBox->SetHeightOverride(76.0f);
 		SlotSizeBox->SetContent(SkillSlot);
 		if (UHorizontalBoxSlot* SlotHBox = Row->AddChildToHorizontalBox(SlotSizeBox))
 		{
-			SlotHBox->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+			SlotHBox->SetPadding(FMargin(0.0f, 0.0f, 16.0f, 0.0f));
 		}
 
 		const FName SkillSelectAction(*FString::Printf(TEXT("%s%d"), SkillSelectActionPrefix, SkillIndex));
@@ -1391,10 +1736,15 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		UVerticalBox* RowText = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		RowText->SetVisibility(ESlateVisibility::HitTestInvisible);
 		RowTextButton->AddChild(RowText);
+		if (UButtonSlot* LabelSlot = Cast<UButtonSlot>(RowText->Slot))
+		{
+			LabelSlot->SetHorizontalAlignment(HAlign_Fill); LabelSlot->SetVerticalAlignment(VAlign_Center);
+			LabelSlot->SetPadding(FMargin(0.f));
+		}
 
 		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		FSlateFontInfo NameTextBaseFont = FableBookStyle::Font(14, false);
-		NameTextBaseFont.Size = 14;
+		NameTextBaseFont.Size = 20;
 		NameText->SetFont(NameTextBaseFont);
 		NameText->SetText(FText::FromString(SkillRow != nullptr && !SkillRow->DisplayName.IsEmpty() ? SkillRow->DisplayName : HumanizeToken(SkillId)));
 		NameText->SetColorAndOpacity(FSlateColor(UiTextColor));
@@ -1409,13 +1759,13 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		Subtitle->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
 		Subtitle->SetAutoWrapText(true);
 		FSlateFontInfo SubtitleFont = FableBookStyle::Font(14, false);
-		SubtitleFont.Size = 11;
+		SubtitleFont.Size = 14;
 		Subtitle->SetFont(SubtitleFont);
 		RowText->AddChildToVerticalBox(Subtitle);
 	}
 
-	UBorder* DetailsSection = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("SkillDetailsSection"));
-	DetailsSection->SetBrushColor(UiSectionColor);
+	UBorder* DetailsSection = WidgetTree->ConstructWidget<UBorder>();
+	DetailsSection->SetBrushColor(FLinearColor::Transparent);
 	DetailsSection->SetPadding(FMargin(12.0f, 6.0f, 12.0f, 12.0f));
 	if (UHorizontalBoxSlot* DetailsSlot = MainRow->AddChildToHorizontalBox(DetailsSection))
 	{
@@ -1426,11 +1776,11 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 		DetailsSlot->SetPadding(FMargin(32.0f, 0.0f, 0.0f, 0.0f));
 	}
 
-	UScrollBox* DetailsScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("SkillDetailsScroll"));
+	UScrollBox* DetailsScroll = WidgetTree->ConstructWidget<UScrollBox>();
 	DetailsScroll->SetClipping(EWidgetClipping::ClipToBoundsAlways);
 	DetailsSection->SetContent(DetailsScroll);
 
-	UVerticalBox* DetailsVBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SkillDetailsVBox"));
+	UVerticalBox* DetailsVBox = WidgetTree->ConstructWidget<UVerticalBox>();
 	DetailsScroll->AddChild(DetailsVBox);
 	SkillDetailsContent=DetailsVBox;
 	RefreshSkillsPresentation();
@@ -1439,11 +1789,12 @@ auto AddSkillCategoryButton = [&](const FString& Label, FName CategoryAction)
 void UFableCharacterMenuWidget::RefreshSkillDetails()
 {
 	if (!SkillDetailsContent) return;
-	if (UScrollBox* DetailsScroll = Cast<UScrollBox>(WidgetTree->FindWidget(TEXT("SkillDetailsScroll"))))
+	if (UScrollBox* DetailsScroll = Cast<UScrollBox>(SkillDetailsContent->GetParent()))
 		DetailsScroll->ScrollToStart();
 	// Only the passive details text changes; hovered/clicked rows and both
 	// scroll containers retain their Slate instances and focus.
 	SkillDetailsContent->ClearChildren();
+	UE_LOG(LogFableForge, Display, TEXT("SKILL_DETAILS refresh=%s"), *ActiveSkillDetailsId);
 	UVerticalBox* DetailsVBox=SkillDetailsContent;
 
 
@@ -1475,25 +1826,21 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		}
 	};
 
-	AddDetailLine(TEXT(""), SelectedSkillName, false, 18);
-	if (!ActiveSkillDetailsId.IsEmpty())
+	if (SelectedSkill)
 	{
-		UFableActionButton* AssignButton = WidgetTree->ConstructWidget<UFableActionButton>();
-		AssignButton->InitializeAction(FName(*(FString(AssignSkillActionPrefix) + ActiveSkillDetailsId)));
-		AssignButton->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
-		FableBookStyle::ApplyButton(AssignButton);
-		UTextBlock* AssignText = WidgetTree->ConstructWidget<UTextBlock>();
-		AssignText->SetText(FText::FromString(TEXT("Assign to Slot  ·  Cross")));
-		AssignText->SetFont(FableBookStyle::Font(14, true));
-		AssignText->SetColorAndOpacity(FLinearColor(.055f, .024f, .008f, 1.f));
-		AssignButton->AddChild(AssignText);
-		if (UButtonSlot* LabelSlot = Cast<UButtonSlot>(AssignText->Slot)) LabelSlot->SetPadding(FMargin(12.f, 7.f));
-		if (UVerticalBoxSlot* AssignSlot = DetailsVBox->AddChildToVerticalBox(AssignButton))
-		{
-			AssignSlot->SetHorizontalAlignment(HAlign_Left);
-			AssignSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 10.f));
-		}
+		USizeBox* IllustrationSize = WidgetTree->ConstructWidget<USizeBox>();
+		IllustrationSize->SetWidthOverride(104.f); IllustrationSize->SetHeightOverride(104.f);
+		UImage* Illustration = WidgetTree->ConstructWidget<UImage>();
+		Illustration->SetBrushFromTexture(SkillSchoolArt(SelectedSkill->Category));
+		UScaleBox* IllustrationScale = WidgetTree->ConstructWidget<UScaleBox>();
+		IllustrationScale->SetStretch(EStretch::ScaleToFit);
+		IllustrationScale->SetStretchDirection(EStretchDirection::Both);
+		IllustrationScale->SetContent(Illustration);
+		IllustrationSize->SetContent(IllustrationScale);
+		UVerticalBoxSlot* ArtSlot = DetailsVBox->AddChildToVerticalBox(IllustrationSize);
+		ArtSlot->SetHorizontalAlignment(HAlign_Left); ArtSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 16.f));
 	}
+	AddDetailLine(TEXT(""), SelectedSkillName, false, 26);
 
 	if (SelectedSkill == nullptr)
 	{
@@ -1501,22 +1848,127 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		return;
 	}
 
-	AddDetailLine(TEXT("Summary"), SelectedSkill->Summary, true);
-	AddDetailLine(TEXT("Description"), SelectedSkill->Description, true);
-	AddDetailLine(TEXT("Category"), EnumToString(SelectedSkill->Category));
-	AddDetailLine(TEXT("Type"), EnumToString(SelectedSkill->SkillType));
-	AddDetailLine(TEXT("Targeting"), EnumToString(SelectedSkill->TargetingMode));
+	AddDetailLine(TEXT(""), EnumToString(SelectedSkill->Category), true, 15);
+	AddDetailLine(TEXT(""), SelectedSkill->Description, false, 16);
+
+	FSkillGestureHint GestureHint;
+	if (TryGetSkillGestureHint(SelectedSkill->SkillId, GestureHint))
+	{
+		UBorder* GesturePanel = WidgetTree->ConstructWidget<UBorder>();
+		GesturePanel->SetBrush(FSlateRoundedBoxBrush(FLinearColor(.20f, .12f, .045f, .10f), 5.f, FLinearColor(.44f, .28f, .10f, .34f), 1.f));
+		GesturePanel->SetPadding(FMargin(12.f, 10.f));
+		UVerticalBox* GestureContent = WidgetTree->ConstructWidget<UVerticalBox>();
+		GesturePanel->SetContent(GestureContent);
+
+		UTextBlock* GestureHeading = WidgetTree->ConstructWidget<UTextBlock>();
+		GestureHeading->SetText(FText::FromString(TEXT("RIGHT-STICK SPELL GESTURE")));
+		FSlateFontInfo GestureHeadingFont = FableBookStyle::Font(13, true);
+		GestureHeadingFont.Size = 13;
+		GestureHeading->SetFont(GestureHeadingFont);
+		GestureHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
+		GestureContent->AddChildToVerticalBox(GestureHeading)->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+
+		UTextBlock* DPadInstruction = WidgetTree->ConstructWidget<UTextBlock>();
+		DPadInstruction->SetText(FText::FromString(GestureHint.DPadInstruction));
+		FSlateFontInfo DPadFont = FableBookStyle::Font(14, true);
+		DPadFont.Size = 14;
+		DPadInstruction->SetFont(DPadFont);
+		DPadInstruction->SetColorAndOpacity(FSlateColor(UiTextColor));
+		GestureContent->AddChildToVerticalBox(DPadInstruction)->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
+
+		const bool bFontAwesomeAvailable = FPaths::FileExists(FPaths::ProjectContentDir() / TEXT("Slate/Fonts/FontAwesome.ttf"));
+		const FSlateFontInfo GestureArrowFont = bFontAwesomeAvailable
+			? JournalBookmarkFont(25)
+			: FableBookStyle::Font(25, true);
+		auto MakeGestureGlyph = [&](uint32 FontAwesomeCodepoint, const TCHAR* SafeGlyph) -> UTextBlock*
+		{
+			UTextBlock* Glyph = WidgetTree->ConstructWidget<UTextBlock>();
+			Glyph->SetFont(GestureArrowFont);
+			Glyph->SetText(FText::FromString(bFontAwesomeAvailable ? FString::Chr(FontAwesomeCodepoint) : FString(SafeGlyph)));
+			Glyph->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
+			Glyph->SetJustification(ETextJustify::Center);
+			return Glyph;
+		};
+		auto AddGestureNode = [&](UHorizontalBox* Row, const TCHAR* Label, bool bStickNode, bool bWide)
+		{
+			USizeBox* NodeSize = WidgetTree->ConstructWidget<USizeBox>();
+			NodeSize->SetWidthOverride(bWide ? 110.f : 52.f);
+			NodeSize->SetHeightOverride(44.f);
+			UBorder* Node = WidgetTree->ConstructWidget<UBorder>();
+			Node->SetBrush(FSlateRoundedBoxBrush(bStickNode ? FLinearColor(.13f, .32f, .31f, .30f) : FLinearColor(.40f, .25f, .09f, .16f), 18.f,
+				bStickNode ? FLinearColor(.16f, .55f, .52f, .80f) : FLinearColor(.54f, .35f, .13f, .65f), 1.f));
+			Node->SetHorizontalAlignment(HAlign_Center);
+			Node->SetVerticalAlignment(VAlign_Center);
+			UTextBlock* LabelText = WidgetTree->ConstructWidget<UTextBlock>();
+			LabelText->SetText(FText::FromString(Label));
+			FSlateFontInfo LabelFont = FableBookStyle::Font(12, true);
+			LabelFont.Size = 12;
+			LabelText->SetFont(LabelFont);
+			LabelText->SetColorAndOpacity(FSlateColor(UiTextColor));
+			LabelText->SetJustification(ETextJustify::Center);
+			Node->SetContent(LabelText);
+			NodeSize->SetContent(Node);
+			if (UHorizontalBoxSlot* NodeSlot = Row->AddChildToHorizontalBox(NodeSize))
+			{
+				NodeSlot->SetVerticalAlignment(VAlign_Center);
+				NodeSlot->SetPadding(FMargin(2.f, 0.f));
+			}
+		};
+		auto AddGestureArrow = [&](UHorizontalBox* Row, uint32 FontAwesomeCodepoint, const TCHAR* SafeGlyph)
+		{
+			USizeBox* ArrowSize = WidgetTree->ConstructWidget<USizeBox>();
+			ArrowSize->SetWidthOverride(42.f);
+			ArrowSize->SetHeightOverride(44.f);
+			ArrowSize->SetContent(MakeGestureGlyph(FontAwesomeCodepoint, SafeGlyph));
+			if (UHorizontalBoxSlot* ArrowSlot = Row->AddChildToHorizontalBox(ArrowSize))
+			{
+				ArrowSlot->SetVerticalAlignment(VAlign_Center);
+			}
+		};
+
+		UHorizontalBox* GestureDiagram = WidgetTree->ConstructWidget<UHorizontalBox>();
+		if (GestureHint.bCircular)
+		{
+			AddGestureNode(GestureDiagram, TEXT("RS"), true, false);
+			AddGestureArrow(GestureDiagram, 0xF01E, TEXT("O"));
+			AddGestureNode(GestureDiagram, TEXT("FULL CIRCLE"), false, true);
+		}
+		else
+		{
+			AddGestureNode(GestureDiagram, TEXT("RS"), true, false);
+			AddGestureArrow(GestureDiagram, 0xF061, TEXT(">"));
+			AddGestureNode(GestureDiagram, TEXT("OUT"), false, false);
+			AddGestureArrow(GestureDiagram, 0xF060, TEXT("<"));
+			AddGestureNode(GestureDiagram, TEXT("CENTER"), false, true);
+		}
+		UVerticalBoxSlot* DiagramSlot = GestureContent->AddChildToVerticalBox(GestureDiagram);
+		DiagramSlot->SetHorizontalAlignment(HAlign_Center);
+		DiagramSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
+
+		UTextBlock* GestureInstruction = WidgetTree->ConstructWidget<UTextBlock>();
+		GestureInstruction->SetText(FText::FromString(GestureHint.Instruction));
+		FSlateFontInfo GestureInstructionFont = FableBookStyle::Font(14, false);
+		GestureInstructionFont.Size = 14;
+		GestureInstruction->SetFont(GestureInstructionFont);
+		GestureInstruction->SetColorAndOpacity(FSlateColor(UiTextColor));
+		GestureInstruction->SetAutoWrapText(true);
+		GestureContent->AddChildToVerticalBox(GestureInstruction);
+
+		DetailsVBox->AddChildToVerticalBox(GesturePanel)->SetPadding(FMargin(0.f, 2.f, 0.f, 10.f));
+	}
+
+	AddDetailLine(TEXT("Target"), EnumToString(SelectedSkill->TargetingMode));
 
 	FString CostText = SelectedSkill->ResourceType == EFableSkillResourceType::None
 		? TEXT("No resource cost")
 		: FString::Printf(TEXT("%.0f %s"), SelectedSkill->ResourceCost, *EnumToString(SelectedSkill->ResourceType));
+	if (SelectedSkill->SkillId == TEXT("slow_time")) CostText = TEXT("Drains Cosmic while active");
 	AddDetailLine(TEXT("Cost"), CostText);
-	AddDetailLine(TEXT("Cooldown"), FString::Printf(TEXT("%.1fs"), SelectedSkill->CooldownSeconds));
-	AddDetailLine(TEXT("Cast Time"), FString::Printf(TEXT("%.1fs"), SelectedSkill->CastTimeSeconds));
-	AddDetailLine(TEXT("Range"), FString::Printf(TEXT("%.0f"), SelectedSkill->RangeUnits));
+	if (SelectedSkill->CooldownSeconds > 0.f) AddDetailLine(TEXT("Cooldown"), FString::Printf(TEXT("%.1f s"), SelectedSkill->CooldownSeconds));
+	AddDetailLine(TEXT("Range"), FString::Printf(TEXT("%.1f m"), SelectedSkill->RangeUnits / 100.f));
 	if (SelectedSkill->RadiusUnits > 0.0f)
 	{
-		AddDetailLine(TEXT("Radius"), FString::Printf(TEXT("%.0f"), SelectedSkill->RadiusUnits));
+		AddDetailLine(TEXT("Radius"), FString::Printf(TEXT("%.1f m"), SelectedSkill->RadiusUnits / 100.f));
 	}
 
 	FString ScalingText = SelectedSkill->ScalingPrimaryStat.IsEmpty()
@@ -1526,20 +1978,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 	{
 		ScalingText += FString::Printf(TEXT(", %s x%.2f"), *HumanizeToken(SelectedSkill->ScalingSecondaryStat), SelectedSkill->ScalingSecondaryCoefficient);
 	}
-	AddDetailLine(TEXT("Scaling"), ScalingText);
-	AddDetailLine(TEXT("Tags"), JoinHumanizedList(SelectedSkill->TagsCsv));
-	AddDetailLine(TEXT("Effects"), JoinHumanizedList(SelectedSkill->EffectIdsCsv));
-	AddDetailLine(TEXT("Synergy Rules"), JoinHumanizedList(SelectedSkill->SynergyRuleIdsCsv));
-	AddDetailLine(TEXT("Discovery Rules"), JoinHumanizedList(SelectedSkill->DiscoveryRuleIdsCsv));
-	AddDetailLine(TEXT("Learning Sources"), JoinHumanizedList(SelectedSkill->LearningSourcesCsv));
-	AddDetailLine(TEXT("Witness Skills"), JoinHumanizedList(SelectedSkill->WitnessSkillIdsCsv));
-	AddDetailLine(TEXT("Books"), JoinHumanizedList(SelectedSkill->BookIdsCsv));
-	AddDetailLine(
-		TEXT("Latent Mastery"),
-		FString::Printf(TEXT("Dormant -> Stirring %d, Awakening %d, Manifested %d"),
-			SelectedSkill->StirringProgressThreshold,
-			SelectedSkill->AwakeningProgressThreshold,
-			SelectedSkill->ManifestedProgressThreshold));
+	if (!SelectedSkill->ScalingPrimaryStat.IsEmpty()) AddDetailLine(TEXT("Scaling"), ScalingText);
 }
 
 void UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable()
@@ -1572,6 +2011,12 @@ void UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable()
 		UE_LOG(LogFableForge, Warning, TEXT("Skills DataTable not found at '%s'."), SkillsDataTablePath);
 	}
 
+	// Starter schools are available without requiring an editor CSV reimport.
+	for (const auto& Starter : FableSkillCatalog::GetStarterSkills())
+	{
+		FFableSkillDefinitionTableRow Definition;
+		if (FableSkillCatalog::TryGetStarterSkillDefinition(Starter.SkillId, Definition)) SkillDefinitions.Add(Starter.SkillId, Definition);
+	}
 	bSkillDefinitionsLoaded = true;
 }
 
@@ -1588,6 +2033,7 @@ void UFableCharacterMenuWidget::LoadInventoryFromSave()
 	}
 
 	InventorySlots.Reset();
+	InventoryQuantities.Reset();
 	EquippedSlots.Reset();
 	InventorySlots.SetNum(UFableSaveSubsystem::InventorySlotsPerCharacter);
 	EquippedSlots.SetNum(UFableSaveSubsystem::EquipmentSlotsPerCharacter);
@@ -1599,6 +2045,7 @@ void UFableCharacterMenuWidget::LoadInventoryFromSave()
 		if (SaveSubsystem->TryGetActiveInventory(SavedInventory, SavedEquipment))
 		{
 			InventorySlots = SavedInventory;
+			SaveSubsystem->TryGetActiveInventoryQuantities(InventoryQuantities);
 			EquippedSlots = SavedEquipment;
 		}
 	}
@@ -1611,6 +2058,9 @@ void UFableCharacterMenuWidget::LoadInventoryFromSave()
 	{
 		EquippedSlots.SetNum(UFableSaveSubsystem::EquipmentSlotsPerCharacter);
 	}
+	InventoryQuantities.SetNum(InventorySlots.Num());
+	for (int32 Index = 0; Index < InventorySlots.Num(); ++Index)
+		InventoryQuantities[Index] = InventorySlots[Index].IsEmpty() ? 0 : FMath::Max(1, InventoryQuantities[Index]);
 
 	bInventoryLoaded = true;
 }
@@ -1618,8 +2068,10 @@ void UFableCharacterMenuWidget::LoadInventoryFromSave()
 void UFableCharacterMenuWidget::SaveInventoryToSaveSubsystem()
 {
 	UFableSaveSubsystem* SaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr;
-	if (SaveSubsystem != nullptr && SaveSubsystem->SetActiveInventory(InventorySlots, EquippedSlots))
+	if (SaveSubsystem != nullptr && SaveSubsystem->SetActiveInventory(InventorySlots, EquippedSlots, InventoryQuantities))
 	{
+		SaveSubsystem->TryGetActiveInventory(InventorySlots, EquippedSlots);
+		SaveSubsystem->TryGetActiveInventoryQuantities(InventoryQuantities);
 		InventorySaveWarning.Reset();
 		return;
 	}
@@ -1781,6 +2233,7 @@ void UFableCharacterMenuWidget::RefreshInventorySlotWidgets()
 		}
 
 		SlotWidget->SetItemData(ItemId, GetItemLabelForSlot(ItemId, bEquipmentSlot), GetItemIconForSlot(ItemId));
+		SlotWidget->SetItemQuantity(!bEquipmentSlot && InventoryQuantities.IsValidIndex(SlotIndex) ? InventoryQuantities[SlotIndex] : 1);
 	}
 }
 
@@ -1788,7 +2241,7 @@ void UFableCharacterMenuWidget::RefreshInventoryPresentation()
 {
 	RefreshInventorySlotWidgets();
 	for (const auto& Entry : InventoryCategoryButtons)
-		if (Entry.Value) Entry.Value->SetBackgroundColor(Entry.Key==ActiveInventoryCategory ? UiButtonSelectedColor : UiButtonColor);
+		if (Entry.Value) StyleJournalTab(Entry.Value, Entry.Key==ActiveInventoryCategory, true);
 	int32 Occupied=0;
 	TArray<int32> Visible;
 	TArray<int32> Empty;
@@ -1844,15 +2297,14 @@ void UFableCharacterMenuWidget::RefreshSkillsPresentation()
 		const FFableSkillDefinitionTableRow* Definition=FindSkillDefinition(Id);
 		if (ActiveSkillCategory==SkillCategoryAllAction || (Definition && SkillCategoryActionFromEnum(Definition->Category)==ActiveSkillCategory)) Visible.Add(Id);
 	}
-	if (Visible.IsEmpty()) { ActiveSkillCategory=SkillCategoryAllAction; Visible=DisplayedSkillOrder; }
 	if (!Visible.Contains(ActiveSkillDetailsId)) ActiveSkillDetailsId=Visible.IsEmpty() ? FString() : Visible[0];
 	for (const auto& Entry : SkillCategoryButtons)
-		if (Entry.Value) Entry.Value->SetBackgroundColor(Entry.Key==ActiveSkillCategory ? UiButtonSelectedColor : UiButtonColor);
+		if (Entry.Value) StyleJournalTab(Entry.Value, Entry.Key==ActiveSkillCategory, true);
 	for (const auto& Entry : SkillRows)
 	{
 		if (!Entry.Value) continue;
 		Entry.Value->SetVisibility(Visible.Contains(Entry.Key) ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-		Entry.Value->SetBrushColor(Entry.Key==ActiveSkillDetailsId ? UiButtonSelectedColor : UiButtonColor);
+		Entry.Value->SetBrushColor(Entry.Key==ActiveSkillDetailsId ? FLinearColor(.45f, .27f, .1f, .12f) : FLinearColor::Transparent);
 	}
 	RefreshSkillDetails();
 }
@@ -2023,7 +2475,7 @@ void UFableCharacterMenuWidget::HandleInventorySlotDropped(FName FromSlotId, FNa
 
 	const FString SourceItemId = FromArray[FromIndex];
 	const FString DestinationItemId = ToArray[ToIndex];
-	if (SourceItemId.IsEmpty())
+	if (SourceItemId.IsEmpty() || FromSlotId == ToSlotId)
 	{
 		return;
 	}
@@ -2040,9 +2492,28 @@ void UFableCharacterMenuWidget::HandleInventorySlotDropped(FName FromSlotId, FNa
 		return;
 	}
 
-	const FString TempValue = FromArray[FromIndex];
-	FromArray[FromIndex] = ToArray[ToIndex];
-	ToArray[ToIndex] = TempValue;
+	InventoryQuantities.SetNum(InventorySlots.Num());
+	const int32 SourceQuantity = bFromEquipment ? 1 : FMath::Max(1, InventoryQuantities[FromIndex]);
+	const int32 DestinationQuantity = DestinationItemId.IsEmpty() ? 0 : (bToEquipment ? 1 : FMath::Max(1, InventoryQuantities[ToIndex]));
+	const auto* Saves = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr;
+	if (!bFromEquipment && !bToEquipment && SourceItemId.Equals(DestinationItemId, ESearchCase::IgnoreCase)
+		&& Saves && Saves->IsItemStackable(SourceItemId))
+	{
+		const int32 Moved = FMath::Min(SourceQuantity, MAX_int32 - DestinationQuantity);
+		InventoryQuantities[ToIndex] = DestinationQuantity + Moved;
+		InventoryQuantities[FromIndex] = SourceQuantity - Moved;
+		if (InventoryQuantities[FromIndex] == 0) FromArray[FromIndex].Reset();
+	}
+	else
+	{
+		// Equipped slots hold one item; reject a multi-item stack rather than lose
+		// the remainder if a future stackable definition also permits equipment.
+		if ((bToEquipment && SourceQuantity > 1) || (bFromEquipment && DestinationQuantity > 1)) return;
+		FromArray[FromIndex] = DestinationItemId;
+		ToArray[ToIndex] = SourceItemId;
+		if (!bFromEquipment) InventoryQuantities[FromIndex] = DestinationQuantity;
+		if (!bToEquipment) InventoryQuantities[ToIndex] = SourceQuantity;
+	}
 	SaveInventoryToSaveSubsystem();
 
 	RefreshInventoryPresentation();
@@ -2050,6 +2521,151 @@ void UFableCharacterMenuWidget::HandleInventorySlotDropped(FName FromSlotId, FNa
 
 void UFableCharacterMenuWidget::HandleActionClicked(FName ActionId)
 {
+	if (ActionId.ToString().StartsWith(TEXT("item_")))
+	{
+		if (!ItemActionsLayer) return;
+		if (ActionId == TEXT("item_cancel")) { CloseItemActions(); return; }
+		bool bEquipment = false; int32 Index = INDEX_NONE;
+		if (!ResolveSlotAddress(ItemActionSource, bEquipment, Index)) { CloseItemActions(); return; }
+		const auto& Slots = bEquipment ? EquippedSlots : InventorySlots;
+		if (!Slots.IsValidIndex(Index) || Slots[Index] != ItemActionIdentity) { CloseItemActions(); return; }
+		if (ActionId == TEXT("item_move"))
+		{
+			ControllerPickedSlot = ItemActionSource; ControllerSlotId = ItemActionSource;
+			CloseItemActions(); RefreshControllerSelection(); return;
+		}
+		if (ActionId == TEXT("item_equip"))
+		{
+			int32 Destination = INDEX_NONE;
+			if (bEquipment) Destination = InventorySlots.IndexOfByPredicate([](const FString& Value) { return Value.IsEmpty(); });
+			else
+			{
+				for (int32 I=0; I<EquippedSlots.Num(); ++I)
+				{
+					if (!IsItemAllowedInEquipmentSlot(ItemActionIdentity,I)) continue;
+					if (Destination == INDEX_NONE) Destination = I;
+					if (EquippedSlots[I].IsEmpty()) { Destination = I; break; }
+				}
+			}
+			if (Destination == INDEX_NONE)
+			{
+				ItemActionStatus = bEquipment ? TEXT("Your backpack is full.") : TEXT("This item has no matching equipment slot.");
+				RebuildItemActions(); return;
+			}
+			const FName Target(*(bEquipment ? FString::Printf(TEXT("inv_%d"), Destination) : FString::Printf(TEXT("equip_%d"), Destination)));
+			HandleInventorySlotDropped(ItemActionSource, Target, ItemActionIdentity, FString());
+			// Keep the active square on the original inventory item after Equip;
+			// moving focus to the destination equipment slot makes repeated actions
+			// unexpectedly jump across the journal.
+			ControllerSlotId = ItemActionSource; ControllerPickedSlot = NAME_None;
+			CloseItemActions(); RefreshControllerSelection(); return;
+		}
+		if (ActionId == TEXT("item_consume"))
+		{
+			auto* PC = Cast<AFableForgePlayerController>(GetOwningPlayer());
+			if (bEquipment || !PC || !PC->ConsumeInventoryItem(Index))
+			{
+				ItemActionStatus = TEXT("This item cannot be used right now. Its resource may already be full."); RebuildItemActions(); return;
+			}
+			bInventoryLoaded = false; LoadInventoryFromSave(); CloseItemActions(); RefreshInventoryPresentation(); return;
+		}
+		if (ActionId == TEXT("item_assign"))
+		{
+			const FString Payload = TEXT("item:") + ItemActionIdentity;
+			CloseItemActions();
+			if (auto* PC = Cast<AFableForgePlayerController>(GetOwningPlayer())) PC->OpenWheelAssignmentForPayload(Payload);
+			return;
+		}
+		if (ActionId == TEXT("item_drop")) { bConfirmItemDrop = true; ItemActionSelection = 1; RebuildItemActions(); return; }
+		if (ActionId == TEXT("item_drop_confirm"))
+		{
+			APawn* Pawn = GetOwningPlayerPawn();
+			UFableSaveSubsystem* Saves = GetGameInstance()->GetSubsystem<UFableSaveSubsystem>();
+			if (!Pawn || !Saves) return;
+			const FVector Forward = Pawn->GetActorForwardVector().GetSafeNormal2D();
+			FVector Position = Pawn->GetActorLocation() + Forward*100.f;
+			FHitResult Floor; FCollisionQueryParams Params(SCENE_QUERY_STAT(ItemDrop),false,Pawn);
+			FHitResult Obstruction;
+			if (GetWorld()->SweepSingleByChannel(Obstruction, Pawn->GetActorLocation(), Position, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(24.f), Params))
+				Position = Obstruction.Location - Forward*24.f;
+			if (!GetWorld()->LineTraceSingleByChannel(Floor, Position+FVector(0,0,40), Position-FVector(0,0,220), ECC_Visibility, Params)
+				|| Floor.ImpactNormal.Z < .65f || FVector::Dist(Pawn->GetActorLocation(), Floor.ImpactPoint) > 180.f)
+			{
+				ItemActionStatus = TEXT("There is no safe ground nearby to drop this item."); RebuildItemActions(); return;
+			}
+			FActorSpawnParameters Spawn; Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+			const FVector DropPosition = Floor.ImpactPoint+FVector(0,0,26);
+			AFFItemInteractable* Drop = GetWorld()->SpawnActor<AFFItemInteractable>(DropPosition, FRotator::ZeroRotator, Spawn);
+			const int32 DropQuantity = !bEquipment && InventoryQuantities.IsValidIndex(Index) ? InventoryQuantities[Index] : 1;
+			if (!Drop || !Drop->InitializeDroppedItem(ItemActionIdentity, DropQuantity))
+			{
+				if (Drop) Drop->Destroy(); ItemActionStatus = TEXT("Unable to place this item in the world."); RebuildItemActions(); return;
+			}
+			Params.AddIgnoredActor(Drop);
+			FHitResult Visibility;
+			if (GetWorld()->OverlapBlockingTestByChannel(DropPosition, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(22.f), Params)
+				|| GetWorld()->LineTraceSingleByChannel(Visibility, Pawn->GetActorLocation(), DropPosition, ECC_Visibility, Params))
+			{
+				Drop->Destroy(); ItemActionStatus = TEXT("There is not enough clear space to drop this item safely."); RebuildItemActions(); return;
+			}
+			TArray<FString> NewBag = InventorySlots, NewEquipment = EquippedSlots;
+			TArray<int32> NewQuantities = InventoryQuantities;
+			(bEquipment ? NewEquipment : NewBag)[Index].Reset();
+			if (!bEquipment && NewQuantities.IsValidIndex(Index)) NewQuantities[Index] = 0;
+			if (!Saves->SetActiveInventory(NewBag,NewEquipment,NewQuantities))
+			{
+				Drop->Destroy(); ItemActionStatus = TEXT("The drop could not be saved. Your item has not been removed."); RebuildItemActions(); return;
+			}
+			UE_LOG(LogFableForge,Display,TEXT("JOURNAL dropped=%s actor=%s"),*ItemActionIdentity,*Drop->GetName());
+			bInventoryLoaded = false; LoadInventoryFromSave();
+			CloseItemActions(); RefreshInventoryPresentation(); return;
+		}
+		return;
+	}
+	if (HasItemModal()) return;
+	if (ActionId == SettingsAction)
+	{
+		ActiveTab = TEXT("settings"); SettingsPage = NAME_None; SettingsSelection = 0;
+		ControllerPickedSlot = NAME_None; QueueTabContentRebuild(); return;
+	}
+	if (ActionId.ToString().StartsWith(TEXT("settings_")))
+	{
+		UFableSaveSubsystem* Saves = GetGameInstance()->GetSubsystem<UFableSaveSubsystem>();
+		if (!Saves) return;
+		if (ActionId == TEXT("settings_back")) { SettingsPage = NAME_None; SettingsStatus.Reset(); }
+		else if (ActionId == TEXT("settings_save")) { SettingsPage = TEXT("save"); SettingsStatus.Reset(); }
+		else if (ActionId == TEXT("settings_load")) { SettingsLoadCharacter = Saves->GetActiveCharacterId(); SettingsPage = TEXT("load"); SettingsStatus.Reset(); }
+		else if (ActionId == TEXT("settings_quit")) { SettingsPage = TEXT("quit"); }
+		else if (ActionId == TEXT("settings_quit_confirm"))
+		{
+			Close();
+			if (auto* PC = Cast<AFableForgePlayerController>(GetOwningPlayer())) PC->ShowMainMenu();
+			return;
+		}
+		else if (const int32* Slot = SettingsSlots.Find(ActionId))
+		{
+			if (SettingsPage == TEXT("save"))
+			{
+				const bool bSaved = Saves->SaveCharacterToSlot(Saves->GetActiveCharacterId(), *Slot, GetWorld()->GetMapName());
+				SettingsStatus = bSaved ? TEXT("Game saved.") : TEXT("Save failed. Please check available disk space and permissions.");
+			}
+			else if (SettingsPage == TEXT("load"))
+			{
+				const int32 SlotIndex = *Slot;
+				TArray<FFableSaveSlotMeta> Slots;
+				Saves->GetSaveSlots(SettingsLoadCharacter, Slots);
+				const FFableSaveSlotMeta* Meta = Slots.FindByPredicate([SlotIndex](const auto& Entry) { return Entry.SlotIndex == SlotIndex; });
+				if (!Meta || !Meta->bHasSave)
+				{
+					SettingsStatus = TEXT("This slot is empty.");
+					QueueTabContentRebuild(); return;
+				}
+				if (auto* PC = Cast<AFableForgePlayerController>(GetOwningPlayer())) PC->EnterGameFromCharacterSlot(SettingsLoadCharacter, SlotIndex, false);
+				return;
+			}
+		}
+		SettingsSelection = 0; QueueTabContentRebuild(); return;
+	}
 	if (ActionId == InventoryAction || ActionId == SkillsAction || ActionId == CompanionsAction || ActionId == BuildAction)
 	{
 		bSkillContextVisible = false;
@@ -2221,7 +2837,7 @@ void UFableCharacterMenuWidget::HandleSkillSlotRightClicked(FName SlotId, const 
 	// should push both pages downward when the skill is right-clicked.
 	bSkillContextVisible = false;
 	ActiveSkillDetailsId = ContextSkillId;
-	QueueTabContentRebuild();
+	if (auto* PC = Cast<AFableForgePlayerController>(GetOwningPlayer())) PC->OpenWheelAssignmentForPayload(PayloadId);
 }
 
 

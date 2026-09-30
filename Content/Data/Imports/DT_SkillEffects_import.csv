@@ -15,6 +15,7 @@ eff_ignite_weapon_buff,eff_ignite_weapon_buff,Ignite Weapon Buff,Buff,0,12,0,0,0
 eff_weapon_burn_proc,eff_weapon_burn_proc,Weapon Burn Proc,DamageOverTime,4,3,0,0,1,2,fire|weapon|burn_proc,,Strength,0.2,Proc applied on weapon hit while buffed
 eff_fire_punch_hit,eff_fire_punch_hit,Fire Punch Hit,Damage,38,0,90,0,0,1,fire|melee|unarmed,,Strength,0.9,Short range explosive punch hitbox
 eff_blink_move,eff_blink_move,Blink Movement,Movement,0,0,0,0,0,1,teleport|movement,,Dexterity,0.6,Instant short teleport
+eff_time_step_move,eff_time_step_move,Time Step Movement,Movement,0,0,0,0,0,1,time|movement,,Dexterity,0.65,Short temporal reposition toward the selected ground point
 eff_afterimage_dodge_window,eff_afterimage_dodge_window,Afterimage Dodge Window,Buff,0,1.2,0,0,0,1,movement|dodge|iframes,,Dexterity,0.25,Brief damage avoid window after blink
 eff_conductive_surge_chain,eff_conductive_surge_chain,Conductive Surge Chain,AreaDamage,52,0,420,0,0,1,lightning|chain|aoe,wet|conductive,Intelligence,1.15,Chains across wet targets and puddles
 eff_fire_tornado_vortex,eff_fire_tornado_vortex,Fire Tornado Vortex,AreaDamage,18,6,360,180,1,1,fire|wind|vortex|aoe,,Intelligence,0.5,Sustained vortex ticks plus pull

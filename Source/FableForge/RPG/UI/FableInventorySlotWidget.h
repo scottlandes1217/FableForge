@@ -45,6 +45,7 @@ public:
 	void SetControllerSelection(bool bSelected, bool bPicked);
 	void SetItemLabel(const FString& InItemLabel);
 	void SetItemData(const FString& InPayloadId, const FString& InItemLabel, UObject* InIconResource = nullptr);
+	void SetItemQuantity(int32 InQuantity);
 	void SetCooldownRemaining(float InRemainingSeconds);
 	void PlayUseFeedback();
 	void ResetDragVisual();
@@ -86,6 +87,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> LabelText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> QuantityText;
+	int32 ItemQuantity = 1;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBorder> CooldownOverlay;

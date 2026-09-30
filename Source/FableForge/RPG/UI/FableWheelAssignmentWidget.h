@@ -25,6 +25,7 @@ public:
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual void NativeTick(const FGeometry& InGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnAnalogValueChanged(const FGeometry& InGeometry, const FAnalogInputEvent& InAnalogInputEvent) override;
@@ -48,6 +49,7 @@ public:
 private:
 	void RebuildContent();
 	void ChangePage(int32 Delta);
+	void AddPage();
 	void SyncWheelSelection();
 	int32 FindSocketAtPointer(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) const;
 
@@ -71,6 +73,9 @@ private:
 	int32 SelectedAvailable = 0;
 	bool bOpen = false;
 	bool bEmbedded = false;
-	bool bAvailablePayloadLocked = false;
+	// Once a meaningful controller input is received, mouse motion cannot steal
+	// selection until the user explicitly presses a mouse button.
+	bool bControllerInputActive = false;
+	bool bRightStickInputDirty = false;
 	FVector2D RightStickValue = FVector2D::ZeroVector;
 };

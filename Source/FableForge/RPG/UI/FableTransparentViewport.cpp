@@ -10,13 +10,15 @@ namespace
 class SFableAlphaViewport : public SViewport
 {
 public:
- SLATE_BEGIN_ARGS(SFableAlphaViewport) {}
+ SLATE_BEGIN_ARGS(SFableAlphaViewport) : _ResolutionScale(1.f) {}
   SLATE_ARGUMENT(TSharedPtr<SViewport>, NativeViewport)
+  SLATE_ARGUMENT(float, ResolutionScale)
  SLATE_END_ARGS()
 
  void Construct(const FArguments& Args)
  {
   NativeViewport=Args._NativeViewport;
+  ResolutionScale=Args._ResolutionScale;
   // Keep the native viewport in the Slate parent chain. FSceneViewport's
   // OnDrawViewport refuses to resize/create its render target unless
   // FindWidgetWindow(native viewport) resolves a real window.
@@ -32,7 +34,7 @@ public:
  {
   // The native viewport is attached but not painted (it forces NoBlending), so
   // it must still update FSceneViewport geometry, render requests and its world.
-  NativeViewport->Tick(Geometry,CurrentTime,DeltaTime);
+  NativeViewport->Tick(RenderGeometry(Geometry),CurrentTime,DeltaTime);
  }
 
  virtual int32 OnPaint(const FPaintArgs& Args,const FGeometry& Geometry,const FSlateRect& CullingRect,
@@ -40,7 +42,10 @@ public:
  {
   const TSharedPtr<ISlateViewport> Interface=ViewportInterface.Pin();
   if (!Interface.IsValid()) return Layer;
-  Interface->OnDrawViewport(Geometry,CullingRect,Elements,Layer,Style,ParentEnabled);
+  // Render to a larger target, then let Slate filter it into the original HUD
+  // rectangle. A ScaleBox alone cannot do this: its draw size still renders at
+  // the small on-screen size. Other book previews retain their default scale.
+  Interface->OnDrawViewport(RenderGeometry(Geometry),CullingRect,Elements,Layer,Style,ParentEnabled);
   const FSlateShaderResource* Texture=Interface->GetViewportRenderTargetTexture();
   if (Texture && !Texture->Debug_IsDestroyed())
   {
@@ -55,7 +60,12 @@ public:
   return Layer+1;
  }
 private:
+ FGeometry RenderGeometry(const FGeometry& Geometry) const
+ {
+  return Geometry.MakeChild(Geometry.GetLocalSize()*ResolutionScale, FSlateLayoutTransform());
+ }
  TSharedPtr<SViewport> NativeViewport;
+ float ResolutionScale=1.f;
 };
 }
 
@@ -63,7 +73,7 @@ TSharedRef<SWidget> UFableTransparentViewport::RebuildWidget()
 {
  const TSharedRef<SWidget> Native=Super::RebuildWidget();
  if (IsDesignTime()) return Native;
- Compositor=SNew(SFableAlphaViewport).NativeViewport(StaticCastSharedRef<SViewport>(Native));
+ Compositor=SNew(SFableAlphaViewport).NativeViewport(StaticCastSharedRef<SViewport>(Native)).ResolutionScale(ResolutionScale);
  return Compositor.ToSharedRef();
 }
 

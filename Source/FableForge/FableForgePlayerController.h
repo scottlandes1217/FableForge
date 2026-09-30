@@ -16,6 +16,7 @@ class UFableWheelAssignmentWidget;
 class UInputMappingContext;
 class UUserWidget;
 class AFFChestInteractable;
+class UPrimitiveComponent;
 
 /**
  *  Player controller that now owns menu + HUD flow for the RPG prototype.
@@ -34,12 +35,27 @@ public:
 	void OpenWheelAssignmentForPayload(const FString& PreferredPayload);
 	void OpenSkillsForQa();
 	void OpenQuickWheelForQa();
-	bool IsWheelInputCaptured() const { return bWheelInputCaptured; }
+	bool IsWheelInputCaptured() const { return bWheelInputCaptured || bElementHeld || bTargetingSkill; }
+	// Gameplay wheels own aiming, not locomotion. Assignment and precision
+	// targeting still capture movement; journal/chest also use ignore-move input.
+	bool IsCharacterMovementCaptured() const
+	{
+		return bTargetingSkill || IsWheelAssignmentOpen()
+			|| (bElementHeld && !bQuickWheelHeld && !bCosmicWheelOpen);
+	}
+	bool IsTargetingForQa() const { return bTargetingSkill; }
+	FVector2D GetTargetCursorForQa() const { return TargetCursorPixels; }
 	void RouteRightStickToWheel(const FVector2D& Value);
 	void RunControllerInputSmokeTest();
 	bool RequestSkillPayload(const FString& PayloadId);
+	bool ConsumeInventoryItem(int32 InventorySlot);
+	UFUNCTION(BlueprintPure, Category = "Cosmic")
+	float GetCosmicEnergy() const { return CosmicEnergy; }
+	UFUNCTION(BlueprintPure, Category = "Cosmic")
+	float GetMaxCosmicEnergy() const { return MaxCosmicEnergy; }
 	void ConfirmTargetedSkill();
 	void CancelTargetedSkill();
+	bool TryStartGameplayJump();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ToggleCharacterMenu();
@@ -93,6 +109,13 @@ protected:
 	void HandleElementReleased();
 	void HandleTimePressed();
 	void HandleTimeReleased();
+	void ToggleSlowTime();
+	bool EquipCosmicPower(const FString& Payload);
+	bool IsSlowTimeActive() const { return bTimeHeld || bWheelSlowTime; }
+	void SetWheelSlowTime(bool bEnabled);
+	void ApplyCosmicTimeState();
+	void ConsumeJumpPress();
+	void HandleControllerActivateReleased();
 	void HandleQuickWheelPressed();
 	void HandleQuickWheelReleased();
 	void HandleLeftTriggerPressed();
@@ -109,7 +132,19 @@ protected:
 	void HandleWheelAssignmentChanged(const TArray<FFableQuickWheelPageData>& Pages);
 	UFUNCTION()
 	void HandleWheelAssignmentClosed();
+	bool RefreshQuickWheelPagesFromSave();
 	void SetWheelInputCapture(bool bCapture);
+	void UpdateCosmicEnergy(double WallNowSeconds);
+	void DeactivateCosmicTime();
+	bool BuildCosmicWheelPages();
+	void OpenCosmicWheel();
+	void CloseCosmicWheel(bool bActivateSelected);
+	void ActivateCosmicWheelSelection();
+	void BeginPrecisionTarget(float Range, float Radius);
+	void UpdatePrecisionTarget(float RealDeltaSeconds);
+	void EndPrecisionTarget();
+	void UpdateElementGesture(float RealDeltaSeconds);
+	void BeginElementGesture(FName Element);
 	void PerformWeaponAttack(bool bOffHand);
 	FVector ResolveAimPoint(FHitResult* OutHit = nullptr) const;
 
@@ -118,6 +153,9 @@ private:
 	void EnsureUiWidgets();
 	void RefreshHudData();
 	void HandlePrimaryInteractClick();
+	void HandleFocusedInteract();
+	bool TraceFocusedInteractable(FHitResult& OutHit) const;
+	void BeginInteractionFromHit(const FHitResult& HitResult);
 	void CloseActivePanel();
 	void UpdateHoveredInteractable();
 	bool IsActorInteractable(const AActor* Actor) const;
@@ -126,6 +164,7 @@ private:
 	bool IsGameInteractionBlocked() const;
 	void ClearHoveredInteractable();
 	void ClearPendingInteraction();
+	void ResetGameplayInputForChest();
 	bool IsJournalOpen() const;
 	bool IsControllerUiInputHandledByFocusedWidget() const;
 	bool IsWheelAssignmentOpen() const;
@@ -172,22 +211,41 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
 	float SlowTimeDilation = 0.12f;
 	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
-	float TimeHoldThreshold = 0.30f;
-	UPROPERTY(EditAnywhere, Category = "Gameplay|Time")
 	float GestureSampleInterval = 0.04f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Cosmic")
+	float MaxCosmicEnergy = 100.0f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Cosmic")
+	float CosmicDrainPerSecond = 10.0f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Cosmic")
+	float CosmicRecoveryPerSecond = 5.0f;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFableTimeWheelWidget> TimeWheelWidget;
 	UPROPERTY(Transient)
 	TObjectPtr<UFableWheelAssignmentWidget> WheelAssignmentWidget;
 	TArray<FFableQuickWheelPageData> QuickWheelPages;
+	TArray<FFableQuickWheelPageData> CosmicWheelPages;
+	int32 CosmicWheelPage = 0;
+	float CosmicEnergy = 100.0f;
+	double LastCosmicWallTimeSeconds = 0.0;
 	FVector2D RightStickValue = FVector2D::ZeroVector;
 	FVector2D GestureStart = FVector2D::ZeroVector;
 	float GestureTravel = 0.0f;
 	float GestureTurn = 0.0f;
 	float LastGestureAngle = 0.0f;
-	float TimeHeldSeconds = 0.0f;
+	bool bGestureHasStroke = false;
+	bool bGestureNeedsNeutral = false;
+	// Slow time is toggled by L3, independently of the physical L1 wheel button.
 	bool bTimeHeld = false;
+	// Temporary wheel slow time survives release into precision targeting, but
+	// never changes the player's independent L3 toggle.
+	bool bWheelSlowTime = false;
+	bool bJumpPressConsumed = false;
+	uint64 JumpConsumedFrame = MAX_uint64;
+	bool bTimeButtonDown = false;
+	bool bCosmicInputCancelled = false;
+	bool bCosmicWheelOpen = false;
+	bool bCosmicSelectionActivated = false;
 	bool bTimeStopped = false;
 	bool bQuickWheelHeld = false;
 	bool bElementHeld = false;
@@ -195,6 +253,17 @@ private:
 	int32 QuickWheelPage = 0;
 	float LastGestureSampleTime = -100.0f;
 	bool bTargetingSkill = false;
+	bool bTargetOwnsPause = false;
+	bool bTargetPreviousCameraMoveable = false;
+	bool bTargetValid = false;
+	bool bPendingWeaponAttack = false;
+	bool bPendingOffHand = false;
+	bool bTargetRequiresGround = false;
+	FVector2D TargetCursorPixels = FVector2D::ZeroVector;
+	float TargetRange = 1200.f;
+	float TargetRadius = 60.f;
+	TWeakObjectPtr<UPrimitiveComponent> TargetHighlightComponent;
+	bool bTargetPreviousCustomDepth = false;
 	FString PendingSkillId;
 	FVector PendingTargetLocation = FVector::ZeroVector;
 	TWeakObjectPtr<AActor> PendingTargetActor;

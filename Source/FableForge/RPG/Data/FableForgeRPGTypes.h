@@ -205,6 +205,9 @@ struct FFableCharacterProfile
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FString> InventorySlots;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TArray<int32> InventoryQuantities;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skills")
 	TArray<FString> LearnedSkills;
 
