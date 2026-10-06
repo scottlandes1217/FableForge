@@ -211,12 +211,12 @@ namespace
 	static const TCHAR* SkillCategoryActionPrefix = TEXT("skillcat_");
 	static const TCHAR* AssignSkillActionPrefix = TEXT("assign_skill_");
 
-	const FLinearColor UiPanelColor = FLinearColor::Transparent;
+	const FLinearColor CharacterMenuUiPanelColor = FLinearColor::Transparent;
 	const FLinearColor UiSectionColor(0.50f, 0.33f, 0.13f, 0.065f);
-	const FLinearColor UiButtonColor(0.93f, 0.82f, 0.62f, 1.0f);
-	const FLinearColor UiButtonSelectedColor(0.73f, 0.49f, 0.25f, 1.0f);
-	const FLinearColor UiTextColor(0.12f, 0.060f, 0.027f, 1.0f);
-	const FLinearColor UiMutedTextColor(0.29f, 0.17f, 0.085f, 1.0f);
+	const FLinearColor CharacterMenuUiButtonColor(0.93f, 0.82f, 0.62f, 1.0f);
+	const FLinearColor CharacterMenuUiButtonSelectedColor(0.73f, 0.49f, 0.25f, 1.0f);
+	const FLinearColor CharacterMenuUiTextColor(0.12f, 0.060f, 0.027f, 1.0f);
+	const FLinearColor CharacterMenuUiMutedTextColor(0.29f, 0.17f, 0.085f, 1.0f);
 	const TArray<FString> EquipmentSlotNames = {
 		TEXT("Main Hand"),
 		TEXT("Off Hand"),
@@ -258,7 +258,7 @@ namespace
 	static const TCHAR* ItemsDataTablePath = TEXT("/Game/Data/DT_Items.DT_Items");
 	static const TCHAR* WeaponsDataTablePath = TEXT("/Game/Data/DT_Weapons.DT_Weapons");
 	static const TCHAR* ArmorDataTablePath = TEXT("/Game/Data/DT_Armor.DT_Armor");
-	static const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
+	static const TCHAR* CharacterMenuSkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
 
 	FName CategoryFromType(const FString& InType)
 	{
@@ -927,7 +927,7 @@ void UFableCharacterMenuWidget::RebuildItemActions()
 	auto AddText = [&](const FString& Value, int32 FontSize)
 	{
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(FText::FromString(Value));
-		Label->SetFont(FableBookStyle::Font(FontSize, FontSize>18)); Label->SetColorAndOpacity(UiTextColor); Label->SetAutoWrapText(true);
+		Label->SetFont(FableBookStyle::Font(FontSize, FontSize>18)); Label->SetColorAndOpacity(CharacterMenuUiTextColor); Label->SetAutoWrapText(true);
 		List->AddChildToVerticalBox(Label)->SetPadding(FMargin(4.f,0.f,4.f,14.f));
 	};
 	auto AddAction = [&](const FString& Label, FName Id)
@@ -935,7 +935,7 @@ void UFableCharacterMenuWidget::RebuildItemActions()
 		UFableActionButton* Button = WidgetTree->ConstructWidget<UFableActionButton>(); Button->InitializeAction(Id);
 		Button->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(); Text->SetText(FText::FromString(Label));
-		Text->SetFont(FableBookStyle::Font(20)); Text->SetColorAndOpacity(UiTextColor); Button->AddChild(Text);
+		Text->SetFont(FableBookStyle::Font(20)); Text->SetColorAndOpacity(CharacterMenuUiTextColor); Button->AddChild(Text);
 		Cast<UButtonSlot>(Text->Slot)->SetPadding(FMargin(16.f,10.f));
 		List->AddChildToVerticalBox(Button)->SetPadding(FMargin(0.f,2.f)); ItemActionButtons.Add(Button); ItemActionIds.Add(Id);
 	};
@@ -1073,7 +1073,7 @@ void UFableCharacterMenuWidget::Rebuild()
 		BookSlot->SetPadding(FMargin(64.f, 0.f, 0.f, 0.f));
 	}
 	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Frame"));
-	Frame->SetBrushColor(UiPanelColor);
+	Frame->SetBrushColor(CharacterMenuUiPanelColor);
 	// The bookmark stack projects from the left page edge, so reserve a little
 	// more inner width for the actual page content without shrinking the book.
 	Frame->SetPadding(FMargin(168.0f, 72.0f, 104.0f, 86.0f));
@@ -1227,7 +1227,7 @@ void UFableCharacterMenuWidget::RebuildTabContent()
 void UFableCharacterMenuWidget::RefreshSettingsSelection()
 {
 	for (int32 I = 0; I < SettingsButtons.Num(); ++I)
-		if (SettingsButtons[I]) SettingsButtons[I]->SetBackgroundColor(I == SettingsSelection ? UiButtonSelectedColor : UiButtonColor);
+		if (SettingsButtons[I]) SettingsButtons[I]->SetBackgroundColor(I == SettingsSelection ? CharacterMenuUiButtonSelectedColor : CharacterMenuUiButtonColor);
 	if (SettingsScroll && SettingsButtons.IsValidIndex(SettingsSelection)) SettingsScroll->ScrollWidgetIntoView(SettingsButtons[SettingsSelection], false);
 }
 
@@ -1245,7 +1245,7 @@ void UFableCharacterMenuWidget::BuildSettingsTab()
 	auto Text = [&](const FString& Value, int32 Size)
 	{
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(FText::FromString(Value));
-		Label->SetFont(FableBookStyle::Font(Size, Size >= 18)); Label->SetColorAndOpacity(UiTextColor);
+		Label->SetFont(FableBookStyle::Font(Size, Size >= 18)); Label->SetColorAndOpacity(CharacterMenuUiTextColor);
 		Label->SetAutoWrapText(true); List->AddChildToVerticalBox(Label)->SetPadding(FMargin(8.f, 8.f, 8.f, 12.f));
 	};
 	auto Button = [&](const FString& Label, FName Action)
@@ -1254,7 +1254,7 @@ void UFableCharacterMenuWidget::BuildSettingsTab()
 		Item->InitializeAction(Action); Item->OnActionClicked.AddDynamic(this, &UFableCharacterMenuWidget::HandleActionClicked);
 		FableBookStyle::ApplyButton(Item);
 		UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(); Title->SetText(FText::FromString(Label));
-		Title->SetFont(FableBookStyle::Font(16, true)); Title->SetColorAndOpacity(UiTextColor);
+		Title->SetFont(FableBookStyle::Font(16, true)); Title->SetColorAndOpacity(CharacterMenuUiTextColor);
 		Item->AddChild(Title); Cast<UButtonSlot>(Title->Slot)->SetPadding(FMargin(14.f, 10.f));
 		List->AddChildToVerticalBox(Item)->SetPadding(FMargin(8.f, 0.f, 8.f, 10.f));
 		SettingsActions.Add(Action); SettingsButtons.Add(Item);
@@ -1531,7 +1531,7 @@ auto AddCategoryButton = [&](const FString& Label, FName CategoryAction)
 		? TEXT("Drag items to move or equip them. Hover for details.")
 		: InventorySaveWarning));
 	InventoryHint->SetColorAndOpacity(FSlateColor(InventorySaveWarning.IsEmpty()
-		? UiMutedTextColor : FLinearColor(0.48f, 0.065f, 0.025f, 1.0f)));
+		? CharacterMenuUiMutedTextColor : FLinearColor(0.48f, 0.065f, 0.025f, 1.0f)));
 	InventoryHint->SetAutoWrapText(true);
 	FSlateFontInfo HintFont = FableBookStyle::Font(14, false);
 	HintFont.Size = 12;
@@ -1555,7 +1555,7 @@ void UFableCharacterMenuWidget::BuildSimpleInfoTab(const FString& Header, const 
 		Line->SetFont(LineBaseFont);
 		Line->SetText(FText::FromString(Text));
 		Line->SetAutoWrapText(true);
-		Line->SetColorAndOpacity(FSlateColor(bMuted ? UiMutedTextColor : UiTextColor));
+		Line->SetColorAndOpacity(FSlateColor(bMuted ? CharacterMenuUiMutedTextColor : CharacterMenuUiTextColor));
 		if (UVerticalBoxSlot* LineSlot = ContentRoot->AddChildToVerticalBox(Line))
 		{
 			LineSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
@@ -1619,7 +1619,7 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		Content->AddChildToVerticalBox(IconSize)->SetHorizontalAlignment(HAlign_Center);
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
 		Label->SetText(FText::FromString(EnumToString(Category)));
-		Label->SetFont(FableBookStyle::Font(12, true)); Label->SetColorAndOpacity(UiTextColor);
+		Label->SetFont(FableBookStyle::Font(12, true)); Label->SetColorAndOpacity(CharacterMenuUiTextColor);
 		Label->SetJustification(ETextJustify::Center);
 		Content->AddChildToVerticalBox(Label);
 		USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(88.f); Size->SetContent(Button);
@@ -1747,7 +1747,7 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		NameTextBaseFont.Size = 20;
 		NameText->SetFont(NameTextBaseFont);
 		NameText->SetText(FText::FromString(SkillRow != nullptr && !SkillRow->DisplayName.IsEmpty() ? SkillRow->DisplayName : HumanizeToken(SkillId)));
-		NameText->SetColorAndOpacity(FSlateColor(UiTextColor));
+		NameText->SetColorAndOpacity(FSlateColor(CharacterMenuUiTextColor));
 		NameText->SetAutoWrapText(true);
 		RowText->AddChildToVerticalBox(NameText);
 
@@ -1756,7 +1756,7 @@ void UFableCharacterMenuWidget::BuildSkillsTab()
 		SubtitleBaseFont.Size = 14;
 		Subtitle->SetFont(SubtitleBaseFont);
 		Subtitle->SetText(FText::FromString(SkillRow != nullptr ? SkillRow->Summary : TEXT("An undiscovered technique")));
-		Subtitle->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
+		Subtitle->SetColorAndOpacity(FSlateColor(CharacterMenuUiMutedTextColor));
 		Subtitle->SetAutoWrapText(true);
 		FSlateFontInfo SubtitleFont = FableBookStyle::Font(14, false);
 		SubtitleFont.Size = 14;
@@ -1816,7 +1816,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		Line->SetFont(LineBaseFont);
 		Line->SetText(FText::FromString(Label.IsEmpty() ? Value : FString::Printf(TEXT("%s: %s"), *Label, *Value)));
 		Line->SetAutoWrapText(true);
-		Line->SetColorAndOpacity(FSlateColor(bMuted ? UiMutedTextColor : UiTextColor));
+		Line->SetColorAndOpacity(FSlateColor(bMuted ? CharacterMenuUiMutedTextColor : CharacterMenuUiTextColor));
 		FSlateFontInfo Font = FableBookStyle::Font(14, false);
 		Font.Size = FontSize;
 		Line->SetFont(Font);
@@ -1865,7 +1865,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		FSlateFontInfo GestureHeadingFont = FableBookStyle::Font(13, true);
 		GestureHeadingFont.Size = 13;
 		GestureHeading->SetFont(GestureHeadingFont);
-		GestureHeading->SetColorAndOpacity(FSlateColor(UiTextColor));
+		GestureHeading->SetColorAndOpacity(FSlateColor(CharacterMenuUiTextColor));
 		GestureContent->AddChildToVerticalBox(GestureHeading)->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
 
 		UTextBlock* DPadInstruction = WidgetTree->ConstructWidget<UTextBlock>();
@@ -1873,7 +1873,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		FSlateFontInfo DPadFont = FableBookStyle::Font(14, true);
 		DPadFont.Size = 14;
 		DPadInstruction->SetFont(DPadFont);
-		DPadInstruction->SetColorAndOpacity(FSlateColor(UiTextColor));
+		DPadInstruction->SetColorAndOpacity(FSlateColor(CharacterMenuUiTextColor));
 		GestureContent->AddChildToVerticalBox(DPadInstruction)->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
 
 		const bool bFontAwesomeAvailable = FPaths::FileExists(FPaths::ProjectContentDir() / TEXT("Slate/Fonts/FontAwesome.ttf"));
@@ -1885,7 +1885,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 			UTextBlock* Glyph = WidgetTree->ConstructWidget<UTextBlock>();
 			Glyph->SetFont(GestureArrowFont);
 			Glyph->SetText(FText::FromString(bFontAwesomeAvailable ? FString::Chr(FontAwesomeCodepoint) : FString(SafeGlyph)));
-			Glyph->SetColorAndOpacity(FSlateColor(UiMutedTextColor));
+			Glyph->SetColorAndOpacity(FSlateColor(CharacterMenuUiMutedTextColor));
 			Glyph->SetJustification(ETextJustify::Center);
 			return Glyph;
 		};
@@ -1904,7 +1904,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 			FSlateFontInfo LabelFont = FableBookStyle::Font(12, true);
 			LabelFont.Size = 12;
 			LabelText->SetFont(LabelFont);
-			LabelText->SetColorAndOpacity(FSlateColor(UiTextColor));
+			LabelText->SetColorAndOpacity(FSlateColor(CharacterMenuUiTextColor));
 			LabelText->SetJustification(ETextJustify::Center);
 			Node->SetContent(LabelText);
 			NodeSize->SetContent(Node);
@@ -1950,7 +1950,7 @@ void UFableCharacterMenuWidget::RefreshSkillDetails()
 		FSlateFontInfo GestureInstructionFont = FableBookStyle::Font(14, false);
 		GestureInstructionFont.Size = 14;
 		GestureInstruction->SetFont(GestureInstructionFont);
-		GestureInstruction->SetColorAndOpacity(FSlateColor(UiTextColor));
+		GestureInstruction->SetColorAndOpacity(FSlateColor(CharacterMenuUiTextColor));
 		GestureInstruction->SetAutoWrapText(true);
 		GestureContent->AddChildToVerticalBox(GestureInstruction);
 
@@ -1990,7 +1990,7 @@ void UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable()
 
 	SkillDefinitions.Reset();
 
-	if (UDataTable* SkillsTable = LoadObject<UDataTable>(nullptr, SkillsDataTablePath))
+	if (UDataTable* SkillsTable = LoadObject<UDataTable>(nullptr, CharacterMenuSkillsDataTablePath))
 	{
 		static const FString ContextString(TEXT("UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable"));
 		TArray<FFableSkillDefinitionTableRow*> Rows;
@@ -2008,7 +2008,7 @@ void UFableCharacterMenuWidget::LoadSkillDefinitionsFromDataTable()
 	}
 	else
 	{
-		UE_LOG(LogFableForge, Warning, TEXT("Skills DataTable not found at '%s'."), SkillsDataTablePath);
+		UE_LOG(LogFableForge, Warning, TEXT("Skills DataTable not found at '%s'."), CharacterMenuSkillsDataTablePath);
 	}
 
 	// Starter schools are available without requiring an editor CSV reimport.
@@ -2285,7 +2285,7 @@ void UFableCharacterMenuWidget::RefreshInventoryPresentation()
 	{
 		InventoryStatus->SetVisibility(InventorySaveWarning.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 		InventoryStatus->SetText(FText::FromString(InventorySaveWarning.IsEmpty() ? TEXT("Drag items to move or equip them. Hover for details.") : InventorySaveWarning));
-		InventoryStatus->SetColorAndOpacity(FSlateColor(InventorySaveWarning.IsEmpty() ? UiMutedTextColor : FLinearColor(.48f,.065f,.025f,1.f)));
+		InventoryStatus->SetColorAndOpacity(FSlateColor(InventorySaveWarning.IsEmpty() ? CharacterMenuUiMutedTextColor : FLinearColor(.48f,.065f,.025f,1.f)));
 	}
 }
 

@@ -18,11 +18,14 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/DamageEvents.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/DataTable.h"
 #include "Engine/GameInstance.h"
+#include "TimerManager.h"
 #include "Animation/Skeleton.h"
 #include "RPG/Data/FableItemDefinitionTableRow.h"
 #include "RPG/Save/FableSaveSubsystem.h"
@@ -119,6 +122,16 @@ AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectIniti
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
+	Tags.Add(FName("Player"));
+
+	CombatHealthText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("CombatHealthText"));
+	CombatHealthText->SetupAttachment(RootComponent);
+	CombatHealthText->SetRelativeLocation(FVector(0.0f, 0.0f, 220.0f));
+	CombatHealthText->SetHorizontalAlignment(EHTA_Center);
+	CombatHealthText->SetVerticalAlignment(EVRTA_TextCenter);
+	CombatHealthText->SetWorldSize(18.0f);
+	CombatHealthText->SetTextRenderColor(FColor(110, 220, 130));
+	CombatHealthText->SetText(FText::FromString(TEXT("PLAYER 100/100")));
 
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -141,6 +154,19 @@ AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectIniti
 	FollowCamera->SetRelativeRotation(FRotator(CameraPitchOffsetDegrees, 0.0f, 0.0f));
 	FollowCamera->PrimaryComponentTick.bTickEvenWhenPaused = true;
 
+	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+	FirstPersonArms->SetupAttachment(FollowCamera);
+	FirstPersonArms->SetRelativeLocation(FVector(35.0f, 0.0f, -72.0f));
+	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetCastShadow(false);
+	FirstPersonArms->SetVisibility(false, true);
+
+	AttackOverlayMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("AttackOverlayMesh"));
+	AttackOverlayMesh->SetupAttachment(RootComponent);
+	AttackOverlayMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	AttackOverlayMesh->SetCastShadow(false);
+	AttackOverlayMesh->SetVisibility(false, true);
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -148,6 +174,7 @@ AFableForgeCharacter::AFableForgeCharacter(const FObjectInitializer& ObjectIniti
 void AFableForgeCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	ResetCombatHealth();
 
 	if (CameraBoom != nullptr)
 	{
@@ -169,6 +196,29 @@ void AFableForgeCharacter::BeginPlay()
 	}
 
 	UpdateFirstPersonPresentation();
+	if (FirstPersonArms != nullptr)
+	{
+		if (USkeletalMesh* ArmsMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Items/Armor/Skeletal_Meshes/Male_Peasant_Arms.Male_Peasant_Arms")))
+		{
+			FirstPersonArms->SetSkeletalMesh(ArmsMesh);
+			if (GetMesh() != nullptr && GetMesh()->GetAnimClass() != nullptr)
+			{
+				FirstPersonArms->SetAnimInstanceClass(GetMesh()->GetAnimClass());
+			}
+		}
+	}
+	if (AttackOverlayMesh != nullptr && GetMesh() != nullptr)
+	{
+		AttackOverlayMesh->SetSkeletalMesh(GetMesh()->GetSkeletalMeshAsset());
+		for (int32 MaterialIndex = 0; MaterialIndex < GetMesh()->GetNumMaterials(); ++MaterialIndex)
+		{
+			AttackOverlayMesh->SetMaterial(MaterialIndex, GetMesh()->GetMaterial(MaterialIndex));
+		}
+		for (const FName BoneName : { FName(TEXT("head")), FName(TEXT("neck_01")), FName(TEXT("thigh_l")), FName(TEXT("calf_l")), FName(TEXT("foot_l")), FName(TEXT("ball_l")), FName(TEXT("thigh_r")), FName(TEXT("calf_r")), FName(TEXT("foot_r")), FName(TEXT("ball_r")) })
+		{
+			AttackOverlayMesh->HideBoneByName(BoneName, PBO_None);
+		}
+	}
 
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -182,8 +232,82 @@ void AFableForgeCharacter::BeginPlay()
 	RefreshEquipmentVisualsFromSave();
 }
 
+void AFableForgeCharacter::ResetCombatHealth()
+{
+	CurrentCombatHealth = FMath::Max(1.0f, MaxCombatHealth);
+	bCombatDead = false;
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	UpdateCombatHealthText();
+}
+
+void AFableForgeCharacter::UpdateCombatHealthText()
+{
+	if (CombatHealthText != nullptr)
+	{
+		CombatHealthText->SetText(FText::FromString(FString::Printf(TEXT("PLAYER %.0f/%.0f"), CurrentCombatHealth, MaxCombatHealth)));
+		CombatHealthText->SetTextRenderColor(CurrentCombatHealth <= 0.0f ? FColor::Red : FColor(110, 220, 130));
+	}
+}
+
+void AFableForgeCharacter::ApplyDamage(float Damage, AActor* DamageCauser, const FVector& DamageLocation, const FVector& DamageImpulse)
+{
+	if (bCombatDead || Damage <= 0.0f) return;
+	FDamageEvent DamageEvent;
+	const float ActualDamage = TakeDamage(Damage, DamageEvent, nullptr, DamageCauser);
+	if (ActualDamage > 0.0f)
+	{
+		GetCharacterMovement()->AddImpulse(DamageImpulse, true);
+		const FString SourceName = GetNameSafe(DamageCauser);
+		UE_LOG(LogFableForge, Display, TEXT("COMBAT_DAMAGE target=Player amount=%.1f source=%s health=%.1f/%.1f"), ActualDamage, *SourceName, CurrentCombatHealth, MaxCombatHealth);
+	}
+}
+
+void AFableForgeCharacter::HandleDeath()
+{
+	if (bCombatDead) return;
+	bCombatDead = true;
+	GetCharacterMovement()->DisableMovement();
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	UpdateCombatHealthText();
+	UE_LOG(LogFableForge, Display, TEXT("COMBAT_DEATH target=Player respawn_seconds=3.0"));
+	GetWorld()->GetTimerManager().SetTimer(CombatRespawnTimer, this, &AFableForgeCharacter::RespawnFromCombatTest, 3.0f, false);
+}
+
+void AFableForgeCharacter::RespawnFromCombatTest()
+{
+	ResetCombatHealth();
+	UE_LOG(LogFableForge, Display, TEXT("COMBAT_RESPAWN target=Player health=%.1f/%.1f"), CurrentCombatHealth, MaxCombatHealth);
+}
+
+void AFableForgeCharacter::ApplyHealing(float Healing, AActor* Healer)
+{
+	if (bCombatDead || Healing <= 0.0f) return;
+	CurrentCombatHealth = FMath::Min(MaxCombatHealth, CurrentCombatHealth + Healing);
+	UpdateCombatHealthText();
+}
+
+void AFableForgeCharacter::NotifyDanger(const FVector& DangerLocation, AActor* DangerSource)
+{
+	UE_LOG(LogFableForge, Verbose, TEXT("COMBAT_DANGER target=Player source=%s location=%s"), *GetNameSafe(DangerSource), *DangerLocation.ToString());
+}
+
+float AFableForgeCharacter::TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	if (bCombatDead || Damage <= 0.0f) return 0.0f;
+	const float ActualDamage = FMath::Min(Damage, CurrentCombatHealth);
+	CurrentCombatHealth = FMath::Max(0.0f, CurrentCombatHealth - ActualDamage);
+	UpdateCombatHealthText();
+	if (CurrentCombatHealth <= 0.0f) HandleDeath();
+	return ActualDamage;
+}
+
 void AFableForgeCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (GetWorld() != nullptr)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(CombatRespawnTimer);
+	}
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
 		if (UFableSaveSubsystem* SaveSubsystem = GameInstance->GetSubsystem<UFableSaveSubsystem>())
@@ -404,6 +528,10 @@ void AFableForgeCharacter::UpdateFirstPersonPresentation()
 	{
 		return;
 	}
+	if (FirstPersonArms != nullptr)
+	{
+		FirstPersonArms->SetVisibility(bFirstPersonView && bFirstPersonAttackPresentation, true);
+	}
 
 	if (bFirstPersonView && !bFirstPersonCameraSettingsApplied)
 	{
@@ -465,6 +593,16 @@ void AFableForgeCharacter::ToggleFirstPersonView()
 	bFirstPersonView = !bFirstPersonView;
 	UpdateFirstPersonPresentation();
 	UE_LOG(LogFableForge, Log, TEXT("Camera view changed: %s"), bFirstPersonView ? TEXT("First Person") : TEXT("Shoulder"));
+}
+
+void AFableForgeCharacter::SetFirstPersonAttackPresentation(bool bShow)
+{
+	bFirstPersonAttackPresentation = bShow && bFirstPersonView;
+	if (FirstPersonArms != nullptr)
+	{
+		FirstPersonArms->SetVisibility(bFirstPersonAttackPresentation, true);
+	}
+	UpdateFirstPersonPresentation();
 }
 
 bool AFableForgeCharacter::IsMovementActive() const

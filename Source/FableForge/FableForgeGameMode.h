@@ -6,6 +6,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "FableForgeGameMode.generated.h"
 
+class ATrainingEnemy;
+
 /**
  *  Core GameMode for FableForge runtime flow.
  */
@@ -16,4 +18,9 @@ class AFableForgeGameMode : public AGameModeBase
 
 public:
 	AFableForgeGameMode();
+	void EnsureTrainingEnemy(AActor* Player);
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<class ATrainingEnemy> TrainingEnemy;
 };

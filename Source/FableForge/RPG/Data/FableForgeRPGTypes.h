@@ -199,6 +199,9 @@ struct FFableCharacterProfile
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vitals")
 	float ExperiencePercent = 0.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character")
+	int32 CharacterLevel = 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FString> EquippedItems;
 

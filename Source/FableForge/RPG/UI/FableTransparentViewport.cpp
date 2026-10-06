@@ -1,5 +1,6 @@
 #include "RPG/UI/FableTransparentViewport.h"
 #include "Widgets/SViewport.h"
+#include "Layout/Clipping.h"
 #include "Rendering/DrawElements.h"
 
 namespace
@@ -10,15 +11,17 @@ namespace
 class SFableAlphaViewport : public SViewport
 {
 public:
- SLATE_BEGIN_ARGS(SFableAlphaViewport) : _ResolutionScale(1.f) {}
+ SLATE_BEGIN_ARGS(SFableAlphaViewport) : _ResolutionScale(1.f), _CircularMask(false) {}
   SLATE_ARGUMENT(TSharedPtr<SViewport>, NativeViewport)
   SLATE_ARGUMENT(float, ResolutionScale)
+  SLATE_ARGUMENT(bool, CircularMask)
  SLATE_END_ARGS()
 
  void Construct(const FArguments& Args)
  {
   NativeViewport=Args._NativeViewport;
   ResolutionScale=Args._ResolutionScale;
+  bCircularMask=Args._CircularMask;
   // Keep the native viewport in the Slate parent chain. FSceneViewport's
   // OnDrawViewport refuses to resize/create its render target unless
   // FindWidgetWindow(native viewport) resolves a real window.
@@ -54,7 +57,37 @@ public:
    // premultiplied by that coverage: straight alpha must suppress background
    // RGB (including exposure/bloom) wherever the scene is transparent.
    const ESlateDrawEffect Effects=ESlateDrawEffect::InvertAlpha;
-   FSlateDrawElement::MakeViewport(Elements,Layer,Geometry.ToPaintGeometry(),Interface,Effects,Style.GetColorAndOpacityTint());
+   const FLinearColor Tint=Style.GetColorAndOpacityTint();
+   const FPaintGeometry PaintGeometry=Geometry.ToPaintGeometry();
+   if (!bCircularMask)
+   {
+    FSlateDrawElement::MakeViewport(Elements,Layer,PaintGeometry,Interface,Effects,Tint);
+   }
+   else
+   {
+    // Slate has no native circle clip. Draw the same viewport through a set of
+    // conservative horizontal clips; using the furthest edge of each strip
+    // keeps every emitted pixel inside the inscribed circle.
+    constexpr int32 StripCount=64;
+    const FVector2f AbsolutePosition=FVector2f(Geometry.GetAbsolutePosition());
+    const FVector2f AbsoluteSize=FVector2f(Geometry.GetAbsoluteSize());
+    const float Radius=0.5f*FMath::Min(AbsoluteSize.X,AbsoluteSize.Y);
+    const FVector2f Center=AbsolutePosition+0.5f*AbsoluteSize;
+    const float StripHeight=AbsoluteSize.Y/static_cast<float>(StripCount);
+
+    for (int32 StripIndex=0;StripIndex<StripCount;++StripIndex)
+    {
+     const float Top=AbsolutePosition.Y+StripHeight*static_cast<float>(StripIndex);
+     const float Bottom=Top+StripHeight;
+     const float MaxDistanceY=FMath::Max(FMath::Abs(Top-Center.Y),FMath::Abs(Bottom-Center.Y));
+     const float HalfWidth=FMath::Sqrt(FMath::Max(0.f,Radius*Radius-MaxDistanceY*MaxDistanceY));
+     if (HalfWidth<=0.f) continue;
+
+     Elements.PushClip(FSlateClippingZone(FSlateRect(Center.X-HalfWidth,Top,Center.X+HalfWidth,Bottom)));
+     FSlateDrawElement::MakeViewport(Elements,Layer,PaintGeometry,Interface,Effects,Tint);
+     Elements.PopClip();
+    }
+   }
   }
   // A not-yet-rendered preview stays empty instead of flashing a black box.
   return Layer+1;
@@ -66,6 +99,7 @@ private:
  }
  TSharedPtr<SViewport> NativeViewport;
  float ResolutionScale=1.f;
+ bool bCircularMask=false;
 };
 }
 
@@ -73,7 +107,10 @@ TSharedRef<SWidget> UFableTransparentViewport::RebuildWidget()
 {
  const TSharedRef<SWidget> Native=Super::RebuildWidget();
  if (IsDesignTime()) return Native;
- Compositor=SNew(SFableAlphaViewport).NativeViewport(StaticCastSharedRef<SViewport>(Native)).ResolutionScale(ResolutionScale);
+ Compositor=SNew(SFableAlphaViewport)
+  .NativeViewport(StaticCastSharedRef<SViewport>(Native))
+  .ResolutionScale(ResolutionScale)
+  .CircularMask(bCircularMask);
  return Compositor.ToSharedRef();
 }
 

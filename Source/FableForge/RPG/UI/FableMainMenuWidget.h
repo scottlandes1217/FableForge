@@ -30,6 +30,11 @@ public:
 	virtual void NativeDestruct() override;
 
 	void OpenMainMenu();
+	void MoveControllerSelection(int32 Direction);
+	void ActivateControllerSelection();
+	void HandleControllerCancel();
+	void FocusControllerSelection();
+	bool IsControllerMenuActive() const { return IsInViewport(); }
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual FReply NativeOnMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual FReply NativeOnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event) override;
@@ -64,6 +69,7 @@ private:
 	void RefreshAppearanceChoices();
 	void RefreshAppearanceSection();
 	void RefreshSelectionButtons();
+	void RefreshControllerButtons();
 
 	void CreateHeader(UVerticalBox* Parent, const FString& Text, int32 FontSize = 34) const;
 	void CreateSubheader(UVerticalBox* Parent, const FString& Text) const;
@@ -158,6 +164,9 @@ private:
 	TMap<FName, FGuid> CharacterActionMap;
 	TMap<FName, FString> RaceActionMap;
 	TMap<FName, int32> SlotActionMap;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UFableActionButton>> ControllerButtons;
+	int32 ControllerSelectionIndex = INDEX_NONE;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UVerticalBox> MenuContent;

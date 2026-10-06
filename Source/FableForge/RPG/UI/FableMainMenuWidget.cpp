@@ -75,13 +75,13 @@ namespace
 	const TCHAR* MainMenuBaseCharacterMeshPath = TEXT("/Game/Characters/PlayableCharacter/Meshes/basecharacter_v2.basecharacter_v2");
 	const TCHAR* LegacyMainMenuCharacterMeshPath = TEXT("/Game/Characters/Mannequins/Meshes/basecharacter_v2.basecharacter_v2");
 
-	const FLinearColor UiBackdropColor(0.009f, 0.006f, 0.004f, 1.0f);
-	const FLinearColor UiPanelColor = FLinearColor::Transparent;
+	const FLinearColor MainMenuUiBackdropColor(0.009f, 0.006f, 0.004f, 1.0f);
+	const FLinearColor MainMenuUiPanelColor = FLinearColor::Transparent;
 	const FLinearColor MainMenuUiTextColor(0.075f, 0.035f, 0.015f, 1.0f);
-	const FLinearColor UiMutedTextColor(0.22f, 0.13f, 0.065f, 1.0f);
+	const FLinearColor MainMenuUiMutedTextColor(0.22f, 0.13f, 0.065f, 1.0f);
 	const FLinearColor MainMenuUiButtonColor(1.0f, 1.0f, 1.0f, 1.0f);
 	const FLinearColor UiButtonSelectedColor(0.75f, 0.54f, 0.29f, 1.0f);
-	const FLinearColor UiButtonDisabledColor(0.68f, 0.61f, 0.50f, 1.0f);
+	const FLinearColor MainMenuUiButtonDisabledColor(0.68f, 0.61f, 0.50f, 1.0f);
 
 	void AddTitleOrnament(UWidgetTree* Tree, UVerticalBox* Parent)
 	{
@@ -168,6 +168,7 @@ void UFableMainMenuWidget::Rebuild()
 	}
 
 	AppearanceColumn=nullptr; ChoiceLabels.Reset(); ChoiceCounters.Reset(); ChoiceSwatches.Reset(); SelectionButtons.Reset();
+	ControllerButtons.Reset(); ControllerSelectionIndex = INDEX_NONE;
 	RaceDescriptionText=nullptr;
 	ActionCounter = 0;
 	CharacterActionMap.Reset();
@@ -228,7 +229,7 @@ void UFableMainMenuWidget::Rebuild()
 		Backdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), BackdropWidgetName);
 		RootCanvas->AddChildToCanvas(Backdrop);
 	}
-	Backdrop->SetBrushColor(UiBackdropColor);
+	Backdrop->SetBrushColor(MainMenuUiBackdropColor);
 	if (UCanvasPanelSlot* BackdropSlot = Cast<UCanvasPanelSlot>(Backdrop->Slot))
 	{
 		BackdropSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
@@ -317,6 +318,65 @@ void UFableMainMenuWidget::Rebuild()
 	}
 
 	UE_LOG(LogFableForge, Log, TEXT("Main menu rebuild complete. State=%d Children=%d"), static_cast<int32>(CurrentState), PanelContent->GetChildrenCount());
+	RefreshControllerButtons();
+}
+
+void UFableMainMenuWidget::RefreshControllerButtons()
+{
+	ControllerButtons.RemoveAll([](const TObjectPtr<UFableActionButton>& Button)
+	{
+		return !IsValid(Button) || !Button->GetIsEnabled();
+	});
+	if (ControllerButtons.Num() == 0)
+	{
+		ControllerSelectionIndex = INDEX_NONE;
+		return;
+	}
+	ControllerSelectionIndex = FMath::Clamp(ControllerSelectionIndex, 0, ControllerButtons.Num() - 1);
+	FocusControllerSelection();
+}
+
+void UFableMainMenuWidget::FocusControllerSelection()
+{
+	if (!ControllerButtons.IsValidIndex(ControllerSelectionIndex))
+	{
+		return;
+	}
+
+	if (APlayerController* PlayerController = GetOwningPlayer())
+	{
+		ControllerButtons[ControllerSelectionIndex]->SetUserFocus(PlayerController);
+	}
+}
+
+void UFableMainMenuWidget::MoveControllerSelection(int32 Direction)
+{
+	if (ControllerButtons.Num() == 0 || Direction == 0) return;
+	ControllerSelectionIndex = (ControllerSelectionIndex + Direction + ControllerButtons.Num()) % ControllerButtons.Num();
+	FocusControllerSelection();
+}
+
+void UFableMainMenuWidget::ActivateControllerSelection()
+{
+	if (ControllerButtons.IsValidIndex(ControllerSelectionIndex) && ControllerButtons[ControllerSelectionIndex]->GetIsEnabled())
+	{
+		ControllerButtons[ControllerSelectionIndex]->OnClicked.Broadcast();
+	}
+}
+
+void UFableMainMenuWidget::HandleControllerCancel()
+{
+	FName BackAction = NAME_None;
+	switch (CurrentState)
+	{
+	case EMainMenuState::Main: return;
+	case EMainMenuState::CharacterSelect: BackAction = BackMainAction; break;
+	case EMainMenuState::SlotSelect: BackAction = bIsSlotLoadMode ? BackCharactersAction : AppearanceAction; break;
+	case EMainMenuState::RaceSelect: BackAction = BackCustomizationAction; break;
+	case EMainMenuState::Appearance: BackAction = BackRacesAction; break;
+	case EMainMenuState::Customization: BackAction = BackMainAction; break;
+	}
+	if (!BackAction.IsNone()) HandleActionClicked(BackAction);
 }
 
 void UFableMainMenuWidget::BuildMainState()
@@ -617,7 +677,7 @@ void UFableMainMenuWidget::BuildCustomizationState()
 	NameTextBoxStyle.SetBackgroundColor(FSlateColor(FLinearColor(0.70f, 0.57f, 0.37f, 1.0f)));
 	NameTextBoxStyle.SetForegroundColor(FSlateColor(MainMenuUiTextColor));
 	NameTextBoxStyle.SetFocusedForegroundColor(FSlateColor(MainMenuUiTextColor));
-	NameTextBoxStyle.SetReadOnlyForegroundColor(FSlateColor(UiMutedTextColor));
+	NameTextBoxStyle.SetReadOnlyForegroundColor(FSlateColor(MainMenuUiMutedTextColor));
 	CharacterNameTextBox->SetWidgetStyle(NameTextBoxStyle);
 	CharacterNameTextBox->SetJustification(ETextJustify::Center);
 	if (UVerticalBoxSlot* NameSlot = LeftColumn->AddChildToVerticalBox(CharacterNameTextBox))
@@ -698,7 +758,7 @@ void UFableMainMenuWidget::BuildPreviewPane(UVerticalBox* RightColumn)
 	UTextBlock* PreviewHint=WidgetTree->ConstructWidget<UTextBlock>();
 	PreviewHint->SetText(FText::FromString(TEXT("Drag: rotate / pan  ·  Scroll: zoom")));
 	PreviewHint->SetFont(FableBookStyle::Font(16));
-	PreviewHint->SetColorAndOpacity(UiMutedTextColor);
+	PreviewHint->SetColorAndOpacity(MainMenuUiMutedTextColor);
 	PreviewHint->SetJustification(ETextJustify::Center);
 	RightColumn->AddChildToVerticalBox(PreviewHint)->SetPadding(FMargin(0,6,0,0));
 
@@ -741,7 +801,7 @@ void UFableMainMenuWidget::CreateSubheader(UVerticalBox* Parent, const FString& 
 
 	UTextBlock* Subheader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Subheader->SetText(FText::FromString(Text));
-	Subheader->SetColorAndOpacity(FSlateColor(CurrentState == EMainMenuState::Main ? FLinearColor(0.72f, 0.53f, 0.28f) : UiMutedTextColor));
+	Subheader->SetColorAndOpacity(FSlateColor(CurrentState == EMainMenuState::Main ? FLinearColor(0.72f, 0.53f, 0.28f) : MainMenuUiMutedTextColor));
 	Subheader->SetJustification(ETextJustify::Center);
 	Subheader->SetAutoWrapText(true);
 	FSlateFontInfo SubheaderFont = FableBookStyle::Font(19);
@@ -780,6 +840,7 @@ UFableActionButton* UFableMainMenuWidget::CreateActionButton(UVerticalBox* Paren
 	Button->InitializeAction(ActionId);
 	SelectionButtons.Add(ActionId,Button);
 	Button->SetIsEnabled(bEnabled);
+	if (bEnabled) ControllerButtons.Add(Button);
 	Button->OnActionClicked.AddDynamic(this, &UFableMainMenuWidget::HandleActionClicked);
 	FableBookStyle::ApplyButton(Button, CurrentState == EMainMenuState::Main);
 
@@ -962,6 +1023,27 @@ FReply UFableMainMenuWidget::NativeOnMouseMove(const FGeometry& Geometry, const 
 
 FReply UFableMainMenuWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 {
+ const FKey Key = Event.GetKey();
+ if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_DPad_Left)
+ {
+  MoveControllerSelection(-1);
+  return FReply::Handled();
+ }
+ if (Key == EKeys::Gamepad_DPad_Down || Key == EKeys::Gamepad_DPad_Right)
+ {
+  MoveControllerSelection(1);
+  return FReply::Handled();
+ }
+ if (Key == EKeys::Gamepad_FaceButton_Bottom)
+ {
+  ActivateControllerSelection();
+  return FReply::Handled();
+ }
+ if (Key == EKeys::Gamepad_FaceButton_Right)
+ {
+  HandleControllerCancel();
+  return FReply::Handled();
+ }
  if(HasKeyboardFocus() && PreviewViewport && (Event.GetKey()==EKeys::Left || Event.GetKey()==EKeys::Right))
  {
   ApplyRotationDelta(Event.GetKey()==EKeys::Left ? -8.f : 8.f);
@@ -1420,6 +1502,7 @@ UFableActionButton* UFableMainMenuWidget::AddCompactButton(UHorizontalBox* Row, 
 {
  UFableActionButton* Button=WidgetTree->ConstructWidget<UFableActionButton>();
  Button->InitializeAction(Action);
+	 ControllerButtons.Add(Button);
  SelectionButtons.Add(Action,Button);
  Button->OnActionClicked.AddDynamic(this,&UFableMainMenuWidget::HandleActionClicked);
  FableBookStyle::ApplyButton(Button);
@@ -1445,10 +1528,10 @@ void UFableMainMenuWidget::AddChoiceSelector(UVerticalBox* Parent,const FString&
  UHorizontalBox* Heading=WidgetTree->ConstructWidget<UHorizontalBox>();
  Parent->AddChildToVerticalBox(Heading)->SetPadding(FMargin(2,3,2,1));
  UTextBlock* Caption=WidgetTree->ConstructWidget<UTextBlock>();
- Caption->SetText(FText::FromString(Label)); Caption->SetFont(FableBookStyle::Font(16)); Caption->SetColorAndOpacity(UiMutedTextColor);
+ Caption->SetText(FText::FromString(Label)); Caption->SetFont(FableBookStyle::Font(16)); Caption->SetColorAndOpacity(MainMenuUiMutedTextColor);
  Heading->AddChildToHorizontalBox(Caption)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
  UTextBlock* Counter=WidgetTree->ConstructWidget<UTextBlock>();
- Counter->SetText(FText::FromString(Index==INDEX_NONE ? FString::Printf(TEXT("%d presets"),Count) : FString::Printf(TEXT("%d / %d"),Index+1,Count))); Counter->SetFont(FableBookStyle::Font(16)); Counter->SetColorAndOpacity(UiMutedTextColor);
+ Counter->SetText(FText::FromString(Index==INDEX_NONE ? FString::Printf(TEXT("%d presets"),Count) : FString::Printf(TEXT("%d / %d"),Index+1,Count))); Counter->SetFont(FableBookStyle::Font(16)); Counter->SetColorAndOpacity(MainMenuUiMutedTextColor);
  Heading->AddChildToHorizontalBox(Counter); ChoiceCounters.Add(ActionPrefix,Counter);
  UHorizontalBox* Row=WidgetTree->ConstructWidget<UHorizontalBox>();
  USizeBox* RowSize=WidgetTree->ConstructWidget<USizeBox>(); RowSize->SetHeightOverride(40); RowSize->SetContent(Row); Parent->AddChildToVerticalBox(RowSize);
@@ -1484,7 +1567,7 @@ void UFableMainMenuWidget::BuildAppearanceControls(UVerticalBox* Parent)
  CreateHeader(Parent,TEXT("Appearance"),32);
  UTextBlock* Context=WidgetTree->ConstructWidget<UTextBlock>();
  Context->SetText(FText::FromString(FableAppearance::RaceDisplayName(PendingRaceId)));
- Context->SetFont(FableBookStyle::Font(18)); Context->SetColorAndOpacity(UiMutedTextColor);
+ Context->SetFont(FableBookStyle::Font(18)); Context->SetColorAndOpacity(MainMenuUiMutedTextColor);
  Context->SetJustification(ETextJustify::Center);
  Parent->AddChildToVerticalBox(Context)->SetPadding(FMargin(0,0,0,12));
  UHorizontalBox* Sections=WidgetTree->ConstructWidget<UHorizontalBox>(); Parent->AddChildToVerticalBox(Sections);

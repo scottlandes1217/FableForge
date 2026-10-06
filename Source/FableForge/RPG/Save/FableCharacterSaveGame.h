@@ -66,6 +66,9 @@ public:
 	float ExperiencePercent = 0.0f;
 
 	UPROPERTY()
+	int32 CharacterLevel = 1;
+
+	UPROPERTY()
 	TArray<FString> EquippedItems;
 
 	UPROPERTY()

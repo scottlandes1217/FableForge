@@ -25,8 +25,8 @@
 
 namespace
 {
-	const FLinearColor UiTextColor(0.92f, 0.86f, 0.73f, 1.0f);
-	const FLinearColor UiButtonColor(1.f, 1.f, 1.f, 1.f);
+	const FLinearColor ActionBarUiTextColor(0.92f, 0.86f, 0.73f, 1.0f);
+	const FLinearColor ActionBarUiButtonColor(1.f, 1.f, 1.f, 1.f);
 	const FLinearColor UiDragHandleColor(1.f, 1.f, 1.f, 1.f);
 	const FVector2D UiSmallControlSize(26.0f, 26.0f);
 
@@ -214,7 +214,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(FText::FromString(MultiLineLabel.IsEmpty() ? FString(Label) : MultiLineLabel));
-		Text->SetColorAndOpacity(FSlateColor(UiTextColor));
+		Text->SetColorAndOpacity(FSlateColor(ActionBarUiTextColor));
 		Text->SetJustification(ETextJustify::Center);
 		FSlateFontInfo FontInfo = Text->GetFont();
 		FontInfo.Size = 10;
@@ -253,7 +253,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			TEXT("ExpandButton"),
 			TEXT("expand_toggle"),
 			TEXT(""),
-			UiButtonColor,
+			ActionBarUiButtonColor,
 			bShowExpanded ? TEXT("v") : TEXT("^"));
 		UFableActionButton* ExpandButton = ExpandControl.Key;
 		ExpandButton->OnActionClicked.AddDynamic(this, &UFableActionBarWidget::HandleExpandClicked);
@@ -307,7 +307,7 @@ TSharedRef<SWidget> UFableActionBarWidget::RebuildWidget()
 			TEXT("RemoveButton"),
 			TEXT("remove_bar"),
 			TEXT("X"),
-			UiButtonColor);
+			ActionBarUiButtonColor);
 		UFableActionButton* RemoveButton = RemoveControl.Key;
 		RemoveButton->OnActionClicked.AddDynamic(this, &UFableActionBarWidget::HandleRemoveClicked);
 		ControlsColumn->AddChildToVerticalBox(RemoveControl.Value);

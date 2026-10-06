@@ -1,0 +1,9 @@
+# Player dragon frame
+
+Generated with the built-in image-generation tool, transparent background enabled.
+
+Final prompt:
+
+Use case: stylized-concept. Asset type: production transparent PNG fantasy RPG player portrait frame ornament, not a UI screenshot. Create a single elegant antique-brass sculpted dragon curling around a circular EMPTY TRANSPARENT portrait aperture, like the restrained iconic dragon player frames of classic fantasy MMOs. Square canvas 1024x1024. Exact integration geometry: empty circular aperture centered at (480,512), radius 350 pixels; the thin metallic ring encircles it at radius 365-390. Dragon body wraps along the LEFT and TOP outside this circle; readable dragon head sits at upper-right of the ring near (810,230), facing right, with its snout and one small claw extending rightward toward x990. Lower ring right edge has a short narrow brass connector pointing right toward x990 at y870. Keep the central hole genuinely transparent, perfectly round, no character or portrait. Ring remains thin, dragon body at most 65px thick; dragon head readable with horns and snout but no giant wings. Most important: nothing fills or crosses the circular aperture, nothing bulky projects right of x880 except the short narrow snout/claw and connector. This artwork will connect a live portrait on the left to separately rendered resource bars on the right, so no painted bars, rectangular panels, text, letters, numbers, diamonds, gems, background, glow or drop shadow. High-end hand-painted game UI, warm muted gold brass, dark recessed scales, crisp bevel highlights and subtle oxblood creases. Clean unmistakable dragon silhouette at 120px display size, restrained professional finish, not filigree clutter, not symmetrical jewelry.
+
+The returned asset is 1254x1254. Runtime aperture positioning was adjusted to the actual image rather than assuming the requested pixel coordinates were exact.

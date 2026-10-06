@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Variant_Combat/Interfaces/CombatDamageable.h"
 #include "Logging/LogMacros.h"
 #include "FableForgeCharacter.generated.h"
 
@@ -13,6 +14,7 @@ class UInputAction;
 class USceneComponent;
 class USkeletalMesh;
 class UStaticMeshComponent;
+class USkeletalMeshComponent;
 struct FInputActionValue;
 struct FFableCharacterProfile;
 
@@ -23,7 +25,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
  *  Implements a controllable orbiting camera
  */
 UCLASS(abstract)
-class AFableForgeCharacter : public ACharacter
+class AFableForgeCharacter : public ACharacter, public ICombatDamageable
 {
 	GENERATED_BODY()
 
@@ -145,6 +147,11 @@ protected:
 	float FirstPersonVisibilityHideArmLength = 110.0f;
 
 	bool bFirstPersonOwnerVisibilityHidden = false;
+	bool bFirstPersonAttackPresentation = false;
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> AttackOverlayMesh;
 	bool bFirstPersonCameraSettingsApplied = false;
 	bool bCameraLagBeforeFirstPerson = true;
 	bool bCameraRotationLagBeforeFirstPerson = false;
@@ -223,6 +230,10 @@ public:
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	void ToggleFirstPersonView();
+	bool IsFirstPersonViewActive() const { return bFirstPersonView; }
+	void SetFirstPersonAttackPresentation(bool bShow);
+	USkeletalMeshComponent* GetFirstPersonArmsMesh() const { return FirstPersonArms; }
+	USkeletalMeshComponent* GetAttackOverlayMesh() const { return AttackOverlayMesh; }
 
 private:
 	void HandleActiveInventoryChanged(const TArray<FString>& InInventorySlots, const TArray<FString>& InEquippedSlots);
@@ -264,4 +275,32 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USceneComponent>> EquipmentVisualComponents;
+
+	/** Health used by the live combat prototype. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Health", meta=(AllowPrivateAccess="true", ClampMin=1.0))
+	float MaxCombatHealth = 100.0f;
+
+	/** Current live combat health; separate from the persisted RPG profile for now. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat|Health", meta=(AllowPrivateAccess="true", ClampMin=0.0))
+	float CurrentCombatHealth = 100.0f;
+
+	/** Small in-world readout so damage can be verified without opening a debug console. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat|Health", meta=(AllowPrivateAccess="true"))
+	class UTextRenderComponent* CombatHealthText;
+
+	FTimerHandle CombatRespawnTimer;
+	bool bCombatDead = false;
+
+	void ResetCombatHealth();
+	void UpdateCombatHealthText();
+	void RespawnFromCombatTest();
+
+public:
+	virtual void ApplyDamage(float Damage, AActor* DamageCauser, const FVector& DamageLocation, const FVector& DamageImpulse) override;
+	virtual void HandleDeath() override;
+	virtual void ApplyHealing(float Healing, AActor* Healer) override;
+	virtual void NotifyDanger(const FVector& DangerLocation, AActor* DangerSource) override;
+	virtual float TakeDamage(float Damage, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+	float GetCurrentCombatHealth() const { return CurrentCombatHealth; }
+	float GetMaxCombatHealth() const { return MaxCombatHealth; }
 };

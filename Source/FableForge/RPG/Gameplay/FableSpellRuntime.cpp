@@ -3,6 +3,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "FableForgeCharacter.h"
@@ -175,6 +176,35 @@ bool FFableSpellRuntime::ExecuteSkill(UWorld* World, AActor* Caster, const FStri
 	if (Skill == nullptr) return false;
 	const FVector CastOrigin = Caster->GetActorLocation();
 
+	if (SkillId.Equals(TEXT("fireball"), ESearchCase::IgnoreCase))
+	{
+		SpawnSpellVisual(World, Caster, CastOrigin, SkillId, TargetLocation, *Skill, ExplicitTarget);
+		TWeakObjectPtr<AActor> WeakCaster(Caster);
+		TWeakObjectPtr<AActor> WeakTarget(ExplicitTarget);
+		const FVector FallbackImpact = TargetLocation;
+		FTimerHandle FireballImpactTimer;
+		World->GetTimerManager().SetTimer(FireballImpactTimer, FTimerDelegate::CreateLambda([World, WeakCaster, WeakTarget, FallbackImpact]()
+		{
+			if (!World || !WeakCaster.IsValid()) return;
+			const FVector ImpactLocation = WeakTarget.IsValid()
+				? WeakTarget->GetActorLocation() + FVector(0.f, 0.f, 70.f)
+				: FallbackImpact;
+			const FFableSkillDefinitionTableRow* DelayedSkill = FindSkill(TEXT("fireball"));
+			if (!DelayedSkill) return;
+			TArray<FString> DelayedEffects;
+			DelayedSkill->EffectIdsCsv.ParseIntoArray(DelayedEffects, TEXT("|"), true);
+			for (const FString& EffectId : DelayedEffects)
+				ApplyEffect(World, WeakCaster.Get(), EffectId.TrimStartAndEnd(), ImpactLocation, WeakTarget.Get());
+		}), 0.65f, false);
+		return true;
+	}
+
+	if (SkillId.Equals(TEXT("fire_tornado"), ESearchCase::IgnoreCase))
+	{
+		SpawnSpellVisual(World, Caster, CastOrigin, SkillId, TargetLocation, *Skill);
+		return true;
+	}
+
 	TArray<FString> EffectIds;
 	Skill->EffectIdsCsv.ParseIntoArray(EffectIds, TEXT("|"), true);
 	bool bAppliedAnyEffect = false;
@@ -200,7 +230,7 @@ bool FFableSpellRuntime::ResolveSafeTimeStepDestination(UWorld* World, AActor* C
 	const float CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 	if (CapsuleRadius <= 0.0f || CapsuleHalfHeight <= 0.0f) return false;
 
-	if (FVector::Dist(Caster->GetActorLocation(), SelectedGroundPoint) > 650.f) return false;
+	if (FVector::Dist(Caster->GetActorLocation(), SelectedGroundPoint) > 1200.f) return false;
 	// Validate the selected surface, never silently choose a different floor
 	// above or below the cursor.
 	const FVector TraceStart = SelectedGroundPoint + FVector(0.0f, 0.0f, 5.0f);
@@ -222,7 +252,7 @@ bool FFableSpellRuntime::ResolveSafeTimeStepDestination(UWorld* World, AActor* C
 	return true;
 }
 
-void FFableSpellRuntime::SpawnSpellVisual(UWorld* World, AActor* Caster, const FVector& CastOrigin, const FString& SkillId, const FVector& TargetLocation, const FFableSkillDefinitionTableRow& Skill)
+void FFableSpellRuntime::SpawnSpellVisual(UWorld* World, AActor* Caster, const FVector& CastOrigin, const FString& SkillId, const FVector& TargetLocation, const FFableSkillDefinitionTableRow& Skill, AActor* ExplicitTarget)
 {
 	if (World == nullptr || Caster == nullptr) return;
 
@@ -240,8 +270,35 @@ void FFableSpellRuntime::SpawnSpellVisual(UWorld* World, AActor* Caster, const F
 	if (AFableSpellVisualActor* SpellActor = World->SpawnActor<AFableSpellVisualActor>(Origin, FRotator::ZeroRotator, SpawnParams))
 	{
 		SpellActor->Initialize(Visual, Origin, VisualTarget, Color);
+		if (Visual == EFableSpellVisual::Fireball)
+		{
+			SpellActor->SetFollowTarget(ExplicitTarget);
+		}
+		else if (Visual == EFableSpellVisual::FireTornado)
+		{
+			SpellActor->SetPersistentEffect(Caster, SkillId);
+		}
 		UE_LOG(LogTemp, Display, TEXT("SPELL_VISUAL skill=%s origin=%s target=%s"), *SkillId, *Origin.ToString(), *VisualTarget.ToString());
 	}
+}
+
+bool FFableSpellRuntime::ApplyPersistentSkillEffects(UWorld* World, AActor* Caster, const FString& SkillId, const FVector& TargetLocation)
+{
+	if (!World || !Caster) return false;
+	const FFableSkillDefinitionTableRow* Skill = FindSkill(SkillId);
+	if (!Skill) return false;
+	bool bApplied = false;
+	TArray<FString> EffectIds;
+	Skill->EffectIdsCsv.ParseIntoArray(EffectIds, TEXT("|"), true);
+	for (const FString& EffectId : EffectIds)
+	{
+		const FFableSkillEffectTableRow* Effect = FindEffect(EffectId.TrimStartAndEnd());
+		if (Effect && (Effect->EffectType == EFableSkillEffectType::Damage || Effect->EffectType == EFableSkillEffectType::DamageOverTime || Effect->EffectType == EFableSkillEffectType::AreaDamage))
+		{
+			bApplied |= ApplyEffect(World, Caster, Effect->EffectId, TargetLocation, nullptr);
+		}
+	}
+	return bApplied;
 }
 
 bool FFableSpellRuntime::ApplyEffect(UWorld* World, AActor* Caster, const FString& EffectId, const FVector& TargetLocation, AActor* ExplicitTarget)

@@ -17,6 +17,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Viewport.h"
 #include "Components/TextBlock.h"
+#include "Components/ProgressBar.h"
 #include "RPG/UI/FablePartyHudWidget.h"
 #include "RPG/UI/FableInventorySlotWidget.h"
 #include "RPG/UI/FableWheelAssignmentWidget.h"
@@ -72,7 +73,7 @@ static FAutoConsoleCommandWithWorldAndArgs QaQueue(
  }));
 
 static FAutoConsoleCommandWithWorldAndArgs GameplayQa(
- TEXT("FableForge.GameplayQA"), TEXT("Isolated QA only: inspect, equip <slot> <item>, unequip <slot>, jump, camera <yaw> <pitch> <distance>."),
+ TEXT("FableForge.GameplayQA"), TEXT("Isolated QA only: inspect, equip <slot> <item>, unequip <slot>, jump, camera <yaw> <pitch> <distance>, hudxp/hudmeters <fraction>."),
  FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
  {
   FString UserDir;
@@ -318,6 +319,54 @@ static FAutoConsoleCommandWithWorldAndArgs GameplayQa(
 						UE_LOG(LogTemp,Display,TEXT("WHEEL_GEOMETRY text=%s pos=%s size=%s"),*Text->GetText().ToString().Replace(TEXT("\n"),TEXT(" ")),
 							*Text->GetCachedGeometry().GetAbsolutePosition().ToString(),*Text->GetCachedGeometry().GetLocalSize().ToString());
 				});
+		return;
+	}
+	if (Args.Num() == 2 && (Args[0] == TEXT("hudxp") || Args[0] == TEXT("hudmeters")))
+	{
+		float RequestedFraction = 0.0f;
+		if (!LexTryParseString(RequestedFraction, *Args[1]) || (RequestedFraction < 0.0f && RequestedFraction != -1.0f))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("HUD_XP invalid fraction=%s expected 0..1 or -1 to clear"), *Args[1]);
+			return;
+		}
+
+		const bool bClearOverride = RequestedFraction == -1.0f;
+		const float Fraction = FMath::Clamp(RequestedFraction, 0.0f, 1.0f);
+		int32 MatchedBars = 0;
+		for (TObjectIterator<UFablePartyHudWidget> It; It; ++It)
+		{
+			UFablePartyHudWidget* Hud = *It;
+			if (!IsValid(Hud) || Hud->IsTemplate() || Hud->GetWorld() != World || !Hud->WidgetTree)
+				continue;
+
+			TArray<UWidget*> Widgets;
+			Hud->WidgetTree->GetAllWidgets(Widgets);
+			for (UWidget* Widget : Widgets)
+			{
+				UProgressBar* Bar = Cast<UProgressBar>(Widget);
+				if (!Bar || !Bar->GetToolTipText().ToString().Equals(TEXT("Experience"), ESearchCase::IgnoreCase))
+					continue;
+
+				++MatchedBars;
+				if (bClearOverride)
+				{
+					Hud->RefreshFromSaveData();
+					UE_LOG(LogTemp, Display, TEXT("HUD_XP widget=%s cleared=1"), *GetNameSafe(Hud));
+					break;
+				}
+
+				Bar->SetPercent(Fraction);
+				UE_LOG(LogTemp, Display, TEXT("HUD_XP widget=%s fraction=%.3f cleared=0 position=%s size=%s"),
+					*GetNameSafe(Hud), Bar->GetPercent(),
+					*Bar->GetCachedGeometry().GetAbsolutePosition().ToString(),
+					*Bar->GetCachedGeometry().GetLocalSize().ToString());
+			}
+		}
+
+		const FString ScreenshotPath = FString::Printf(TEXT("/tmp/FableForge-hudxp-%s.png"), *Args[1]);
+		FScreenshotRequest::RequestScreenshot(ScreenshotPath, true, false);
+		UE_LOG(LogTemp, Display, TEXT("HUD_XP fraction=%.3f cleared=%d matched=%d screenshot=%s"),
+			Fraction, bClearOverride, MatchedBars, *ScreenshotPath);
 		return;
 	}
 	if (Args.Num() == 1 && Args[0] == TEXT("journalstate") && PC)

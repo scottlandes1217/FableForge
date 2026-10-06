@@ -49,6 +49,11 @@ public:
 	void RunControllerInputSmokeTest();
 	bool RequestSkillPayload(const FString& PayloadId);
 	bool ConsumeInventoryItem(int32 InventorySlot);
+	bool SpendMana(float Amount);
+	UFUNCTION(BlueprintPure, Category = "Combat")
+	float GetMana() const { return Mana; }
+	UFUNCTION(BlueprintPure, Category = "Combat")
+	float GetMaxMana() const { return MaxMana; }
 	UFUNCTION(BlueprintPure, Category = "Cosmic")
 	float GetCosmicEnergy() const { return CosmicEnergy; }
 	UFUNCTION(BlueprintPure, Category = "Cosmic")
@@ -146,6 +151,8 @@ protected:
 	void UpdateElementGesture(float RealDeltaSeconds);
 	void BeginElementGesture(FName Element);
 	void PerformWeaponAttack(bool bOffHand);
+	void ExecuteWeaponAttackHit(bool bOffHand, APawn* Pawn, const FVector& Start, const FVector& Direction);
+	void RestoreWeaponAttackAnimation();
 	FVector ResolveAimPoint(FHitResult* OutHit = nullptr) const;
 
 private:
@@ -227,6 +234,11 @@ private:
 	TArray<FFableQuickWheelPageData> CosmicWheelPages;
 	int32 CosmicWheelPage = 0;
 	float CosmicEnergy = 100.0f;
+	float MaxMana = 100.0f;
+	float Mana = 100.0f;
+	UPROPERTY(EditAnywhere, Category = "Gameplay|Mana", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float ManaRecoveryPerSecond = 40.0f;
+	float PendingSkillManaCost = 0.0f;
 	double LastCosmicWallTimeSeconds = 0.0;
 	FVector2D RightStickValue = FVector2D::ZeroVector;
 	FVector2D GestureStart = FVector2D::ZeroVector;
@@ -258,6 +270,9 @@ private:
 	bool bTargetValid = false;
 	bool bPendingWeaponAttack = false;
 	bool bPendingOffHand = false;
+	bool bWeaponAttackActive = false;
+	FTimerHandle WeaponAttackHitTimerHandle;
+	FTimerHandle WeaponAttackRestoreTimerHandle;
 	bool bTargetRequiresGround = false;
 	FVector2D TargetCursorPixels = FVector2D::ZeroVector;
 	float TargetRange = 1200.f;

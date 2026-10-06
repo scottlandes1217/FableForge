@@ -644,7 +644,7 @@ void UFableTimeWheelWidget::RebuildWheel()
 	SelectedEntryNameText = nullptr;
 	// Precision targeting is painted as a cursor and surface footprint only.
 	if (bTargeting) return;
-	const FLinearColor Gold = bCosmicWheel ? FLinearColor(0.98f, 0.72f, 0.24f, 1.0f) : FLinearColor(0.96f, 0.78f, 0.34f, 1.0f);
+	const FLinearColor WheelGold = bCosmicWheel ? FLinearColor(0.98f, 0.72f, 0.24f, 1.0f) : FLinearColor(0.96f, 0.78f, 0.34f, 1.0f);
 	const FLinearColor Muted(0.72f, 0.63f, 0.48f, 1.0f);
 	const FLinearColor Accent = bCosmicWheel ? FLinearColor(0.70f, 0.38f, 0.98f, 1.0f) : ElementColor(Element);
 
@@ -702,7 +702,7 @@ void UFableTimeWheelWidget::RebuildWheel()
 	}
 
 	SelectedEntryNameText = WidgetTree->ConstructWidget<UTextBlock>();
-	SelectedEntryNameText->SetColorAndOpacity(Gold);
+	SelectedEntryNameText->SetColorAndOpacity(WheelGold);
 	SelectedEntryNameText->SetJustification(ETextJustify::Center);
 	SelectedEntryNameText->SetAutoWrapText(true);
 	SelectedEntryNameText->SetFont(FableBookStyle::Font(18, true));

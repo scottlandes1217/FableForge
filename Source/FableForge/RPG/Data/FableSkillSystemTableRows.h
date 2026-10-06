@@ -468,42 +468,42 @@ namespace FableSkillCatalog
 		{
 			OutDefinition.SkillId = TEXT("fireball"); OutDefinition.DisplayName = TEXT("Fireball"); OutDefinition.Summary = TEXT("Explosive fire projectile");
 			OutDefinition.Description = TEXT("Hurls a fire projectile that damages the impact area."); OutDefinition.Category = EFableSkillCategory::Fire;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::TargetUnit; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 1200.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst"); OutDefinition.TagsCsv = TEXT("fire|projectile|spell");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::TargetUnit; OutDefinition.ResourceType = EFableSkillResourceType::Mana; OutDefinition.ResourceCost = 20.f; OutDefinition.RangeUnits = 1200.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst"); OutDefinition.TagsCsv = TEXT("fire|projectile|spell");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("fire_tornado"), ESearchCase::IgnoreCase))
 		{
 			OutDefinition.SkillId = TEXT("fire_tornado"); OutDefinition.DisplayName = TEXT("Fire Tornado"); OutDefinition.Summary = TEXT("A spiraling vortex of flame");
 			OutDefinition.Description = TEXT("Shapes fire into a vortex at the aimed ground point."); OutDefinition.Category = EFableSkillCategory::Fire;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 1000.f; OutDefinition.RadiusUnits = 360.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst|eff_burn_dot|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("fire|wind|spell");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::Mana; OutDefinition.ResourceCost = 35.f; OutDefinition.RangeUnits = 1000.f; OutDefinition.RadiusUnits = 360.f; OutDefinition.EffectIdsCsv = TEXT("eff_fireball_burst|eff_burn_dot|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("fire|wind|spell");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("heal_wave"), ESearchCase::IgnoreCase))
 		{
 			OutDefinition.SkillId = TEXT("heal_wave"); OutDefinition.DisplayName = TEXT("Heal Wave"); OutDefinition.Summary = TEXT("Starter healing pulse");
 			OutDefinition.Description = TEXT("Restores health in a small area around the target point."); OutDefinition.Category = EFableSkillCategory::Water;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 500.f; OutDefinition.RadiusUnits = 220.f; OutDefinition.EffectIdsCsv = TEXT("eff_heal_wave_pulse"); OutDefinition.TagsCsv = TEXT("water|heal|support");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::Mana; OutDefinition.ResourceCost = 18.f; OutDefinition.RangeUnits = 500.f; OutDefinition.RadiusUnits = 220.f; OutDefinition.EffectIdsCsv = TEXT("eff_heal_wave_pulse"); OutDefinition.TagsCsv = TEXT("water|heal|support");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("stone_spike"), ESearchCase::IgnoreCase))
 		{
 			OutDefinition.SkillId = TEXT("stone_spike"); OutDefinition.DisplayName = TEXT("Stone Spike"); OutDefinition.Summary = TEXT("Earth spike from ground");
 			OutDefinition.Description = TEXT("Raises a damaging spike from the selected ground point."); OutDefinition.Category = EFableSkillCategory::Earth;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 900.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_stone_spike_upthrust"); OutDefinition.TagsCsv = TEXT("earth|ground|spell");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::Mana; OutDefinition.ResourceCost = 22.f; OutDefinition.RangeUnits = 900.f; OutDefinition.RadiusUnits = 180.f; OutDefinition.EffectIdsCsv = TEXT("eff_stone_spike_upthrust"); OutDefinition.TagsCsv = TEXT("earth|ground|spell");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("gust"), ESearchCase::IgnoreCase))
 		{
 			OutDefinition.SkillId = TEXT("gust"); OutDefinition.DisplayName = TEXT("Gust"); OutDefinition.Summary = TEXT("Directional wind burst");
 			OutDefinition.Description = TEXT("Pushes nearby enemies and objects away from the target point."); OutDefinition.Category = EFableSkillCategory::Air;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 850.f; OutDefinition.RadiusUnits = 260.f; OutDefinition.EffectIdsCsv = TEXT("eff_gust_push|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("air|wind|control");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Area; OutDefinition.ResourceType = EFableSkillResourceType::Mana; OutDefinition.ResourceCost = 15.f; OutDefinition.RangeUnits = 850.f; OutDefinition.RadiusUnits = 260.f; OutDefinition.EffectIdsCsv = TEXT("eff_gust_push|eff_gust_pull_light"); OutDefinition.TagsCsv = TEXT("air|wind|control");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("time_step"), ESearchCase::IgnoreCase))
 		{
 			OutDefinition.SkillId = TEXT("time_step"); OutDefinition.DisplayName = TEXT("Time Step"); OutDefinition.Summary = TEXT("Teleport to a chosen destination");
 			OutDefinition.Description = TEXT("Equip with L1, then press L3 to choose a destination up to 6.5 m away. Move the cursor with the right stick. Press X to teleport, or Circle to cancel."); OutDefinition.Category = EFableSkillCategory::TimeManipulation;
-			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 650.f; OutDefinition.EffectIdsCsv = TEXT("eff_time_step_move"); OutDefinition.TagsCsv = TEXT("time|movement|utility");
+			OutDefinition.TargetingMode = EFableSkillTargetingMode::Ground; OutDefinition.ResourceType = EFableSkillResourceType::None; OutDefinition.ResourceCost = 0.f; OutDefinition.RangeUnits = 1200.f; OutDefinition.EffectIdsCsv = TEXT("eff_time_step_move"); OutDefinition.TagsCsv = TEXT("time|movement|utility");
 			return true;
 		}
 		if (SkillId.Equals(TEXT("slow_time"), ESearchCase::IgnoreCase))

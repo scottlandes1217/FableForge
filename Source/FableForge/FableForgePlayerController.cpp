@@ -34,12 +34,15 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSequenceBase.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DataTable.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 #include "HAL/PlatformTime.h"
 #include "Components/PrimitiveComponent.h"
+#include "FableForgeGameMode.h"
 
 namespace
 {
@@ -58,6 +61,8 @@ void AFableForgePlayerController::BeginPlay()
 	CosmicDrainPerSecond = FMath::Max(0.0f, CosmicDrainPerSecond);
 	CosmicRecoveryPerSecond = FMath::Max(0.0f, CosmicRecoveryPerSecond);
 	CosmicEnergy = MaxCosmicEnergy;
+	MaxMana = 100.0f;
+	Mana = MaxMana;
 	LastCosmicWallTimeSeconds = FPlatformTime::Seconds();
 
 	// only spawn touch controls on local player controllers
@@ -205,6 +210,10 @@ void AFableForgePlayerController::PlayerTick(float DeltaTime)
 	const float InputDeltaSeconds = LastCosmicWallTimeSeconds > 0.0
 		? FMath::Clamp(static_cast<float>(WallNowSeconds - LastCosmicWallTimeSeconds), 0.f, .1f) : DeltaTime;
 	UpdateCosmicEnergy(WallNowSeconds);
+	if (Mana < MaxMana)
+	{
+		Mana = FMath::Min(MaxMana, Mana + FMath::Max(0.0f, ManaRecoveryPerSecond) * InputDeltaSeconds);
+	}
 	if (ChestWidget != nullptr && ChestWidget->IsChestOpen())
 	{
 		RightStickValue = FVector2D::ZeroVector;
@@ -241,6 +250,7 @@ void AFableForgePlayerController::PlayerTick(float DeltaTime)
 void AFableForgePlayerController::HandleDPadUp()
 {
 	if (IsWheelAssignmentOpen()) return;
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->MoveControllerSelection(-1); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { if (!ChestWidget->HasAnyUserFocus()) ChestWidget->MoveControllerSelection(-1); return; }
 	if (IsJournalOpen())
 	{
@@ -252,6 +262,7 @@ void AFableForgePlayerController::HandleDPadUp()
 void AFableForgePlayerController::HandleDPadDown()
 {
 	if (IsWheelAssignmentOpen()) return;
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->MoveControllerSelection(1); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { if (!ChestWidget->HasAnyUserFocus()) ChestWidget->MoveControllerSelection(1); return; }
 	if (IsJournalOpen())
 	{
@@ -263,6 +274,7 @@ void AFableForgePlayerController::HandleDPadDown()
 void AFableForgePlayerController::HandleDPadLeft()
 {
 	if (IsWheelAssignmentOpen()) return;
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->MoveControllerSelection(-1); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { if (!ChestWidget->HasAnyUserFocus()) ChestWidget->MoveControllerSelection(-1); return; }
 	if (IsJournalOpen())
 	{
@@ -275,6 +287,7 @@ void AFableForgePlayerController::HandleDPadLeft()
 void AFableForgePlayerController::HandleDPadRight()
 {
 	if (IsWheelAssignmentOpen()) return;
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->MoveControllerSelection(1); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { if (!ChestWidget->HasAnyUserFocus()) ChestWidget->MoveControllerSelection(1); return; }
 	if (IsJournalOpen())
 	{
@@ -643,6 +656,23 @@ FVector AFableForgePlayerController::ResolveAimPoint(FHitResult* OutHit) const
 		FHitResult Hit;
 		if (GetWorld() && GetWorld()->LineTraceSingleByChannel(Hit, WorldOrigin, End, ECC_Visibility, Params))
 		{
+			// Visibility can hit the floor behind a character when a mesh or
+			// imported collision profile is incomplete. Prefer a damageable pawn
+			// intersecting the same crosshair ray before accepting that surface.
+			if (Hit.GetActor() == nullptr || Cast<ICombatDamageable>(Hit.GetActor()) == nullptr)
+			{
+				TArray<FHitResult> PawnHits;
+				const FCollisionShape AimShape = FCollisionShape::MakeSphere(28.0f);
+				if (GetWorld()->SweepMultiByChannel(PawnHits, WorldOrigin, Hit.ImpactPoint, FQuat::Identity, ECC_Pawn, AimShape, Params))
+				{
+					for (const FHitResult& PawnHit : PawnHits)
+						if (PawnHit.GetActor() != nullptr && Cast<ICombatDamageable>(PawnHit.GetActor()) != nullptr)
+						{
+							if (OutHit) *OutHit = PawnHit;
+							return PawnHit.ImpactPoint;
+						}
+				}
+			}
 			if (OutHit) *OutHit = Hit;
 			return Hit.ImpactPoint;
 		}
@@ -656,39 +686,145 @@ void AFableForgePlayerController::PerformWeaponAttack(bool bOffHand)
 {
 	if (ChestWidget != nullptr && ChestWidget->IsChestOpen()) return;
 	APawn* Pawn = GetPawn();
-	if (Pawn == nullptr || GetWorld() == nullptr) return;
+	if (Pawn == nullptr || GetWorld() == nullptr || bWeaponAttackActive) return;
+	bWeaponAttackActive = true;
+	GetWorld()->GetTimerManager().ClearTimer(WeaponAttackHitTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(WeaponAttackRestoreTimerHandle);
 	UE_LOG(LogFableForge, Display, TEXT("INPUT_QA weapon_attack hand=%s"), bOffHand ? TEXT("off") : TEXT("main"));
 	FHitResult AimHit;
 	const FVector AimPoint = bPendingWeaponAttack ? PendingTargetLocation : ResolveAimPoint(&AimHit);
 	const FVector Start = Pawn->GetActorLocation() + FVector(0, 0, 70);
 	const FVector Direction = (AimPoint - Start).GetSafeNormal();
-	const FVector End = Start + Direction * 180.0f;
-	FCollisionShape Shape = FCollisionShape::MakeSphere(65.0f);
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(FableWeaponAttack), false, Pawn);
-	TArray<FHitResult> Hits;
-	if (GetWorld()->SweepMultiByObjectType(Hits, Start, End, FQuat::Identity, FCollisionObjectQueryParams(ECC_Pawn | ECC_WorldDynamic), Shape, Params))
+	// Damage lands during the attack animation, not on trigger-down. This keeps
+	// the hit and the visible swing in sync and prevents damage before contact.
+	TWeakObjectPtr<AFableForgePlayerController> WeakController(this);
+	TWeakObjectPtr<APawn> WeakPawn(Pawn);
+	GetWorld()->GetTimerManager().SetTimer(WeaponAttackHitTimerHandle, FTimerDelegate::CreateLambda([WeakController, WeakPawn, bOffHand, Start, Direction]()
 	{
-		for (const FHitResult& Hit : Hits)
-			if (ICombatDamageable* Damageable = Cast<ICombatDamageable>(Hit.GetActor()))
-				Damageable->ApplyDamage(bOffHand ? 16.0f : 22.0f, Pawn, Hit.ImpactPoint, Direction * (bOffHand ? 120.0f : 180.0f) + FVector(0, 0, 80));
-	}
+		if (AFableForgePlayerController* Controller = WeakController.Get())
+			if (APawn* AttackPawn = WeakPawn.Get())
+				Controller->ExecuteWeaponAttackHit(bOffHand, AttackPawn, Start, Direction);
+	}), 0.25f, false);
 	if (ACharacter* Character = Cast<ACharacter>(Pawn))
+	{
 		if (USkeletalMeshComponent* Mesh = Character->GetMesh())
+		{
+			AFableForgeCharacter* FableCharacter = Cast<AFableForgeCharacter>(Character);
+			const bool bFirstPerson = FableCharacter != nullptr && FableCharacter->IsFirstPersonViewActive();
+			const bool bMoving = Pawn->GetVelocity().SizeSquared2D() > FMath::Square(10.0f);
+			if (FableCharacter != nullptr) FableCharacter->SetFirstPersonAttackPresentation(bFirstPerson);
 			if (UAnimationAsset* Attack = LoadObject<UAnimationAsset>(nullptr, TEXT("/Game/Characters/PlayableCharacter/Anims/Unarmed/Attack/MM_Attack_01.MM_Attack_01")))
 			{
-				Mesh->PlayAnimation(Attack, false);
 				const float RestoreDelay = FMath::Max(0.2f, Cast<UAnimSequenceBase>(Attack) ? Cast<UAnimSequenceBase>(Attack)->GetPlayLength() : 0.7f);
-				TWeakObjectPtr<USkeletalMeshComponent> WeakMesh(Mesh);
-				FTimerHandle RestoreAnimationTimer;
-				GetWorld()->GetTimerManager().SetTimer(RestoreAnimationTimer, FTimerDelegate::CreateLambda([WeakMesh]()
+				if (bFirstPerson && FableCharacter != nullptr && FableCharacter->GetFirstPersonArmsMesh() != nullptr)
 				{
-					if (USkeletalMeshComponent* RestoredMesh = WeakMesh.Get())
+					USkeletalMeshComponent* Arms = FableCharacter->GetFirstPersonArmsMesh();
+					Arms->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+					Arms->PlayAnimation(Attack, false);
+				}
+				else if (bMoving)
+				{
+					if (FableCharacter != nullptr && FableCharacter->GetAttackOverlayMesh() != nullptr)
 					{
-						RestoredMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
-						RestoredMesh->InitAnim(true);
+						USkeletalMeshComponent* Overlay = FableCharacter->GetAttackOverlayMesh();
+						if (Overlay->GetSkeletalMeshAsset() != Mesh->GetSkeletalMeshAsset())
+						{
+							Overlay->SetSkeletalMesh(Mesh->GetSkeletalMeshAsset());
+							for (int32 MaterialIndex = 0; MaterialIndex < Mesh->GetNumMaterials(); ++MaterialIndex)
+							{
+								Overlay->SetMaterial(MaterialIndex, Mesh->GetMaterial(MaterialIndex));
+							}
+							for (const FName BoneName : { FName(TEXT("head")), FName(TEXT("neck_01")), FName(TEXT("thigh_l")), FName(TEXT("calf_l")), FName(TEXT("foot_l")), FName(TEXT("ball_l")), FName(TEXT("thigh_r")), FName(TEXT("calf_r")), FName(TEXT("foot_r")), FName(TEXT("ball_r")) })
+							{
+								Overlay->HideBoneByName(BoneName, PBO_None);
+							}
+						}
+						Overlay->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+						Overlay->SetVisibility(true, true);
+						Overlay->PlayAnimation(Attack, false);
 					}
-				}), RestoreDelay, false);
+					else if (UAnimSequence* Sequence = Cast<UAnimSequence>(Attack))
+					{
+						if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
+						{
+							UAnimMontage* Montage = NewObject<UAnimMontage>(Mesh, NAME_None, RF_Transient);
+							FAnimSegment Segment;
+							Segment.SetAnimReference(Sequence, true);
+							Segment.AnimEndTime = Sequence->GetPlayLength();
+							Segment.LoopingCount = 1;
+							FSlotAnimationTrack SlotTrack;
+							SlotTrack.SlotName = TEXT("DefaultSlot");
+							SlotTrack.AnimTrack.AnimSegments.Add(Segment);
+							Montage->SlotAnimTracks.Add(SlotTrack);
+							Montage->CalculateSequenceLength();
+							AnimInstance->Montage_Play(Montage, 1.0f);
+						}
+					}
+				}
+				else
+				{
+					Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+					Mesh->PlayAnimation(Attack, false);
+				}
+				GetWorld()->GetTimerManager().SetTimer(WeaponAttackRestoreTimerHandle, this, &AFableForgePlayerController::RestoreWeaponAttackAnimation, RestoreDelay, false);
 			}
+			else
+			{
+				bWeaponAttackActive = false;
+			}
+		}
+		else
+		{
+			bWeaponAttackActive = false;
+		}
+	}
+	else
+	{
+		bWeaponAttackActive = false;
+	}
+}
+
+void AFableForgePlayerController::RestoreWeaponAttackAnimation()
+{
+	bWeaponAttackActive = false;
+	if (AFableForgeCharacter* Character = Cast<AFableForgeCharacter>(GetPawn()))
+	{
+		Character->SetFirstPersonAttackPresentation(false);
+		if (Character->GetAttackOverlayMesh() != nullptr)
+		{
+			Character->GetAttackOverlayMesh()->SetVisibility(false, true);
+		}
+		if (Character->IsFirstPersonViewActive())
+		{
+			return;
+		}
+		if (USkeletalMeshComponent* Mesh = Character->GetMesh())
+		{
+			Mesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+			Mesh->InitAnim(true);
+		}
+	}
+}
+
+void AFableForgePlayerController::ExecuteWeaponAttackHit(bool bOffHand, APawn* Pawn, const FVector& Start, const FVector& Direction)
+{
+	if (!Pawn || !GetWorld()) return;
+	const FVector End = Start + Direction * 180.0f;
+	const FCollisionShape Shape = FCollisionShape::MakeSphere(65.0f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FableWeaponAttack), false, Pawn);
+	TArray<FHitResult> Hits;
+	if (!GetWorld()->SweepMultiByChannel(Hits, Start, End, FQuat::Identity, ECC_Pawn, Shape, Params)) return;
+	TSet<AActor*> DamagedActors;
+	for (const FHitResult& Hit : Hits)
+	{
+		AActor* HitActor = Hit.GetActor();
+		if (HitActor && DamagedActors.Contains(HitActor)) continue;
+		if (ICombatDamageable* Damageable = Cast<ICombatDamageable>(HitActor))
+		{
+			DamagedActors.Add(HitActor);
+			Damageable->ApplyDamage(bOffHand ? 16.0f : 22.0f, Pawn, Hit.ImpactPoint, Direction * (bOffHand ? 120.0f : 180.0f) + FVector(0, 0, 80));
+		}
+	}
 }
 
 bool AFableForgePlayerController::RequestSkillPayload(const FString& PayloadId)
@@ -735,9 +871,16 @@ bool AFableForgePlayerController::RequestSkillPayload(const FString& PayloadId)
 		UE_LOG(LogFableForge, Warning, TEXT("Quick wheel skill rejected: no definition for %s"), *PendingSkillId);
 		return false;
 	}
+	if (Skill->ResourceType == EFableSkillResourceType::Mana && Mana + KINDA_SMALL_NUMBER < Skill->ResourceCost)
+	{
+		UE_LOG(LogFableForge, Display, TEXT("SPELL_REJECTED skill=%s reason=not_enough_mana mana=%.1f cost=%.1f"), *PendingSkillId, Mana, Skill->ResourceCost);
+		return false;
+	}
+	PendingSkillManaCost = Skill->ResourceType == EFableSkillResourceType::Mana ? Skill->ResourceCost : 0.0f;
 	FHitResult Hit;
 	PendingTargetLocation = ResolveAimPoint(&Hit);
 	PendingTargetActor = Hit.GetActor();
+	const bool bAimedAtDamageable = Hit.GetActor() != nullptr && Cast<ICombatDamageable>(Hit.GetActor()) != nullptr;
 	if (PendingSkillId == TEXT("time_step") || (IsSlowTimeActive() && Skill->TargetingMode != EFableSkillTargetingMode::Self && Skill->TargetingMode != EFableSkillTargetingMode::Weapon && Skill->TargetingMode != EFableSkillTargetingMode::Equipment))
 	{
 		bPendingWeaponAttack = false;
@@ -756,14 +899,17 @@ bool AFableForgePlayerController::RequestSkillPayload(const FString& PayloadId)
 			PendingTargetLocation = Origin + (PendingTargetLocation - Origin).GetSafeNormal() * FMath::Min(CastRange, 850.f);
 			PendingTargetActor.Reset();
 		}
-		if (Skill->TargetingMode == EFableSkillTargetingMode::Ground || Skill->TargetingMode == EFableSkillTargetingMode::Area)
+		if (Skill->TargetingMode == EFableSkillTargetingMode::Ground
+			|| (Skill->TargetingMode == EFableSkillTargetingMode::Area && !bAimedAtDamageable))
 		{
+			AActor* AimedTarget = bAimedAtDamageable ? PendingTargetActor.Get() : nullptr;
 			FHitResult GroundHit;
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(FableSpellGround), false, Caster);
+			if (AimedTarget != nullptr) Params.AddIgnoredActor(AimedTarget);
 			if (GetWorld()->LineTraceSingleByChannel(GroundHit, PendingTargetLocation + FVector(0, 0, 400), PendingTargetLocation - FVector(0, 0, 2000), ECC_Visibility, Params))
 			{
 				PendingTargetLocation = GroundHit.ImpactPoint;
-				PendingTargetActor = GroundHit.GetActor();
+				PendingTargetActor = AimedTarget != nullptr ? AimedTarget : GroundHit.GetActor();
 			}
 		}
 	}
@@ -772,7 +918,17 @@ bool AFableForgePlayerController::RequestSkillPayload(const FString& PayloadId)
 			if (UAnimationAsset* Animation = Skill->CharacterAnimationAsset.LoadSynchronous()) Mesh->PlayAnimation(Animation, false);
 	const bool bCast = FFableSpellRuntime::ExecuteSkill(GetWorld(), GetPawn(), PendingSkillId, Skill->TargetingMode == EFableSkillTargetingMode::Self ? GetPawn()->GetActorLocation() : PendingTargetLocation, PendingTargetActor.Get());
 	if (bCast && PendingSkillId == TEXT("heal_wave") && PartyHudWidget) PartyHudWidget->RefreshFromSaveData();
+	if (bCast && PendingSkillManaCost > 0.0f) { SpendMana(PendingSkillManaCost); PendingSkillManaCost = 0.0f; }
 	return bCast;
+}
+
+bool AFableForgePlayerController::SpendMana(float Amount)
+{
+	if (Amount <= 0.0f) return true;
+	if (Mana + KINDA_SMALL_NUMBER < Amount) return false;
+	Mana = FMath::Clamp(Mana - Amount, 0.0f, MaxMana);
+	UE_LOG(LogFableForge, Display, TEXT("MANA_SPENT amount=%.1f remaining=%.1f/%.1f"), Amount, Mana, MaxMana);
+	return true;
 }
 
 bool AFableForgePlayerController::ConsumeInventoryItem(int32 InventorySlot)
@@ -862,8 +1018,10 @@ void AFableForgePlayerController::ConfirmTargetedSkill()
 	UpdatePrecisionTarget(0.f);
 	if (!bTargetValid) { UE_LOG(LogFableForge, Display, TEXT("TARGET_QA rejected no reachable surface")); return; }
 	EndPrecisionTarget();
+	bool bCast = true;
 	if (bPendingWeaponAttack) PerformWeaponAttack(bPendingOffHand);
-	else FFableSpellRuntime::ExecuteSkill(GetWorld(), GetPawn(), PendingSkillId, PendingTargetLocation, PendingTargetActor.Get());
+	else bCast = FFableSpellRuntime::ExecuteSkill(GetWorld(), GetPawn(), PendingSkillId, PendingTargetLocation, PendingTargetActor.Get());
+	if (bCast && PendingSkillManaCost > 0.0f) { SpendMana(PendingSkillManaCost); PendingSkillManaCost = 0.0f; }
 	if (PendingSkillId == TEXT("heal_wave") && PartyHudWidget) PartyHudWidget->RefreshFromSaveData();
 	bPendingWeaponAttack = false;
 	UE_LOG(LogFableForge, Display, TEXT("TARGET_QA confirmed location=%s"), *PendingTargetLocation.ToString());
@@ -884,6 +1042,7 @@ void AFableForgePlayerController::ConfirmTargetedSkill()
 
 void AFableForgePlayerController::CancelTargetedSkill()
 {
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->HandleControllerCancel(); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { CloseChest(); return; }
 	if (bCosmicWheelOpen)
 	{
@@ -917,6 +1076,7 @@ void AFableForgePlayerController::CancelTargetedSkill()
 
 void AFableForgePlayerController::HandleControllerActivate()
 {
+	if (MainMenuWidget && MainMenuWidget->IsControllerMenuActive()) { MainMenuWidget->ActivateControllerSelection(); return; }
 	if (IsGameInteractionBlocked()) ConsumeJumpPress();
 	if (bTargetingSkill) { ConfirmTargetedSkill(); return; }
 	if (ChestWidget && ChestWidget->IsChestOpen()) { if (!ChestWidget->HasAnyUserFocus()) ChestWidget->ActivateControllerSelection(); return; }
@@ -1082,6 +1242,7 @@ void AFableForgePlayerController::HandleWheelAssignmentClosed()
 		SetIgnoreLookInput(true);
 	}
 	SetInputMode(InputMode);
+	MainMenuWidget->FocusControllerSelection();
 	bShowMouseCursor = true;
 }
 
@@ -1460,6 +1621,10 @@ void AFableForgePlayerController::EnterGameFromCharacterSlot(const FGuid& Charac
 	ResetIgnoreLookInput();
 	ResetIgnoreMoveInput();
 	ApplyActiveCharacterMesh();
+	if (AFableForgeGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AFableForgeGameMode>() : nullptr)
+	{
+		GameMode->EnsureTrainingEnemy(GetPawn());
+	}
 
 	EnsureUiWidgets();
 	RefreshHudData();
@@ -1473,9 +1638,9 @@ void AFableForgePlayerController::EnterGameFromCharacterSlot(const FGuid& Charac
 	{
 		PartyHudWidget->SetVisibility(ESlateVisibility::Visible);
 	}
-	if (UFableSaveSubsystem* SaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr)
+	if (UFableSaveSubsystem* ActiveSaveSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFableSaveSubsystem>() : nullptr)
 	{
-		SaveSubsystem->TryGetActiveQuickWheelPages(QuickWheelPages);
+		ActiveSaveSubsystem->TryGetActiveQuickWheelPages(QuickWheelPages);
 	}
 	if (CharacterMenuWidget != nullptr)
 	{

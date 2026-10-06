@@ -18,7 +18,7 @@ namespace
 	constexpr int32 MainActionBarCollapsedRows = 2;
 	constexpr int32 MainActionBarExpandedRows = 4;
 	const TCHAR* RacesDataTablePath = TEXT("/Game/Data/DT_Races.DT_Races");
-	const TCHAR* SkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
+	const TCHAR* SaveSkillsDataTablePath = TEXT("/Game/Data/DT_Skills.DT_Skills");
 	const TCHAR* BasicAttackSkillId = TEXT("basic_attack");
 	const TCHAR* DefaultCosmicSkillId = TEXT("slow_time");
 
@@ -32,7 +32,7 @@ namespace
 			return true;
 		}
 
-		if (UDataTable* SkillTable = LoadObject<UDataTable>(nullptr, SkillsDataTablePath))
+		if (UDataTable* SkillTable = LoadObject<UDataTable>(nullptr, SaveSkillsDataTablePath))
 		{
 			if (const FFableSkillDefinitionTableRow* Row = SkillTable->FindRow<FFableSkillDefinitionTableRow>(FName(*SkillId), TEXT("UFableSaveSubsystem::IsCosmicSkillDefinition")))
 			{
@@ -262,6 +262,7 @@ bool UFableSaveSubsystem::SaveCharacterToSlot(const FGuid& CharacterId, int32 Sl
 	SaveGame->HealthPercent = Profile.HealthPercent;
 	SaveGame->ManaPercent = Profile.ManaPercent;
 	SaveGame->ExperiencePercent = Profile.ExperiencePercent;
+	SaveGame->CharacterLevel = Profile.CharacterLevel;
 	SaveGame->EquippedItems = Profile.EquippedItems;
 	SaveGame->InventoryItems = Profile.InventorySlots;
 	SaveGame->InventoryQuantities = Profile.InventoryQuantities;
@@ -334,6 +335,7 @@ UFableCharacterSaveGame* UFableSaveSubsystem::LoadCharacterFromSlot(const FGuid&
 	Profile.HealthPercent = SaveGame->HealthPercent;
 	Profile.ManaPercent = SaveGame->ManaPercent;
 	Profile.ExperiencePercent = SaveGame->ExperiencePercent;
+	Profile.CharacterLevel = SaveGame->CharacterLevel;
 	Profile.EquippedItems = SaveGame->EquippedItems;
 	Profile.InventorySlots = SaveGame->InventoryItems;
 	Profile.InventoryQuantities = SaveGame->InventoryQuantities;
@@ -1034,6 +1036,7 @@ void UFableSaveSubsystem::EnsureInventoryData(FFableCharacterProfile& Profile) c
 	Profile.HealthPercent = FMath::Clamp(Profile.HealthPercent, 0.0f, 1.0f);
 	Profile.ManaPercent = FMath::Clamp(Profile.ManaPercent, 0.0f, 1.0f);
 	Profile.ExperiencePercent = FMath::Clamp(Profile.ExperiencePercent, 0.0f, 1.0f);
+	Profile.CharacterLevel = FMath::Max(1, Profile.CharacterLevel);
 
 	if (Profile.LearnedSkills.Num() == 0)
 	{
